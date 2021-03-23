@@ -6,8 +6,8 @@ import plotly.graph_objects as go
 import numpy as np
 
 
-MESH_FILE = 'labeled_16x_mesh.json'
-PCD_FILE = 'dots_colored.json'
+MESH_FILE = 'data/labeled_16x_mesh.json'
+PCD_FILE = 'data/dots_colored.json'
 
 with open(MESH_FILE, 'r') as mf:
     cell_mesh = json.load(mf)
@@ -26,7 +26,7 @@ i,j,k = cell_mesh['faces'].T
 pz,py,px = dots_pcd['points'].T
 
 figdata = [
-    go.Mesh3d(x=x, y=y, z=z, 
+    go.Mesh3d(x=x, y=y, z=z,
               i=i, j=j, k=k,
         color='lightpink',
         opacity=1,
