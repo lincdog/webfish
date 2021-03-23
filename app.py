@@ -2,7 +2,8 @@ import json
 import dash
 import dash_core_components as dcc
 import dash_html_components as html
-from dash.dependencies import Input, Output
+from dash.dependencies import Input, Output, State
+from dash.exceptions import PreventUpdate
 import plotly.graph_objects as go
 import numpy as np
 import pandas as pd
@@ -25,7 +26,7 @@ i,j,k = cell_mesh['faces'].T
 
 unique_genes, gene_counts = np.unique(dots_pcd['geneID'], return_counts=True)
 
-possible_genes = ['All'] + list(np.flip(unique_genes[np.argsort(gene_counts)]))
+possible_genes = ['None', 'All'] + list(np.flip(unique_genes[np.argsort(gene_counts)]))
 
 
 ############# Begin app code
@@ -63,15 +64,20 @@ fig = go.Figure(data=figdata, layout=figlayout)
 
 @app.callback(
     Output('test-graph', 'figure'),
-    [Input('gene-select', 'value'),
-     Input('test-graph', 'figure')
-    ])
+    Input('gene-select', 'value'),
+    State('test-graph', 'figure')
+    )
 def update_figure(selected_genes, fig):
+    
+    if len(selected_genes) == 0:
+        raise PreventUpdate
     
     fig = go.Figure(fig)
     
     if 'All' in selected_genes:
         dots_filt = dots_pcd
+    elif selected_genes == ['None']:
+        dots_filt = dots_pcd.query('geneID == "NOT__A__GENE"')
     else:
         dots_filt = dots_pcd.query('geneID in @selected_genes')
 
