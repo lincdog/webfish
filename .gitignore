@@ -2,3 +2,4 @@
 *.json
 *.csv
 .ipynb_checkpoints*
+cache-directory*
