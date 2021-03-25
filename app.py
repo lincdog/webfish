@@ -13,23 +13,28 @@ import plotly.graph_objects as go
 import numpy as np
 import pandas as pd
 import boto3
+import yaml
 
-####### Globals and caching #######
-cache = Cache(app.server, config={
-    'CACHE_TYPE': 'filesystem',
-    'CACHE_DIR': 'cache-directory'
-})
+from util import gen_mesh, gen_pcd_df
+
+####### Globals #######
 
 ACTIVE_DATA = {'name': None, 'mesh': None, 'dots': None}
 
-# CONSTANTS
-LOCAL_STORE = 'webfish_data/'
-# Raw stored on AWS S3
-IMG_NAME = 'labeled_img.tif'
-CSV_NAME = 'decoded_genes.csv'
-# Processed for plotting
-MESH_NAME = 'labeled_16x_mesh.json'
-PCD_NAME = 'dots_um_with_colors.csv'
+CONSTS_FILE = 'consts.yml'
+CONSTS = yaml.load(open(CONSTS_FILE), Loader=yaml.Loader)
+
+for k, v in CONSTS.items():
+    if k.upper() not in globals().keys():
+        globals()[k.upper()] = v
+
+#LOCAL_STORE = CONSTS['local_store']
+
+#IMG_NAME = CONSTS['img_name']
+#CSV_NAME = CONSTS['csv_name']
+
+#MESH_NAME = CONSTS['mesh_name']
+#PCD_NAME = CONSTS['pcd_name']
 
 ###### AWS Code #######
 # assumes credentials & configuration are handled outside python in .aws directory or environment variables
@@ -120,9 +125,17 @@ def populate_genes(dots_pcd):
         
 
 ############# Begin app code ############
+
 THEME = dbc.themes.MINTY
+
 app = dash.Dash(__name__, external_stylesheets=[THEME])
 
+cache = Cache(app.server, config={
+    'CACHE_TYPE': 'filesystem',
+    'CACHE_DIR': 'cache-directory'
+})
+
+#### Helper functions ####
 
 @cache.memoize()
 def _query_df(selected_genes, name):
@@ -235,13 +248,15 @@ def gen_figure(selected_genes, name):
     return fig
 
 
+####### Callbacks #######
+
 @app.callback(
     Output('test-graph', 'figure'),
     Input('gene-select', 'value'),
     Input('data-select', 'value'),
     prevent_initial_call=False
     )
-def update_figure(selected_genes):
+def update_figure(selected_genes, selected_data):
     """
     update_figure:
     Callback triggered by both selecting a dataset and by selecting
@@ -249,6 +264,8 @@ def update_figure(selected_genes):
     
     """
     
+    #### NOTE may need to use Dash's callback context to determine
+    ## whether data-select or gene-select triggered this
     
     start = datetime.now()
     print(f'starting callback at {start}')
@@ -265,7 +282,7 @@ def update_figure(selected_genes):
     if 'None' in selected_genes and len(selected_genes) > 1:
         selected_genes.remove('None')
     
-    fig = gen_figure(selected_genes)
+    fig = gen_figure(selected_genes, ACTIVE_DATA['name'])
     
     end = datetime.now()
     print(f'returning from callback at {end} after {end-start}')
@@ -278,6 +295,9 @@ def update_figure(selected_genes):
     Input('data-select', 'value')
 )
 def select_data(folder):
+    
+    if folder is None:
+        return None
     
     if not os.path.exists(LOCAL_STORE):
         os.mkdir(LOCAL_STORE)
@@ -317,7 +337,7 @@ def select_data(folder):
     
     
     
-    
+######## App layout and initialization ########
 
 app.layout = html.Div(children=[
     html.H1(children='webfish test', style={'margin': 'auto'}),
@@ -332,7 +352,7 @@ app.layout = html.Div(children=[
         ),
         dcc.Dropdown(
             id='gene-select',
-            options=[{'label': i, 'value': i} for i in possible_genes],
+            #options=[{'label': i, 'value': i} for i in possible_genes],
             value='None',
             multi=True,
             placeholder='Select gene(s)',

@@ -4,11 +4,18 @@ import skimage.feature as skif
 import skimage.transform as skit
 import numpy as np
 import pandas as pd
+import yaml
 from tqdm import tqdm
 
-from .app import LOCAL_STORE, IMG_NAME, CSV_NAME, MESH_NAME, PCD_NAME
+CONSTS_FILE = 'consts.yml'
+CONSTS = yaml.load(open(CONSTS_FILE), Loader=yaml.Loader)
+
+for k, v in CONSTS.items():
+    if k.upper() not in globals().keys():
+        globals()[k.upper()] = v
 
 
+    
 def gen_mesh(imgfilename):
     pass
 
