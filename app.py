@@ -40,7 +40,7 @@ for k, v in CONSTS.items():
 # assumes credentials & configuration are handled outside python in .aws directory or environment variables
 s3 = boto3.resource('s3') 
 
-BUCKET_NAME = 'lincoln-testing'
+#BUCKET_NAME = 'lincoln-testing'
 my_bucket = s3.Bucket(BUCKET_NAME)
 
 objects = list(my_bucket.objects.all())
@@ -120,7 +120,7 @@ def populate_genes(dots_pcd):
     unique_genes, gene_counts = np.unique(dots_pcd['geneID'], return_counts=True)
 
     possible_genes = ['None', 'All'] + list(np.flip(unique_genes[np.argsort(gene_counts)]))
-    
+        
     return possible_genes
         
 
@@ -191,7 +191,7 @@ def gen_figure(selected_genes, name):
     # If dots is populated, grab it.
     # Otherwise, set the coords to None to create an empty Scatter3d.
     if ACTIVE_DATA['dots'] is not None:
-        dots_filt = dataframe(selected_genes)
+        dots_filt = query_df(selected_genes)
         pz,py,px = dots_filt[['z', 'y', 'x']].values.T
         color = dots_filt['geneColor']
         hovertext = dots_filt['geneID']
@@ -291,8 +291,8 @@ def update_figure(selected_genes, selected_data):
 
 
 @app.callback(
-    Output('gene-select', 'options'),
-    Input('data-select', 'value')
+    Output('gene-div', 'children'),
+    [Input('data-select', 'value')]
 )
 def select_data(folder):
     
@@ -309,23 +309,25 @@ def select_data(folder):
     
     # the desired folder doesn't exist, so we must fetch from s3
     if not os.path.exists(local_folder):
-        download_s3_folder(folder, LOCAL_STORE)
+        download_s3_folder(folder, local_folder)
         
     assert os.path.exists(local_folder), f'Unable to fetch folder {folder} from s3.'
+    
+    print(f'{findlocal(MESH_NAME)}, {findlocal(PCD_NAME)}')
     
     # If we already have the mesh file for this, read from json.
     # else, generate it and save it.
     if os.path.exists(findlocal(MESH_NAME)):
         mesh = mesh_from_json(findlocal(MESH_NAME))
     else:
-        mesh = gen_mesh(findlocal(IMG_NAME))
+        mesh = gen_mesh(findlocal(IMG_NAME), outfile=findlocal(MESH_NAME))
     
     # if we already have the processed point cloud DF for this, read it in.
     # else, generate it and save it.
     if os.path.exists(findlocal(PCD_NAME)):
         pcd = pd.read_csv(findlocal(PCD_NAME))
     else:
-        pcd = gen_pcd_df(findlocal(CSV_NAME))
+        pcd = gen_pcd_df(findlocal(CSV_NAME), outfile=findlocal(PCD_NAME))
     
     ### Set global dots DF and mesh variables
     ACTIVE_DATA['name'] = folder
@@ -333,8 +335,17 @@ def select_data(folder):
     ACTIVE_DATA['dots'] = pcd
     
     
-    return populate_genes(pcd)
+    genes = populate_genes(pcd)
+    print('returning gene list')
     
+    return dcc.Dropdown(
+        id='gene-select',
+        options=[{'label': i, 'value': i} for i in genes],
+        value='None',
+        multi=True,
+        placeholder='Select gene(s)',
+        style={}
+    )    
     
     
 ######## App layout and initialization ########
@@ -350,15 +361,10 @@ app.layout = html.Div(children=[
             placeholder='Select a data folder',
             style={}
         ),
-        dcc.Dropdown(
-            id='gene-select',
-            #options=[{'label': i, 'value': i} for i in possible_genes],
-            value='None',
-            multi=True,
-            placeholder='Select gene(s)',
-            style={}
-        ),
-    ], id='selector-div', style={'width': '200px', 'font-color': 'black'}),  
+    ], id='selector-div', style={'width': '200px', 'font-color': 'black'}),
+    
+    html.Div(id='gene-div', style={'width': '200px'}),
+    
     html.Div([
         dcc.Graph(
             id='test-graph',

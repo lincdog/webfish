@@ -5,3 +5,5 @@ csv_name: decoded_genes.csv
 
 mesh_name: labeled_mesh.json
 pcd_name: dots_um_with_colors.csv
+
+bucket_name: lincoln-testing
