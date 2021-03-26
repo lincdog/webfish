@@ -188,6 +188,9 @@ def gen_figure(selected_genes, name):
     
     Returns: plotly.graph_objects.Figure containing the selected data.
     """
+    
+    figdata = []
+    
     # If dots is populated, grab it.
     # Otherwise, set the coords to None to create an empty Scatter3d.
     if ACTIVE_DATA['dots'] is not None:
@@ -195,25 +198,8 @@ def gen_figure(selected_genes, name):
         pz,py,px = dots_filt[['z', 'y', 'x']].values.T
         color = dots_filt['geneColor']
         hovertext = dots_filt['geneID']
-    else:
-        pz,py,px = None, None, None
-        color = None
-        hovertext = None
     
-    # If the mesh is present, populate it.
-    # Else, create an empty Mesh3d.
-    if ACTIVE_DATA['mesh'] is not None:
-        x, y, z, i, j, k = populate_mesh(ACTIVE_DATA['mesh'])
-    else:
-        x, y, z, i, j, k = None, None, None, None, None, None
-    
-    figdata = [
-        go.Mesh3d(x=x, y=y, z=z,
-                  i=i, j=j, k=k,
-            color='lightgray',
-            opacity=0.7,
-            hoverinfo='skip',
-            ),
+        figdata.append(
             go.Scatter3d(
                 name='dots',
                 x=px, y=py, z=pz,
@@ -227,7 +213,22 @@ def gen_figure(selected_genes, name):
                 hoverinfo='text',
                 hovertext=hovertext
             )
-    ]
+        )
+    
+    # If the mesh is present, populate it.
+    # Else, create an empty Mesh3d.
+    if ACTIVE_DATA['mesh'] is not None:
+        x, y, z, i, j, k = populate_mesh(ACTIVE_DATA['mesh'])
+    
+        figdata.append(
+        go.Mesh3d(x=x, y=y, z=z,
+                  i=i, j=j, k=k,
+            color='lightgray',
+            opacity=0.7,
+            hoverinfo='skip',
+            )
+        )
+            
 
     figscene = go.layout.Scene(
         aspectmode='manual',
@@ -341,7 +342,7 @@ def select_data(folder):
     return dcc.Dropdown(
         id='gene-select',
         options=[{'label': i, 'value': i} for i in genes],
-        value='None',
+        #value='None',
         multi=True,
         placeholder='Select gene(s)',
         style={}
@@ -363,7 +364,8 @@ app.layout = html.Div(children=[
         ),
     ], id='selector-div', style={'width': '200px', 'font-color': 'black'}),
     
-    html.Div(id='gene-div', style={'width': '200px'}),
+    html.Div([dcc.Dropdown(id='gene-select')],
+             id='gene-div', style={'width': '200px'}),
     
     html.Div([
         dcc.Graph(
