@@ -176,4 +176,54 @@ def gen_pcd_df(
         
     return dots
 
+##### Helper functions ######
+
+def mesh_from_json(jsonfile):
+    """
+    mesh_from_json:
+    take a json filename, read it in,
+    and convert the verts and faces keys into numpy arrays.
     
+    returns: dict of numpy arrays
+    """
+    cell_mesh = json.load(open(jsonfile))
+    
+    assert 'verts' in cell_mesh.keys(), f'Key "verts" not found in file {jsonfile}'
+    assert 'faces' in cell_mesh.keys(), f'Key "faces" not found in file {jsonfile}'
+    
+    cell_mesh['verts'] = np.array(cell_mesh['verts'])
+    cell_mesh['faces'] = np.array(cell_mesh['faces'])
+    
+    return cell_mesh
+
+def populate_mesh(cell_mesh):
+    """
+    populate_mesh:
+    take a mesh dictionary (like returned from `mesh_from_json`) and return the
+    six components used to specify a plotly.graph_objects.Mesh3D
+    
+    returns: 6-tuple of numpy arrays: x, y, z are vertex coords; 
+    i, j, k are vertex indices that form triangles in the mesh.
+    """
+    
+    if cell_mesh is None:
+        return None, None, None, None, None, None
+
+    z,y,x = cell_mesh['verts'].T
+    i,j,k = cell_mesh['faces'].T
+    
+    return x, y, z, i, j, k
+
+def populate_genes(dots_pcd):
+    """
+    populate_genes:
+    takes a dots dataframe and computes the unique genes present,
+    sorting by most frequent to least frequent.
+    
+    returns: list of genes (+ None and All options) sorted by frequency descending
+    """
+    unique_genes, gene_counts = np.unique(dots_pcd['geneID'], return_counts=True)
+
+    possible_genes = ['None', 'All'] + list(np.flip(unique_genes[np.argsort(gene_counts)]))
+        
+    return possible_genes
