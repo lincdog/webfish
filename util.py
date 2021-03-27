@@ -9,15 +9,9 @@ import json
 from tqdm import tqdm
 from matplotlib.pyplot import get_cmap
 
-CONSTS_FILE = 'consts.yml'
-CONSTS = yaml.load(open(CONSTS_FILE), Loader=yaml.Loader)
+config_file = 'consts.yml'
+config = yaml.load(open(config_file), Loader=yaml.Loader)
 
-for k, v in CONSTS.items():
-    if k.upper() not in globals().keys():
-        globals()[k.upper()] = v
-
-
-    
 def gen_mesh(
     imgfilename,
     px_size=(0.5, 0.11, 0.11),

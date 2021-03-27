@@ -21,27 +21,28 @@ from util import gen_mesh, gen_pcd_df, mesh_from_json, populate_mesh, populate_g
 
 ACTIVE_DATA = {'name': None, 'mesh': None, 'dots': None}
 
-CONSTS_FILE = 'consts.yml'
-CONSTS = yaml.load(open(CONSTS_FILE), Loader=yaml.Loader)
-
-for k, v in CONSTS.items():
-    if k.upper() not in globals().keys():
-        globals()[k.upper()] = v
-
+config_file = 'consts.yml'
+config = yaml.load(open(config_file), Loader=yaml.Loader)
 
 ###### AWS Code #######
 # assumes credentials & configuration are handled outside python in .aws directory or environment variables
 
 try:
-    cred_file = os.environ[CREDENTIALS]
+    # Find the name of the credential file from the environment
+    cred_file = os.environ[config['credentials']]
     
     import configparser as cfparse
     
     cf = cfparse.ConfigParser()
     cf.read(cred_file)
     
-    csec = cf[CRED_PROFILE_NAME]
+    # Find the desired profile section
+    if 'cred_profile_name' in config.keys():
+        csec = cf[config['cred_profile_name']]
+    else:
+        csec = cf['default']
     
+    # Get the key ID and secret key
     key_id = csec['aws_access_key_id']
     secret_key = csec['aws_secret_access_key']
 
@@ -49,9 +50,9 @@ except:
     key_id = None
     secret_key = None
     
-try:
-    endpoint_url = ENDPOINT_URL
-except:
+if 'endpoint_url' in config.keys():
+    endpoint_url = config['endpoint_url']
+else:
     endpoint_url = None
     
 
@@ -62,7 +63,7 @@ s3 = boto3.resource('s3',
                    )
 
 #BUCKET_NAME = 'lincoln-testing'
-my_bucket = s3.Bucket(BUCKET_NAME)
+my_bucket = s3.Bucket(config['bucket_name'])
 
 objects = list(my_bucket.objects.all())
 # Unique folders sorted alphabetically
@@ -164,7 +165,9 @@ def gen_figure(selected_genes, name):
     # Otherwise, set the coords to None to create an empty Scatter3d.
     if ACTIVE_DATA['dots'] is not None:
         dots_filt = query_df(selected_genes)
+        
         pz,py,px = dots_filt[['z', 'y', 'x']].values.T
+        
         color = dots_filt['geneColor']
         hovertext = dots_filt['geneID']
     
@@ -269,10 +272,10 @@ def select_data(folder):
     if folder is None:
         return None
     
-    if not os.path.exists(LOCAL_STORE):
-        os.mkdir(LOCAL_STORE)
+    if not os.path.exists(config['local_store']):
+        os.mkdir(config['local_store'])
         
-    local_folder = os.path.join(LOCAL_STORE, folder)
+    local_folder = os.path.join(config['local_store'], folder)
     
     def findlocal(name, local_folder=local_folder):
         return os.path.join(local_folder, name)
@@ -283,21 +286,23 @@ def select_data(folder):
         
     assert os.path.exists(local_folder), f'Unable to fetch folder {folder} from s3.'
     
-    print(f'{findlocal(MESH_NAME)}, {findlocal(PCD_NAME)}')
+    print(f'{findlocal(config["mesh_name"])}, {findlocal(config["pcd_name"])}')
     
     # If we already have the mesh file for this, read from json.
     # else, generate it and save it.
-    if os.path.exists(findlocal(MESH_NAME)):
-        mesh = mesh_from_json(findlocal(MESH_NAME))
+    if os.path.exists(findlocal(config['mesh_name'])):
+        mesh = mesh_from_json(findlocal(config['mesh_name']))
     else:
-        mesh = gen_mesh(findlocal(IMG_NAME), outfile=findlocal(MESH_NAME))
+        mesh = gen_mesh(findlocal(config['img_name']),
+                        outfile=findlocal(config['mesh_name']))
     
     # if we already have the processed point cloud DF for this, read it in.
     # else, generate it and save it.
-    if os.path.exists(findlocal(PCD_NAME)):
-        pcd = pd.read_csv(findlocal(PCD_NAME))
+    if os.path.exists(findlocal(config['pcd_name'])):
+        pcd = pd.read_csv(findlocal(config['pcd_name']))
     else:
-        pcd = gen_pcd_df(findlocal(CSV_NAME), outfile=findlocal(PCD_NAME))
+        pcd = gen_pcd_df(findlocal(config['csv_name']), 
+                         outfile=findlocal(config['pcd_name']))
     
     ### Set global dots DF and mesh variables
     ACTIVE_DATA['name'] = folder
