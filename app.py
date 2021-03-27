@@ -28,17 +28,38 @@ for k, v in CONSTS.items():
     if k.upper() not in globals().keys():
         globals()[k.upper()] = v
 
-#LOCAL_STORE = CONSTS['local_store']
-
-#IMG_NAME = CONSTS['img_name']
-#CSV_NAME = CONSTS['csv_name']
-
-#MESH_NAME = CONSTS['mesh_name']
-#PCD_NAME = CONSTS['pcd_name']
 
 ###### AWS Code #######
 # assumes credentials & configuration are handled outside python in .aws directory or environment variables
-s3 = boto3.resource('s3') 
+
+try:
+    cred_file = os.environ[CREDENTIALS]
+    
+    import configparser as cfparse
+    
+    cf = cfparse.ConfigParser()
+    cf.read(cred_file)
+    
+    csec = cf[CRED_PROFILE_NAME]
+    
+    key_id = csec['aws_access_key_id']
+    secret_key = csec['aws_secret_access_key']
+
+except:
+    key_id = None
+    secret_key = None
+    
+try:
+    endpoint_url = ENDPOINT_URL
+except:
+    endpoint_url = None
+    
+
+s3 = boto3.resource('s3', 
+                    endpoint_url=endpoint_url,
+                    aws_access_key_id=key_id,
+                    aws_secret_access_key=secret_key
+                   )
 
 #BUCKET_NAME = 'lincoln-testing'
 my_bucket = s3.Bucket(BUCKET_NAME)

@@ -1,3 +1,6 @@
+credentials: WEBFISH_CREDS
+cred_profile_name: nick-lincoln-user
+
 local_store: webfish_data/
 
 img_name: labeled_img.tif
