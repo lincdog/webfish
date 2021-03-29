@@ -180,7 +180,10 @@ def mesh_from_json(jsonfile):
     
     returns: dict of numpy arrays
     """
-    cell_mesh = json.load(open(jsonfile))
+    if isinstance(jsonfile, str):
+        cell_mesh = json.load(open(jsonfile))
+    elif isinstance(jsonfile, dict):
+        cell_mesh = jsonfile
     
     assert 'verts' in cell_mesh.keys(), f'Key "verts" not found in file {jsonfile}'
     assert 'faces' in cell_mesh.keys(), f'Key "faces" not found in file {jsonfile}'

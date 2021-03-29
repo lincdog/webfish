@@ -16,6 +16,7 @@ import boto3
 import yaml
 
 from util import gen_mesh, gen_pcd_df, mesh_from_json, populate_mesh, populate_genes
+from cloud import s3_connect, grab_bucket, download_s3_folder
 
 ####### Globals #######
 
@@ -24,75 +25,8 @@ ACTIVE_DATA = {'name': None, 'mesh': None, 'dots': None}
 config_file = 'consts.yml'
 config = yaml.load(open(config_file), Loader=yaml.Loader)
 
-###### AWS Code #######
-# assumes credentials & configuration are handled outside python in .aws directory or environment variables
-
-try:
-    # Find the name of the credential file from the environment
-    cred_file = os.environ[config['credentials']]
-    
-    import configparser as cfparse
-    
-    cf = cfparse.ConfigParser()
-    cf.read(cred_file)
-    
-    # Find the desired profile section
-    if 'cred_profile_name' in config.keys():
-        csec = cf[config['cred_profile_name']]
-    else:
-        csec = cf['default']
-    
-    # Get the key ID and secret key
-    key_id = csec['aws_access_key_id']
-    secret_key = csec['aws_secret_access_key']
-
-except:
-    key_id = None
-    secret_key = None
-    
-if 'endpoint_url' in config.keys():
-    endpoint_url = config['endpoint_url']
-else:
-    endpoint_url = None
-    
-
-s3 = boto3.resource('s3', 
-                    endpoint_url=endpoint_url,
-                    aws_access_key_id=key_id,
-                    aws_secret_access_key=secret_key
-                   )
-
-#BUCKET_NAME = 'lincoln-testing'
-my_bucket = s3.Bucket(config['bucket_name'])
-
-objects = list(my_bucket.objects.all())
-# Unique folders sorted alphabetically
-possible_folders = sorted(list(set([o.key.split('/')[0] for o in objects ])))
-
-def download_s3_folder(s3_folder, local_dir=None):
-    """
-    Download the contents of a folder directory
-    Args:
-    bucket_name: the name of the s3 bucket
-    s3_folder: the folder path in the s3 bucket
-    local_dir: a relative or absolute directory path in the local file system
-    """
-    #bucket = s3.Bucket(bucket_name)
-    
-    for obj in my_bucket.objects.filter(Prefix=s3_folder):
-        if local_dir is None:
-            target = obj.key 
-        else:
-            target = os.path.join(local_dir, os.path.relpath(obj.key, s3_folder))
-        
-        if not os.path.exists(os.path.dirname(target)):
-            os.makedirs(os.path.dirname(target))
-
-        if obj.key.endswith('/'):
-            continue
-            
-        my_bucket.download_file(obj.key, target)
-        
+s3_conn = s3_connect()
+s3_bucket, possible_folders = grab_bucket(s3_conn, config['bucket_name'])
 
 ############# Begin app code ############
 
@@ -282,7 +216,7 @@ def select_data(folder):
     
     # the desired folder doesn't exist, so we must fetch from s3
     if not os.path.exists(local_folder):
-        download_s3_folder(folder, local_folder)
+        download_s3_folder(s3_bucket, folder, local_folder)
         
     assert os.path.exists(local_folder), f'Unable to fetch folder {folder} from s3.'
     
@@ -293,8 +227,9 @@ def select_data(folder):
     if os.path.exists(findlocal(config['mesh_name'])):
         mesh = mesh_from_json(findlocal(config['mesh_name']))
     else:
-        mesh = gen_mesh(findlocal(config['img_name']),
-                        outfile=findlocal(config['mesh_name']))
+        mesh = mesh_from_json(
+            gen_mesh(findlocal(config['img_name']),
+                    outfile=findlocal(config['mesh_name'])))
     
     # if we already have the processed point cloud DF for this, read it in.
     # else, generate it and save it.

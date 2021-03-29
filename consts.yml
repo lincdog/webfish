@@ -1,5 +1,7 @@
 credentials: WEBFISH_CREDS
-cred_profile_name: nick-lincoln-user
+cred_profile_name: lincoln
+endpoint_url: "https://s3.us-west-1.wasabisys.com"
+region_name: us-west-1
 
 local_store: webfish_data/
 
@@ -9,4 +11,4 @@ csv_name: decoded_genes.csv
 mesh_name: labeled_mesh.json
 pcd_name: dots_um_with_colors.csv
 
-bucket_name: lincoln-testing
+bucket_name: lincoln-wasabi-test
