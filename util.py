@@ -6,7 +6,6 @@ import numpy as np
 import pandas as pd
 import yaml
 import json
-from tqdm import tqdm
 from matplotlib.pyplot import get_cmap
 
 config_file = 'consts.yml'

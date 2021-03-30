@@ -12,9 +12,36 @@ config_file = 'consts.yml'
 config = yaml.load(open(config_file), Loader=yaml.Loader)
 
 def s3_connect():
+    """
+    s3_connect
+    -----------
+    Looks in the config dict for information to create an s3-style resource
+    for data storage. 
+    The location of the credentials file is expected to be
+    given in an **environment variable** named in the config `credentials` key.
+    If not present, the default location of the AWS CLI credentials file is used.
+    This file is expected to be an ini-style config, that is it looks like this:
+
+        [profile-name]
+        aws_access_key_id = XXXXXXXX
+        aws_secret_access_key = XXXXXXX
+        [profile-name-2]
+        ....
+    
+    The profile name is taken from config `cred_profile_name` key, or 'default'
+    if not present. 
+    
+    Finally, the endpoint URL and region to connect to are supplied in the 
+    `endpoint_url` and `region_name` keys. If not supplied, boto3 defaults to
+    the us-east-1 region of the standard AWS S3 endpoint.
+    
+    Returns: boto3.resource object representing the connection.
+    """
+    
     try:
         # Find the name of the credential file from the environment
-        cred_file = os.environ[config['credentials']]
+        cred_file = os.environ.get(config['credentials'], 
+                                   os.path.expanduser('~/.aws/credentials')
 
         cf = cfparse.ConfigParser()
         cf.read(cred_file)
@@ -43,7 +70,6 @@ def s3_connect():
     else:
         region_name = 'us-east-1'
 
-    print(key_id, secret_key, endpoint_url)
     s3 = boto3.resource('s3',
                         region_name=region_name,
                         endpoint_url=endpoint_url,
@@ -54,12 +80,22 @@ def s3_connect():
     return s3
 
 def grab_bucket(conn, bucket_name):
-
+    """
+    grab_bucket
+    -----------
+    Takes an s3-like connection and a bucket name, fetches the bucket,
+    and lists top-level folder-like keys in the bucket (keys that have a '/').
+    
+    Returns: bucket object and alphabetically-sorted list of unique top-level
+    folders from the bucket.
+    """
     bucket = conn.Bucket(bucket_name)
 
     objects = list(bucket.objects.all())
     # Unique folders sorted alphabetically
-    possible_folders = sorted(list(set([o.key.split('/')[0] for o in objects ])))
+    possible_folders = sorted(list(set(
+        [o.key.split('/')[0] for o in objects if o.key.find('/') > -1]
+    )))
     
     return bucket, possible_folders
 

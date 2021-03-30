@@ -1,0 +1,11 @@
+dash
+dash_bootstrap_components
+flask_caching
+plotly
+numpy
+pandas
+boto3
+yaml
+skimage
+tifffile
+matplotlib
