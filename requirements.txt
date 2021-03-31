@@ -5,7 +5,7 @@ plotly
 numpy
 pandas
 boto3
-yaml
-skimage
+pyyaml
+scikit-image
 tifffile
 matplotlib

@@ -1,5 +1,10 @@
 #!/usr/bin/env python
+"""
+ec2_startup.py
+--------------
+A script to run **locally** to start an ec2 instance to run webfish.
 
+"""
 import boto3
 import json
 import yaml
@@ -13,7 +18,8 @@ instance_info = ec2_client.run_instances(
     MaxCount=1,                    
     LaunchTemplate={
         'LaunchTemplateName': 'nano_basic'
-    }
+    },
+    UserData=open('setup.sh').read()
 )
 
 ## Later....
