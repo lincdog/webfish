@@ -284,4 +284,6 @@ app.layout = html.Div(children=[
 ], style={'margin': 'auto', 'width': '800px'})
 
 if __name__ == '__main__':
-    app.run_server(debug=True)
+    hostip = os.environ.get('WEBFISH_HOST', '127.0.0.1')
+    hostport = os.environ.get('WEBFISH_PORT', '8050')
+    app.run_server(debug=True, host=hostip, port=hostport)
