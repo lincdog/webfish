@@ -41,7 +41,7 @@ def s3_connect():
     try:
         # Find the name of the credential file from the environment
         cred_file = os.environ.get(config['credentials'], 
-                                   os.path.expanduser('~/.aws/credentials')
+                                   os.path.expanduser('~/.aws/credentials'))
 
         cf = cfparse.ConfigParser()
         cf.read(cred_file)
