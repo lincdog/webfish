@@ -8,6 +8,8 @@ A script to run **locally** to start an ec2 instance to run webfish.
 import boto3
 import json
 import yaml
+from paramiko import SSHClient
+from scp import SCPClient
 
 ec2_client = boto3.client('ec2')
 
@@ -21,6 +23,19 @@ instance_info = ec2_client.run_instances(
     },
     UserData=open('setup.sh').read()
 )
+
+cur_id = instance_info['Instances'][0]['InstanceId']
+
+def get_public_conn(ids):
+    if not isinstance(ids, list):
+        ids = [ids]
+    
+    instances = ec2_client.describe_instances(InstanceIds=ids)
+    
+    return { id: (info['PublicIpAddress'], info['PublicDnsName'])
+            for id, info in
+                zip(ids, instances['Reservations'][0]['Instances'])
+           }
 
 ## Later....
 
