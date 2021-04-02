@@ -49,13 +49,16 @@ class Webfish:
         ) as conn:
             command = ('cd webfish && '
                'env WEBFISH_CREDS=../ec2-readcredentials '
-               'WEBFISH_HOST=0.0.0.0 python app.py'
+               'WEBFISH_HOST=0.0.0.0 python app.py &'
               )
-            conn.exec_command(
-                command, 
-                read_outputs=True,
-                timeout=15
-            )
+            try:
+                conn.exec_command(
+                    command, 
+                    read_outputs=True,
+                    timeout=2
+                )
+            except PipeTimeout:
+                pass
 
 class EasyEC2:
     """
@@ -171,6 +174,7 @@ class EasyEC2:
             IncludeAllInstances=True
         )['InstanceStatuses']
         
+        
         def parse_status(status):
             state = status['InstanceState']['Name']
             check1 = status['InstanceStatus']['Status']
@@ -191,8 +195,7 @@ class EasyEC2:
             'ID': [s['InstanceId'] for s in self.statuses ],
             'Status':[ parse_status(s) for s in self.statuses ]      
         })
-            
-            
+                    
         refresh_df = pd.DataFrame({
             'Index': new_indices,
             'Reservation': new_res,
@@ -201,15 +204,18 @@ class EasyEC2:
             'Public DNS': new_dns,
             'Type': new_types,
         })
-        
-        self.instances = refresh_df.merge(
-            self.templates, 
-            on='ID', 
-            how='left'
-        ).merge(status_df,
-                on='ID',
+                
+        if len(self.statuses) > 0:
+            self.instances = refresh_df.merge(
+                self.templates, 
+                on='ID', 
                 how='left'
-        )
+            ).merge(status_df,
+                    on='ID',
+                    how='left'
+            )
+        else:
+            self.instances = refresh_df
         
         
         return self.instances
