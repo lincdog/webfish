@@ -11,9 +11,51 @@ import os
 import time
 from math import ceil
 import yaml
-from paramiko import SSHClient
-from scp import SCPClient
+import paramiko
+import scp
 import pandas as pd
+
+
+
+class Webfish:
+    
+    def __init__(
+        self,
+        ip,
+        keyfile,
+        credfile
+    ):
+        self.ip = ip
+        self.keyfile = keyfile
+        self.credfile = credfile
+        
+    def prepare_webfish(
+        self
+    ):
+        with EasySSH(
+            self.ip, 
+            self.keyfile,
+            username='ec2-user'
+        ) as conn:
+            conn.putfile(self.credfile)
+        
+    def launch_webfish(
+        self
+    ):
+        with EasySSH(
+            self.ip, 
+            self.keyfile,
+            username='ec2-user'
+        ) as conn:
+            command = ('cd webfish && '
+               'env WEBFISH_CREDS=../ec2-readcredentials '
+               'WEBFISH_HOST=0.0.0.0 python app.py'
+              )
+            conn.exec_command(
+                command, 
+                read_outputs=True,
+                timeout=15
+            )
 
 class EasyEC2:
     """
@@ -41,7 +83,7 @@ class EasyEC2:
         
         self.templates = pd.DataFrame(columns=['ID', 'Launch template'])
         self.instances = self.refresh()
-                
+        self.statuses = {}        
         
 
     def launch_instances(
@@ -125,14 +167,29 @@ class EasyEC2:
             #new_dns.extend([ i['PublicDnsName'] for i in rinsts ])
             
             #new_types.extend([ i['InstanceType'] for i in rinsts ])
-        statuses = self.client.describe_instance_status(
-            InstanceIds=new_ids,
+        self.statuses = self.client.describe_instance_status(
             IncludeAllInstances=True
         )['InstanceStatuses']
         
+        def parse_status(status):
+            state = status['InstanceState']['Name']
+            check1 = status['InstanceStatus']['Status']
+            check2 = status['SystemStatus']['Status']
+            
+            if state != 'running':
+                return state
+            
+            if check1 != 'ok':
+                return check1
+            
+            if check2 != 'ok':
+                return check2
+            
+            return 'running'
+        
         status_df = pd.DataFrame({
-            'ID': [s['InstanceId'] for s in statuses],
-            'Status':[s['InstanceState']['Name'] for s in statuses]      
+            'ID': [s['InstanceId'] for s in self.statuses ],
+            'Status':[ parse_status(s) for s in self.statuses ]      
         })
             
             
@@ -174,10 +231,15 @@ class EasyEC2:
     
     def get_by_status(
         self,
-        status='running'
+        status='running',
+        invert=False
     ):
         statuses = [ s.strip() for s in status.split('|') ]
-        return self.instances.query('Status in @statuses')
+        if invert:
+            q = 'not in'
+        else:
+            q = 'in'
+        return self.instances.query(f'Status {q} @statuses')
     
     def get_by_index(
         self,
@@ -254,8 +316,10 @@ class EasySSH:
         
         return out.strip()
     
-    def cd(self, loc):
-        self.exec_command(f'cd {loc}')
+    def ls(self, loc=''):
+        _, out, _ = self.exec_command(f'ls {loc}', read_outputs=True)
+        
+        return out.strip()
     
     def putfile(
         self,
@@ -278,10 +342,13 @@ class EasySSH:
         self.scp.get(source, local_path=target, recursive=recursive)
         
     
+    def close(self):
+        self.scp.close()
+        self.client.close()
+    
     def __enter__(self):
         return self
     
-    def __exit__(self):
-        self.scp.close()
-        self.client.close()
+    def __exit__(self, exc_type, exc_val, trace):
+        self.close()
             
