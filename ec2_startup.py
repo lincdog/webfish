@@ -36,19 +36,12 @@ class EasyEC2:
         self.keyfile = keyfile
         self.default_launch_template = default_launch_template
         
-        self.instances = pd.DataFrame(columns=['Index',
-                                              'Reservation',
-                                              'ID',
-                                              'Public IP',
-                                              'Public DNS',
-                                              'Status',
-                                              'Launch template',
-                                              ])
-        
-        self.instance_descs = []
-        
         self.res_id = 0
         self.index = 0
+        
+        self.templates = pd.DataFrame(columns=['ID', 'Launch template'])
+        self.instances = self.refresh()
+                
         
 
     def launch_instances(
@@ -78,48 +71,91 @@ class EasyEC2:
         )
         
         new_ids = [ r['InstanceId'] for r in response['Instances'] ]
-        new_res = [self.res_id] * len(new_ids)
-        self.res_id += 1
-        
-        new_indices = list(range(0, len(new_ids)))
-        self.index += len(new_ids)
-        
         new_templates = [launch_template] * len(new_ids)
+        self.templates = self.templates.append(
+            pd.DataFrame({'ID': new_ids, 'Launch template': new_templates}))
+                
+        self.refresh()
         
-        new_descs = self.client.describe_instances(InstanceIds=new_ids)
-        new_descs = new_descs['Reservations'][0]['Instances']
-        self.instance_descs.extend(new_info)
-        
-        new_ips = [desc['PublicIpAddress'] for desc in new_descs ]
-        new_dns = [desc['PublicDnsName'] for desc in new_descs ]
-        
-        new_statuses = self.client.describe_instance_status(InstanceIds=new_ids)
-        new_statuses = [s['InstanceState']['Name'] for s in new_statuses]
-        
-        new_instances = pd.DataFrame({
-                'Index': new_indices,
-                'Reservation': new_res,
-                'ID': new_ids,
-                'Public IP': new_ips,
-                'Public DNS': new_dns,
-                'Status': new_statuses,
-                'Launch template': new_templates
-            })
-        
-        self.instances = self.instances.append(new_instances).reset_index(drop=True)
-        
+                
     
     def refresh(
         self,
         include_all=True
     ):
-        new_statuses = self.client.describe_instance_status(
-            IncludeAllInstances=include_all)
-        new_statuses = [s['InstanceState']['Name'] for s in new_statuses]
+        new_descs = self.client.describe_instances()
+        self.descs = new_descs
         
-        self.instances['Status'] = new_statuses
+        new_indices = []
+        new_res = []
+        new_ids = []
+        new_ips = []
+        new_dns = []
+        new_types = []
+        new_statuses = []
+               
         
-        return new_statuses
+        for rid, res in enumerate(new_descs['Reservations']):
+            
+            rinsts = res['Instances']
+                        
+            new_indices.extend(list(range(self.index, self.index+len(rinsts))))
+            new_res.extend([self.res_id]*len(rinsts))
+            
+            self.index += len(rinsts)
+            self.res_id += 1
+            
+            desc_keys = {'InstanceId': new_ids,
+                        'PublicIpAddress': new_ips,
+                        'PublicDnsName': new_dns,
+                        'InstanceType': new_types
+                         }
+            
+            for inst in rinsts:
+                for key, array in desc_keys.items():
+                    if key in inst.keys():
+                        array.append(inst[key])
+                    else:
+                        array.append('')
+            
+            #ids = [ i['InstanceId'] for i in rinsts ]
+            #new_ids.extend(ids)
+            
+            #new_ips.extend([ i['PublicIpAddress'] for i in rinsts ])
+            #new_dns.extend([ i['PublicDnsName'] for i in rinsts ])
+            
+            #new_types.extend([ i['InstanceType'] for i in rinsts ])
+        statuses = self.client.describe_instance_status(
+            InstanceIds=new_ids,
+            IncludeAllInstances=True
+        )['InstanceStatuses']
+        
+        status_df = pd.DataFrame({
+            'ID': [s['InstanceId'] for s in statuses],
+            'Status':[s['InstanceState']['Name'] for s in statuses]      
+        })
+            
+            
+        refresh_df = pd.DataFrame({
+            'Index': new_indices,
+            'Reservation': new_res,
+            'ID': new_ids,
+            'Public IP': new_ips,
+            'Public DNS': new_dns,
+            'Type': new_types,
+        })
+        
+        self.instances = refresh_df.merge(
+            self.templates, 
+            on='ID', 
+            how='left'
+        ).merge(status_df,
+                on='ID',
+                how='left'
+        )
+        
+        
+        return self.instances
     
     
     def get_statuses(
@@ -157,7 +193,7 @@ class EasyEC2:
     
     def wait_for_status(
         self,
-        status='running'
+        status='running',
         ids=None,
         sleep=1,
         timeout=90
@@ -180,53 +216,72 @@ class EasyEC2:
         
     
     
-    def ssh_connect(
+class EasySSH:
+    
+    def __init__(
         self,
-        id=None,
+        addr,
         keyfile=None,
-        
+        username=None,
+        password=None
     ):
-        self.ssh = paramiko.SSHClient()
+        self.client = paramiko.SSHClient()
+        self.client.load_system_host_keys(keyfile)
+        self.client.set_missing_host_key_policy(paramiko.AutoAddPolicy)
+        self.client.connect(addr, username=username, password=password)
         
-
-ec2_client = boto3.client('ec2')
-
-# This call constitutes one "reservation" - each reservation could start
-# more than 1 instance. 
-instance_info = ec2_client.run_instances(
-    MinCount=1, 
-    MaxCount=1,                    
-    LaunchTemplate={
-        'LaunchTemplateName': 'nano_basic'
-    },
-    UserData=open('setup.sh').read()
-)
-
-cur_id = instance_info['Instances'][0]['InstanceId']
-
-def get_public_conn(ids):
-    if not isinstance(ids, list):
-        ids = [ids]
+        self.scp = scp.SCPClient(self.client.get_transport())
+        
     
-    instances = ec2_client.describe_instances(InstanceIds=ids)
+    def exec_command(
+        self,
+        command,
+        read_outputs=False,
+        **kwargs
+    ):
+        
+        stdin, stdout, stderr = self.client.exec_command(command, **kwargs)
+        
+        if read_outputs:
+            stdout = stdout.read()
+            stderr = stderr.read()
+        
+        return stdin, stdout, stderr
     
-    return { id: (info['PublicIpAddress'], info['PublicDnsName'])
-            for id, info in
-                zip(ids, instances['Reservations'][0]['Instances'])
-           }
-
-## Later....
-
-# describe_instances nests by reservation then instance.
-all_instances = ec2_client.describe_instances()
-
-# so we make a 2d list
-instance_ids = [ 
-    [ i['InstanceId'] for i in r['Instances'] ]
-    for r in all_instances['Reservations'] 
-]
-
-# and shutdown in batches by reservation (boto3 docs say breaking up 
-# long requests into blocks can be faster)
-for r in instance_ids:
-    ec2_client.terminate_instances(InstanceIds=r)
+    @property
+    def pwd(self):
+        _, out, _ = self.exec_command('pwd', read_outputs=True)
+        
+        return out.strip()
+    
+    def cd(self, loc):
+        self.exec_command(f'cd {loc}')
+    
+    def putfile(
+        self,
+        source,
+        target='.'
+    ):
+        recursive = os.path.isdir(source)
+        
+        self.scp.put(source, remote_path=target, recursive=recursive)
+        
+    def getfile(
+        self,
+        source,
+        target='.'
+    ):
+        _, testdir, _ = self.exec_command(f'file {source}', read_outputs=True)
+        
+        recursive = (testdir.find('directory') > -1)
+        
+        self.scp.get(source, local_path=target, recursive=recursive)
+        
+    
+    def __enter__(self):
+        return self
+    
+    def __exit__(self):
+        self.scp.close()
+        self.client.close()
+            
