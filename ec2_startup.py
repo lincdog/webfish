@@ -55,9 +55,9 @@ class Webfish:
                 conn.exec_command(
                     command, 
                     read_outputs=True,
-                    timeout=2
+                    timeout=10
                 )
-            except PipeTimeout:
+            except:
                 pass
 
 class EasyEC2:
@@ -158,18 +158,8 @@ class EasyEC2:
             
             for inst in rinsts:
                 for key, array in desc_keys.items():
-                    if key in inst.keys():
-                        array.append(inst[key])
-                    else:
-                        array.append('')
+                        array.append(inst.get(key, ''))
             
-            #ids = [ i['InstanceId'] for i in rinsts ]
-            #new_ids.extend(ids)
-            
-            #new_ips.extend([ i['PublicIpAddress'] for i in rinsts ])
-            #new_dns.extend([ i['PublicDnsName'] for i in rinsts ])
-            
-            #new_types.extend([ i['InstanceType'] for i in rinsts ])
         self.statuses = self.client.describe_instance_status(
             IncludeAllInstances=True
         )['InstanceStatuses']

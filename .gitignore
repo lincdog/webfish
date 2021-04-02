@@ -5,3 +5,4 @@
 cache-directory*
 __pycache__
 webfish_data
+*.jupyterlab-workspace
