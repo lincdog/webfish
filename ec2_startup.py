@@ -86,6 +86,10 @@ class EasyEC2:
         
         self.templates = pd.DataFrame(columns=['ID', 'Launch template'])
         self.instances = self.refresh()
+        
+        self.res_id = len(self.descs['Reservations'])
+        self.index += len(self.instances)
+        
         self.statuses = {}        
         
 
@@ -146,9 +150,6 @@ class EasyEC2:
                         
             new_indices.extend(list(range(self.index, self.index+len(rinsts))))
             new_res.extend([self.res_id]*len(rinsts))
-            
-            self.index += len(rinsts)
-            self.res_id += 1
             
             desc_keys = {'InstanceId': new_ids,
                         'PublicIpAddress': new_ips,
