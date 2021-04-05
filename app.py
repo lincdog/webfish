@@ -21,6 +21,7 @@ from cloud import s3_connect, grab_bucket, download_s3_folder
 ####### Globals #######
 
 ACTIVE_DATA = {'name': None, 'mesh': None, 'dots': None}
+HAS_MESH = False
 
 config_file = 'consts.yml'
 config = yaml.load(open(config_file), Loader=yaml.Loader)
@@ -30,9 +31,11 @@ s3_bucket, possible_folders = grab_bucket(s3_conn, config['bucket_name'])
 
 ############# Begin app code ############
 
-THEME = dbc.themes.MINTY
-
-app = dash.Dash(__name__, external_stylesheets=[THEME])
+THEME = getattr(dbc.themes, config.get('theme', 'MINTY').upper())
+app = dash.Dash(__name__, 
+                external_stylesheets=[THEME],
+                suppress_callback_exceptions=True
+               )
 
 cache = Cache(app.server, config={
     'CACHE_TYPE': 'filesystem',
@@ -158,15 +161,14 @@ def gen_figure(selected_genes, name):
 ####### Callbacks #######
 
 @app.callback(
-    Output('test-graph', 'figure'),
+    Output('graph-wrapper', 'children'),
     Input('gene-select', 'value'),
-    Input('data-select', 'value'),
     prevent_initial_call=False
-    )
-def update_figure(selected_genes, selected_data):
+)
+def update_figure(selected_genes):
     """
     update_figure:
-    Callback triggered by both selecting a dataset and by selecting
+    Callback triggered by by selecting
     gene(s) to display. Calls `gen_figure` to populate the figure on the page.
     
     """
@@ -177,8 +179,15 @@ def update_figure(selected_genes, selected_data):
     start = datetime.now()
     print(f'starting callback at {start}')
     
-    if ACTIVE_DATA['name'] is not None and len(selected_genes) == 0:
-        raise PreventUpdate
+    if (ACTIVE_DATA['name'] is not None 
+        and selected_genes is None
+       ):
+        
+        if HAS_MESH:
+            raise PreventUpdate
+        else:
+            HAS_MESH = True
+            return gen_figure(None, ACTIVE_DATA['name'])
         
     if not isinstance(selected_genes, list):
         selected_genes = [selected_genes]
@@ -194,7 +203,7 @@ def update_figure(selected_genes, selected_data):
     end = datetime.now()
     print(f'returning from callback at {end} after {end-start}')
     
-    return fig
+    return dcc.Graph(id='test-graph', figure=fig)
 
 
 @app.callback(
@@ -248,6 +257,7 @@ def select_data(folder):
     genes = populate_genes(pcd)
     print('returning gene list')
     
+    HAS_MESH = False
     return dcc.Dropdown(
         id='gene-select',
         options=[{'label': i, 'value': i} for i in genes],
@@ -261,27 +271,56 @@ def select_data(folder):
 ######## App layout and initialization ########
 
 app.layout = html.Div(children=[
-    html.H1(children='webfish test', style={'margin': 'auto'}),
-    dbc.Alert("This is an info alert. Good to know!", color="info"),
-    
-    html.Div([
-        dcc.Dropdown(
-            id='data-select',
-            options=[{'label': i, 'value': i} for i in possible_folders],
-            placeholder='Select a data folder',
-            style={}
-        ),
-    ], id='selector-div', style={'width': '200px', 'font-color': 'black'}),
-    
-    html.Div([dcc.Dropdown(id='gene-select')],
-             id='gene-div', style={'width': '200px'}),
-    
-    html.Div([
-        dcc.Graph(
-            id='test-graph',
-        )
-    ]),
-], style={'margin': 'auto', 'width': '800px'})
+    dcc.Location(id='url', refresh=False),
+    html.H1('webfish app'),
+    html.Div(id='content-main')
+], style={'margin': 'auto',})
+
+
+tab1_datavis = dbc.Row([
+    dbc.Col([
+        html.Div([
+            dcc.Dropdown(
+                id='data-select',
+                options=[{'label': i, 'value': i} for i in possible_folders],
+                placeholder='Select a data folder',
+                style={'width': '200px', 'margin': 'auto'}
+            ),
+           ], id='selector-div', style={}),
+        
+        html.Div([dcc.Dropdown(id='gene-select')],
+             id='gene-div', style={'width': '200px', 'margin': 'auto'})
+    ], width=4),
+
+    dbc.Col([
+        html.Div([
+            dcc.Loading(
+                dcc.Graph(
+                    id='test-graph',
+                ), id='graph-wrapper'
+            )
+        ])
+    ], width="auto")
+])
+
+tab2_dotpreview = dbc.Row([
+    dbc.Col([
+        html.Div(html.H1('hey'))
+    ])
+])
+
+@app.callback(
+    Output('content-main', 'children'),
+    Input('url', 'pathname')
+)
+def url_handler(pathname):
+    if pathname == '/':
+        return tab1_datavis
+    elif pathname == '/dot-detection':
+        return tab2_dotpreview
+    else:
+        return html.H1('404!!!!')
+
 
 if __name__ == '__main__':
     hostip = os.environ.get('WEBFISH_HOST', '127.0.0.1')

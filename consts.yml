@@ -12,3 +12,5 @@ mesh_name: labeled_mesh.json
 pcd_name: dots_um_with_colors.csv
 
 bucket_name: lincoln-wasabi-test
+
+theme: COSMO
