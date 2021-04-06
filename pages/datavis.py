@@ -13,7 +13,7 @@ from dash.dependencies import Input, Output, State
 from dash.exceptions import PreventUpdate
 from flask_caching import Cache
 
-from app import app, cache, config, s3_conn
+from app import app, cache, config, s3_client
 from util import gen_mesh, gen_pcd_df, mesh_from_json, populate_mesh, populate_genes
 from cloud import grab_bucket, download_s3_folder
 
@@ -21,7 +21,13 @@ from cloud import grab_bucket, download_s3_folder
 ACTIVE_DATA = {'name': None, 'mesh': None, 'dots': None}
 HAS_MESH = False
 
-s3_bucket, possible_folders = grab_bucket(s3_conn, config['bucket_name'])
+_, possible_folders = grab_bucket(
+    s3_client, 
+    config['bucket_name'],
+    delimiter='/',
+    prefix='',
+    recursive=False
+)
 
 
 @cache.memoize()
@@ -258,10 +264,7 @@ def select_data(folder):
     ]
     
     
-######## App layout and initialization ########
-
-
-
+######## Layout ########
 
 layout = dbc.Row([
     dbc.Col([

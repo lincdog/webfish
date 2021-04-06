@@ -16,7 +16,7 @@ from cloud import s3_connect
 config_file = 'consts.yml'
 config = yaml.load(open(config_file), Loader=yaml.Loader)
 
-s3_conn = s3_connect()
+s3_client = s3_connect()
 
 ############# Begin app code ############
 
