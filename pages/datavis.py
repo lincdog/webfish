@@ -15,14 +15,13 @@ from flask_caching import Cache
 
 from app import app, cache, config, s3_client
 from util import gen_mesh, gen_pcd_df, mesh_from_json, populate_mesh, populate_genes
-from cloud import grab_bucket, download_s3_folder
+#from cloud import grab_bucket, download_s3_folder
 
 
 ACTIVE_DATA = {'name': None, 'mesh': None, 'dots': None}
 HAS_MESH = False
 
-_, possible_folders = grab_bucket(
-    s3_client, 
+_, possible_folders = s3_client.grab_bucket( 
     config['bucket_name'],
     delimiter='/',
     prefix='',
@@ -149,11 +148,11 @@ def gen_figure(selected_genes, name):
 @app.callback(
     Output('graph-wrapper', 'children'),
     [Input('gene-select', 'value'),
-     Input('pos-select', 'value')
+     #Input('pos-select', 'value')
     ],
     prevent_initial_call=False
 )
-def update_figure(selected_genes, selected_pos):
+def update_figure(selected_genes,): # selected_pos):
     """
     update_figure:
     Callback triggered by by selecting
@@ -165,12 +164,12 @@ def update_figure(selected_genes, selected_pos):
     ## whether data-select or gene-select triggered this
     
     start = datetime.now()
-    print(f'starting callback at {start}')
+    print(f'starting callback at {start}, genes = {selected_genes} name = {ACTIVE_DATA["name"]}')
     
     if (ACTIVE_DATA['name'] is not None 
-        and selected_genes is None
+        and selected_genes == []
        ):
-        
+        print(f'reached, has mesh: {HAS_MESH}')
         if HAS_MESH:
             raise PreventUpdate
         else:
@@ -214,7 +213,13 @@ def select_data(folder):
     
     # the desired folder doesn't exist, so we must fetch from s3
     if not os.path.exists(local_folder):
-        download_s3_folder(s3_bucket, folder, local_folder)
+        s3_client.download_s3_objects(
+            config['bucket_name'], 
+            folder, 
+            local_dir=config['local_store'],
+            delimiter='/',
+            recursive=False
+        )
         
     assert os.path.exists(local_folder), f'Unable to fetch folder {folder} from s3.'
     
@@ -247,20 +252,20 @@ def select_data(folder):
     print('returning gene list')
     
     return [
-        dcc.Dropdown(
+        dcc.Loading(dcc.Dropdown(
             id='gene-select',
             options=[{'label': i, 'value': i} for i in genes],
             value='None',
             multi=True,
             placeholder='Select gene(s)',
             style={}
-        ),
-        dcc.Dropdown(
-            id='pos-select',
-            options=[{'label': i, 'value':i} for i in positions],
-            value='Pos0',
-            placeholder='Select position'
-        )
+        )),
+        #dcc.Dropdown(
+        #    id='pos-select',
+        #    options=[{'label': i, 'value':i} for i in positions],
+        #    value='Pos0',
+        #    placeholder='Select position'
+        #)
     ]
     
     

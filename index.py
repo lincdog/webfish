@@ -7,7 +7,7 @@ import dash_bootstrap_components as db
 from dash.dependencies import Input, Output, State
 from dash.exceptions import PreventUpdate
 
-from app import app, config, s3_conn
+from app import app, config, s3_client
 from pages import datavis, dotdetection
 
 app.layout = html.Div(children=[

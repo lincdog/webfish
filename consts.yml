@@ -1,8 +1,8 @@
 credentials: WEBFISH_CREDS
-cred_profile_name: wasabi-ec2-read
+cred_profile_name: ec2-read
 endpoint_url: "https://s3.us-west-1.wasabisys.com"
 region_name: us-west-1
-bucket_name: dashboard-test-plotly
+bucket_name: lincoln-wasabi-test
 
 local_store: webfish_data/
 

@@ -9,14 +9,14 @@ import numpy as np
 import pandas as pd
 import yaml
 
-from cloud import s3_connect
+from cloud import S3Connect
 
 ####### Globals #######
 
 config_file = 'consts.yml'
 config = yaml.load(open(config_file), Loader=yaml.Loader)
 
-s3_client = s3_connect()
+s3_client = S3Connect(config=config)
 
 ############# Begin app code ############
 

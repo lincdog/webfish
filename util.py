@@ -225,4 +225,4 @@ def populate_genes(dots_pcd):
     return possible_genes
 
 
-def populate_positions()
+#def populate_positions()

@@ -15,7 +15,6 @@ from flask_caching import Cache
 
 from app import app
 from util import gen_mesh, gen_pcd_df, mesh_from_json, populate_mesh, populate_genes
-from cloud import s3_connect, grab_bucket, download_s3_folder
 
 layout = dbc.Row([
     dbc.Col([
