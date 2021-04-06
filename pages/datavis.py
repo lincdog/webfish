@@ -13,12 +13,16 @@ from dash.dependencies import Input, Output, State
 from dash.exceptions import PreventUpdate
 from flask_caching import Cache
 
-from app import app, cache, config, possible_folders, s3_bucket
+from app import app, cache, config, s3_conn
 from util import gen_mesh, gen_pcd_df, mesh_from_json, populate_mesh, populate_genes
-from cloud import download_s3_folder
+from cloud import grab_bucket, download_s3_folder
+
 
 ACTIVE_DATA = {'name': None, 'mesh': None, 'dots': None}
 HAS_MESH = False
+
+s3_bucket, possible_folders = grab_bucket(s3_conn, config['bucket_name'])
+
 
 @cache.memoize()
 def _query_df(selected_genes, name):
@@ -138,10 +142,12 @@ def gen_figure(selected_genes, name):
 
 @app.callback(
     Output('graph-wrapper', 'children'),
-    Input('gene-select', 'value'),
+    [Input('gene-select', 'value'),
+     Input('pos-select', 'value')
+    ],
     prevent_initial_call=False
 )
-def update_figure(selected_genes):
+def update_figure(selected_genes, selected_pos):
     """
     update_figure:
     Callback triggered by by selecting
@@ -234,14 +240,22 @@ def select_data(folder):
     genes = populate_genes(pcd)
     print('returning gene list')
     
-    return dcc.Dropdown(
-        id='gene-select',
-        options=[{'label': i, 'value': i} for i in genes],
-        value='None',
-        multi=True,
-        placeholder='Select gene(s)',
-        style={}
-    )    
+    return [
+        dcc.Dropdown(
+            id='gene-select',
+            options=[{'label': i, 'value': i} for i in genes],
+            value='None',
+            multi=True,
+            placeholder='Select gene(s)',
+            style={}
+        ),
+        dcc.Dropdown(
+            id='pos-select',
+            options=[{'label': i, 'value':i} for i in positions],
+            value='Pos0',
+            placeholder='Select position'
+        )
+    ]
     
     
 ######## App layout and initialization ########

@@ -104,11 +104,10 @@ def download_s3_folder(bucket, s3_folder, local_dir=None):
     """
     Download the contents of a folder directory
     Args:
-    bucket_name: the name of the s3 bucket
+    bucke: the s3 Bucket object
     s3_folder: the folder path in the s3 bucket
     local_dir: a relative or absolute directory path in the local file system
     """
-    #bucket = s3.Bucket(bucket_name)
     
     for obj in bucket.objects.filter(Prefix=s3_folder):
         if local_dir is None:
@@ -123,4 +122,20 @@ def download_s3_folder(bucket, s3_folder, local_dir=None):
             continue
             
         bucket.download_file(obj.key, target)
-        
+
+def list_s3_dir(bucket, s3_folder, recursive=False):
+    
+    if recursive:
+        return [ obj.key in bucket.objects.filter(Prefix=s3_folder) ]
+    
+    """
+    Example from boto3 docs to use paginator and client:
+    
+    import boto3
+
+    client = boto3.client('s3')
+    paginator = client.get_paginator('list_objects')
+    result = paginator.paginate(Bucket='my-bucket', Delimiter='/')
+    for prefix in result.search('CommonPrefixes'):
+        print(prefix.get('Prefix'))
+    """

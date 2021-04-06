@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 import yaml
 
-from cloud import s3_connect, grab_bucket, download_s3_folder
+from cloud import s3_connect
 
 ####### Globals #######
 
@@ -17,7 +17,6 @@ config_file = 'consts.yml'
 config = yaml.load(open(config_file), Loader=yaml.Loader)
 
 s3_conn = s3_connect()
-s3_bucket, possible_folders = grab_bucket(s3_conn, config['bucket_name'])
 
 ############# Begin app code ############
 

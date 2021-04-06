@@ -2,15 +2,15 @@ credentials: WEBFISH_CREDS
 cred_profile_name: ec2-read
 endpoint_url: "https://s3.us-west-1.wasabisys.com"
 region_name: us-west-1
+bucket_name: dashboard-test-plotly
 
 local_store: webfish_data/
 
 img_name: labeled_img.tif
-csv_name: decoded_genes.csv
+csv_name: gene_locations_assigned_to_cell.csv
+cell_csv_name: cell_info.csv
 
 mesh_name: labeled_mesh.json
 pcd_name: dots_um_with_colors.csv
-
-bucket_name: lincoln-wasabi-test
 
 theme: COSMO
