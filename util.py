@@ -6,6 +6,8 @@ import numpy as np
 import pandas as pd
 import yaml
 import json
+import re
+import os
 from matplotlib.pyplot import get_cmap
 
 config_file = 'consts.yml'
@@ -225,4 +227,35 @@ def populate_genes(dots_pcd):
     return possible_genes
 
 
-#def populate_positions()
+def populate_files(
+    directory,
+    dirs_only=True,
+    prefix='MMStack_Pos',
+    postfix=''
+):
+    """
+    populate_positions
+    ------------------
+    Takes a directory name and searches in it for *folders* that match `regex`,
+    capturing the position number.
+    
+    Returns: A dict of the form { dirname: posnumber, dirname2: posnumber2... }.
+    """
+    regex = '^' + re.escape(prefix) + '(\d+)' + re.escape(postfix)
+    pos_re = re.compile(regex)
+    
+    pos_folders = {}
+    
+    for entry in os.scandir(directory):
+        
+        if dirs_only and not entry.is_dir():
+            continue
+            
+        m = pos_re.match(entry.name)
+        if m is not None:
+            try:
+                pos_folders[m.group(0)] = int(m.group(1))
+            except:
+                pass
+    
+    return pos_folders

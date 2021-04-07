@@ -6,3 +6,4 @@ cache-directory*
 __pycache__
 webfish_data
 *.jupyterlab-workspace
+ec2/*.ipynb

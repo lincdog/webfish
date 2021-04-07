@@ -198,7 +198,7 @@ def update_figure(selected_genes,): # selected_pos):
     [Input('data-select', 'value')]
 )
 def select_data(folder):
-    HASH_MESH = False
+    HAS_MESH = False
     
     if folder is None:
         return None

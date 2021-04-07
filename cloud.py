@@ -189,3 +189,4 @@ class S3Connect:
                 errors.append({'key': obj, 'error': error})
 
         return errors
+    
