@@ -190,14 +190,11 @@ class DatavisStorage:
                     errors
                 )
         
-        self.datafiles = pd.merge(
-            self.datafiles,
-            pd.DataFrame({
-                'file': needed_files,
-                'downloaded': True
-            }),
-            on='file'
-        )
+        # update file index with new downloads
+        self.datafiles.loc[
+            np.isin(self.datafiles['file'], needed_files),
+            'downloaded'
+        ] = True
         
         return self.active_dataset
     

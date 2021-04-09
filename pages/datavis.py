@@ -15,21 +15,18 @@ from flask_caching import Cache
 
 from app import app, cache, config, s3_client
 from util import gen_mesh, gen_pcd_df, mesh_from_json, populate_mesh, populate_genes
-#from cloud import grab_bucket, download_s3_folder
-
+from cloud import DatavisStorage
 
 ACTIVE_DATA = {'name': None, 
                'position': None,
                'mesh': None, 
-               'dots': None}
+               'dots': None
+              }
 HAS_MESH = False
 
-_, possible_folders = s3_client.grab_bucket( 
-    config['bucket_name'],
-    delimiter='/',
-    prefix='',
-    recursive=False
-)
+
+data_manager = DatavisStorage(config=config, s3_client=s3_client)
+data_manager.get_datasets()
 
 
 @cache.memoize()
@@ -166,8 +163,8 @@ def update_figure(selected_genes,): # selected_pos):
     #### NOTE may need to use Dash's callback context to determine
     ## whether data-select or gene-select triggered this
     
-    start = datetime.now()
-    print(f'starting callback at {start}, genes = {selected_genes} name = {ACTIVE_DATA["name"]}')
+    #start = datetime.now()
+    #print(f'starting callback at {start}, genes = {selected_genes} name = {ACTIVE_DATA["name"]}')
     
     if (ACTIVE_DATA['name'] is not None 
         and selected_genes == []
@@ -190,28 +187,31 @@ def update_figure(selected_genes,): # selected_pos):
     
     fig = gen_figure(selected_genes, ACTIVE_DATA['name'])
     
-    end = datetime.now()
-    print(f'returning from callback at {end} after {end-start}')
+    #end = datetime.now()
+    #print(f'returning from callback at {end} after {end-start}')
     
     return dcc.Graph(id='test-graph', figure=fig)
 
 
-#@app.callback(
-#    Output('gene-div', 'children'),
-#    Input('pos-select', 'value')
-#)
-#def select_pos(pos):
-#    #....
-#    
-#    return dcc.Dropdown(
-#            id='pos-select',
-#            options=[{'label': i, 'value':i} for i in positions],
-#            value='Pos0',
-#            placeholder='Select position'
-#        )
-
 @app.callback(
     Output('gene-div', 'children'),
+    Input('pos-select', 'value')
+)
+def select_pos(pos):
+    #....
+    ACTIVE_DATA['position'] = pos
+    return []
+    ACTIVE_DATA['mesh'] = mesh
+    ACTIVE_DATA['dots'] = pcd
+    return dcc.Dropdown(
+            id='pos-select',
+            options=[{'label': i, 'value':i} for i in genes],
+            value='Pos0',
+            placeholder='Select position'
+        )
+
+@app.callback(
+    Output('pos-wrapper', 'children'),
     [Input('data-select', 'value')]
 )
 def select_data(folder):
@@ -220,63 +220,19 @@ def select_data(folder):
     if folder is None:
         return None
     
-    if not os.path.exists(config['local_store']):
-        os.mkdir(config['local_store'])
-        
-    local_folder = os.path.join(config['local_store'], folder)
-    
-    def findlocal(name, local_folder=local_folder):
-        return os.path.join(local_folder, name)
-    
-    # the desired folder doesn't exist, so we must fetch from s3
-    if not os.path.exists(local_folder):
-        s3_client.download_s3_objects(
-            config['bucket_name'], 
-            folder, 
-            local_dir=config['local_store'],
-            delimiter='/',
-            recursive=False
-        )
-        
-    assert os.path.exists(local_folder), f'Unable to fetch folder {folder} from s3.'
-    
-    print(f'{findlocal(config["mesh_name"])}, {findlocal(config["pcd_name"])}')
-    
-    # If we already have the mesh file for this, read from json.
-    # else, generate it and save it.
-    if os.path.exists(findlocal(config['mesh_name'])):
-        mesh = mesh_from_json(findlocal(config['mesh_name']))
-    else:
-        mesh = mesh_from_json(
-            gen_mesh(findlocal(config['img_name']),
-                    outfile=findlocal(config['mesh_name'])))
-    
-    # if we already have the processed point cloud DF for this, read it in.
-    # else, generate it and save it.
-    if os.path.exists(findlocal(config['pcd_name'])):
-        pcd = pd.read_csv(findlocal(config['pcd_name']))
-    else:
-        pcd = gen_pcd_df(findlocal(config['csv_name']), 
-                         outfile=findlocal(config['pcd_name']))
-    
+    dataset = data_manager.select_dataset(folder)
+    positions = list(dataset.keys())
     ### Set global dots DF and mesh variables
     ACTIVE_DATA['name'] = folder
-    ACTIVE_DATA['mesh'] = mesh
-    ACTIVE_DATA['dots'] = pcd
-    
-    
-    genes = populate_genes(pcd)
-    print('returning gene list')
     
     return [
-        dcc.Loading(dcc.Dropdown(
-            id='gene-select',
-            options=[{'label': i, 'value': i} for i in genes],
-            value='None',
-            multi=True,
-            placeholder='Select gene(s)',
+        dcc.Dropdown(
+            id='pos-select',
+            options=[{'label': i, 'value': i} for i in positions],
+            value=positions[0],
+            placeholder='Select position',
             style={}
-        )),
+        ),
         
     ]
     
@@ -288,13 +244,13 @@ layout = dbc.Row([
         html.Div([
             dcc.Dropdown(
                 id='data-select',
-                options=[{'label': i, 'value': i} for i in possible_folders],
+                options=[{'label': i, 'value': i} for i in data_manager.datasets.keys()],
                 placeholder='Select a data folder',
                 style={'width': '200px', 'margin': 'auto'}
             ),
            ], id='selector-div', style={}),
         
-        html.Div([dcc.Dropdown(id='pos-select')],
+        html.Div([dcc.Loading(dcc.Dropdown(id='pos-select'), id='pos-wrapper')],
              id='pos-div', style={'width': '200px', 'margin': 'auto'}),
         html.Div([dcc.Dropdown(id='gene-select')],
              id='gene-div', style={'width': '200px', 'margin': 'auto'})
