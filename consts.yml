@@ -2,9 +2,15 @@ credentials: WEBFISH_CREDS
 cred_profile_name: ec2-read
 endpoint_url: "https://s3.us-west-1.wasabisys.com"
 region_name: us-west-1
-bucket_name: lincoln-wasabi-test
+bucket_name: dashboard-test-plotly
 
 local_store: webfish_data/
+
+position_prefix: MMStack_Pos
+channel_prefix: Channel_
+
+img_pattern: "MMStack_Pos*/Segmentation/*.tif"
+csv_pattern: "MMStack_Pos*/Segmentation/Channel_*/*.csv"
 
 img_name: labeled_img.tif
 csv_name: gene_locations_assigned_to_cell.csv

@@ -10,8 +10,9 @@ import re
 import os
 from matplotlib.pyplot import get_cmap
 
-config_file = 'consts.yml'
-config = yaml.load(open(config_file), Loader=yaml.Loader)
+from app import config
+#config_file = 'consts.yml'
+#config = yaml.load(open(config_file), Loader=yaml.Loader)
 
 def gen_mesh(
     imgfilename,
@@ -231,31 +232,64 @@ def populate_files(
     directory,
     dirs_only=True,
     prefix='MMStack_Pos',
-    postfix=''
+    postfix='',
+    converter=int
 ):
     """
     populate_positions
     ------------------
-    Takes a directory name and searches in it for *folders* that match `regex`,
-    capturing the position number.
+    Takes either a *list* of files/folders OR a directory name 
+    and searches in it for entries that match `regex` of the form 
+    <Prefix><Number><Postfix>,capturing the number.
     
-    Returns: A dict of the form { dirname: posnumber, dirname2: posnumber2... }.
+    Also takes `converter`, a function to convert the number from a string
+    to a number. default is int(). If this fails it is kept as a string.
+    
+    Returns: List of tuples of the form (name, number), sorted by
+    number.
     """
-    regex = '^' + re.escape(prefix) + '(\d+)' + re.escape(postfix)
+    regex = re.escape(prefix) + '(\d+)' + re.escape(postfix)
     pos_re = re.compile(regex)
     
-    pos_folders = {}
+    result = []
     
-    for entry in os.scandir(directory):
-        
-        if dirs_only and not entry.is_dir():
-            continue
-            
-        m = pos_re.match(entry.name)
+    def extract_match(name, regex=pos_re, converter=converter):
+        m = regex.search(name)
         if m is not None:
             try:
-                pos_folders[m.group(0)] = int(m.group(1))
+                ret = m.group(0), converter(m.group(1))
             except:
-                pass
+                ret = m.group(0), m.group(1)
+        
+            return ret 
+        else:
+            return None
     
-    return pos_folders
+    if isinstance(directory, list):
+        dirs = directory
+    else:
+        if dirs_only:
+            dirs = [ entry.name for entry in os.scandir(directory) 
+                    if entry.is_dir() ]
+        else:
+            dirs = [ entry.name for entry in os.scandir(directory) ]
+    
+    
+    for d in dirs:
+        m = extract_match(d)
+        if m is not None:
+            result.append(m)
+    
+    # sort by the number
+    return sorted(result, key=lambda n: n[1])
+
+def safe_join(delim, strs):
+    """
+    safe_join
+    ---------
+    Joins strs by delim, collapsing any repeats of delim to a single
+    delim.
+    """
+    
+    joined = delim.join(strs)
+    return re.sub(re.escape(delim) + '+', delim, joined)

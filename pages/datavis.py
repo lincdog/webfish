@@ -18,7 +18,10 @@ from util import gen_mesh, gen_pcd_df, mesh_from_json, populate_mesh, populate_g
 #from cloud import grab_bucket, download_s3_folder
 
 
-ACTIVE_DATA = {'name': None, 'mesh': None, 'dots': None}
+ACTIVE_DATA = {'name': None, 
+               'position': None,
+               'mesh': None, 
+               'dots': None}
 HAS_MESH = False
 
 _, possible_folders = s3_client.grab_bucket( 
@@ -195,6 +198,20 @@ def update_figure(selected_genes,): # selected_pos):
 
 @app.callback(
     Output('gene-div', 'children'),
+    Input('pos-select', 'value')
+)
+def select_pos(pos):
+    #....
+    
+    return dcc.Dropdown(
+            id='pos-select',
+            options=[{'label': i, 'value':i} for i in positions],
+            value='Pos0',
+            placeholder='Select position'
+        )
+
+@app.callback(
+    Output('pos-div', 'children'),
     [Input('data-select', 'value')]
 )
 def select_data(folder):
@@ -260,12 +277,7 @@ def select_data(folder):
             placeholder='Select gene(s)',
             style={}
         )),
-        #dcc.Dropdown(
-        #    id='pos-select',
-        #    options=[{'label': i, 'value':i} for i in positions],
-        #    value='Pos0',
-        #    placeholder='Select position'
-        #)
+        
     ]
     
     
@@ -282,6 +294,8 @@ layout = dbc.Row([
             ),
            ], id='selector-div', style={}),
         
+        html.Div([dcc.Dropdown(id='pos-select')],
+             id='pos-div', style={'width': '200px', 'margin': 'auto'}),
         html.Div([dcc.Dropdown(id='gene-select')],
              id='gene-div', style={'width': '200px', 'margin': 'auto'})
     ], width=4),

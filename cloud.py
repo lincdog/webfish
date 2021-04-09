@@ -1,12 +1,128 @@
 import numpy as np
+import pandas as pd
 import boto3
 import botocore.exceptions as boto3_exc
 import json
 import yaml
 import os
+import re
+from fnmatch import fnmatch
 import configparser as cfparse
 from collections.abc import Iterable
+from util import populate_files, safe_join
 
+class DatavisStorage:
+    """
+    DatavisStorage
+    --------------
+    Class that serves mesh and dots files to the datavis sub-app. Pulls from
+    S3 storage if necessary and performs processing. 
+    """
+    
+    def __init__(
+        self,
+        config,
+        s3_client,
+        bucket_name=None
+    ):
+        self.config = config
+        self.client = s3_client
+        
+        self.local_store = self.config.get('local_store', 'webfish_data/')
+        
+        if bucket_name is None:
+            self.bucket_name = self.config['bucket_name']
+            
+        
+    
+    def get_datasets(
+        self,
+        delimiter='/',
+        prefix=''
+    ):
+        """
+        get_datasets
+        ------------
+        Searches the supplied bucket for top-level folders, which should 
+        represent available datasets. Searches each of these folders for position
+        folders, and each of these for channel folders.
+        
+        Returns: dictionary representing the structure of all available experiments
+        """
+        _, possible_folders = self.client.grab_bucket( 
+            self.bucket_name,
+            delimiter=delimiter,
+            prefix=prefix,
+            recursive=False
+        )
+        
+        datasets = []
+        
+        pos_re = re.compile(re.escape(self.config['position_prefix']) + '(\d+)')
+        chan_re = re.compile(re.escape(self.config['channel_prefix']) + '(\d+)')
+        
+        for folder in possible_folders:
+            
+            # we want to make as few requests to AWS as possible, so it is
+            # better to list ALL the objects and filter to find the ones we 
+            # want. I think!
+            f_all, _ = self.client.grab_bucket(
+                self.bucket_name,
+                delimiter=delimiter,
+                prefix=folder,
+                recursive=True
+            )
+            
+            #positions = populate_files(positions, config['position_prefix'])
+            rel_files = []
+            positions = []
+            channels = []
+            downloaded = []
+            
+            img_pat = safe_join(delimiter, [folder, self.config['img_pattern']])
+            csv_pat = safe_join(delimiter, [folder, self.config['csv_pattern']])
+            
+            print(f'folder: {folder}, len(f_all): {len(f_all)}, img_pattern: {img_pat}')
+            
+            for f in f_all:
+                
+                if (fnmatch(f, img_pat)
+                 or fnmatch(f, csv_pat)):
+                    rel_files.append(f)
+                    
+                    m = pos_re.search(f)
+                    positions.append(m.group(1))
+                    
+                    m = chan_re.search(f)
+                    if m is not None:
+                        channels.append(m.group(1))
+                    else:
+                        channels.append(-1)
+                        
+                    key2file = os.path.join(
+                        self.local_store,
+                        f.replace(delimiter, os.path.sep)
+                    )
+                    downloaded.append(os.path.exists(key2file))
+                        
+            
+            datasets.append(pd.DataFrame({
+                'dataset': folder,
+                'downloaded': downloaded,
+                'file': rel_files,
+                'position': positions,
+                'channel': channels
+            }))
+            
+        self.datasets = pd.concat(datasets)
+        self.datasets.to_csv(os.path.join(local_store, 'wf_datasets.csv'), index=False)
+                    
+                
+                
+                
+            
+            
+            
 ###### AWS Code #######
 
 class S3Connect:
@@ -32,8 +148,6 @@ class S3Connect:
     Finally, the endpoint URL and region to connect to are supplied in the 
     `endpoint_url` and `region_name` keys. If not supplied, boto3 defaults to
     the us-east-1 region of the standard AWS S3 endpoint.
-
-    Returns: boto3.resource object representing the connection.
     """
     
     def __init__(
@@ -95,6 +209,9 @@ class S3Connect:
         Takes an s3 client and a bucket name, fetches the bucket,
         and lists top-level folder-like keys in the bucket (keys that have a '/').
 
+        Note: We set a generic MaxKeys parameter for 5000 keys max! 
+        If this is exceeded the "IsTruncated" field will be True in the output.
+
         Returns: bucket object and alphabetically-sorted list of unique top-level
         folders from the bucket.
         """
@@ -105,15 +222,15 @@ class S3Connect:
         if recursive:
             delimiter = ''
 
-        try:
-            objects = self.client.list_objects(
-                Bucket=bucket_name, 
-                Delimiter=delimiter,
-                Prefix=prefix
-            )
-        except boto3_exc.ClientError:
-            return [], []
-
+        objects = self.client.list_objects(
+            Bucket=bucket_name, 
+            Delimiter=delimiter,
+            Prefix=prefix,
+            MaxKeys=5000
+        )
+        
+        # should probably use a paginator ti handle this gracefully
+        assert not objects['IsTruncated'], 'grab_bucket: query had over 5000 keys, response was truncated...'
 
         files = []
         folders = []
