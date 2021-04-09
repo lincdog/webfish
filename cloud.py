@@ -9,6 +9,7 @@ import re
 from fnmatch import fnmatch
 import configparser as cfparse
 from collections.abc import Iterable
+from collections import defaultdict
 from util import populate_files, safe_join
 
 class DatavisStorage:
@@ -30,10 +31,15 @@ class DatavisStorage:
         
         self.local_store = self.config.get('local_store', 'webfish_data/')
         
+        if not os.path.isdir(self.local_store):
+            os.makedirs(self.local_store)
+        
         if bucket_name is None:
             self.bucket_name = self.config['bucket_name']
             
-        
+        self.datasets = None
+        self.active_dataset = None
+            
     
     def get_datasets(
         self,
@@ -56,7 +62,7 @@ class DatavisStorage:
             recursive=False
         )
         
-        datasets = []
+        datafiles = []
         
         pos_re = re.compile(re.escape(self.config['position_prefix']) + '(\d+)')
         chan_re = re.compile(re.escape(self.config['channel_prefix']) + '(\d+)')
@@ -82,7 +88,6 @@ class DatavisStorage:
             img_pat = safe_join(delimiter, [folder, self.config['img_pattern']])
             csv_pat = safe_join(delimiter, [folder, self.config['csv_pattern']])
             
-            print(f'folder: {folder}, len(f_all): {len(f_all)}, img_pattern: {img_pat}')
             
             for f in f_all:
                 
@@ -106,23 +111,113 @@ class DatavisStorage:
                     downloaded.append(os.path.exists(key2file))
                         
             
-            datasets.append(pd.DataFrame({
+            datafiles.append(pd.DataFrame({
                 'dataset': folder,
                 'downloaded': downloaded,
                 'file': rel_files,
                 'position': positions,
                 'channel': channels
             }))
+        
+        # one could imagine this table is stored on the cloud and updated every
+        # time a dataset is added, then we just need to download it and check
+        # our local files.
+        self.datafiles = pd.concat(datafiles)
+        self.datafiles.to_csv(os.path.join(
+            self.local_store, 
+            'wf_datafiles.csv' 
+        ), index=False)
+        
+        self.datasets = defaultdict(dict)
+        
+        for (name, pos), grp in self.datafiles.groupby(['dataset', 'position']):
+            root_dir = os.path.commonpath(list(grp['file'].values))
             
-        self.datasets = pd.concat(datasets)
-        self.datasets.to_csv(os.path.join(local_store, 'wf_datasets.csv'), index=False)
-                    
+            mesh = safe_join(
+                os.path.sep,
+                [self.local_store, root_dir, self.config['mesh_name']]
+            )
+            
+            pcd = safe_join(
+                os.path.sep,
+                [self.local_store, root_dir, self.config['pcd_name']]
+            )
+            
+            self.datasets[name][pos] = {
+                'rootdir': root_dir,
+                'meshfile': mesh,
+                'meshexists': os.path.isfile(mesh),
+                'pcdfile': pcd,
+                'pcdexists': os.path.isfile(pcd)
+            }
+            
+        
+        json.dump(
+            self.datasets,
+            open(os.path.join(self.local_store, 'wf_datasets.json'), 
+                 'w'
+            )
+        )
+        
+           
+    def select_dataset(
+        self,
+        name,
+    ):
+        """
+        select_dataset
+        --------------
+        
+        Prepares to load a dataset. Download all needed files if they are not
+        already present. **Always call this BEFORE select_position**
+        """
+        self.active_dataset = self.datasets.get(name, None)
+        
+        needed_files = self.datafiles.query(
+            'dataset == @name and downloaded == False'
+        )['file'].values
                 
-                
-                
+        for f in needed_files:
+            errors = self.client.download_s3_objects(
+                self.bucket_name,
+                f,
+                local_dir=self.local_store
+            )
             
+            if len(errors) > 0:
+                raise FileNotFoundError(
+                    f'select_dataset: errors downloading keys:', 
+                    errors
+                )
+        
+        self.datafiles = pd.merge(
+            self.datafiles,
+            pd.DataFrame({
+                'file': needed_files,
+                'downloaded': True
+            }),
+            on='file'
+        )
+        
+        return self.active_dataset
+    
+    def select_position(
+        self,
+        position
+    ):
+        """
+        select_position
+        ---------------
+        Prepare to actually display a dataset. **Assumes data files are already
+        downloaded!** Creates mesh and processed dots file if they don't exist.
+        """
+        
+        self.active_position = self.active_dataset.get(position, None)
+        
+        if not self.active_position['meshexists']:
+            pass
             
-            
+        
 ###### AWS Code #######
 
 class S3Connect:
