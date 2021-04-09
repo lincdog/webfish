@@ -10,9 +10,6 @@ import re
 import os
 from matplotlib.pyplot import get_cmap
 
-from app import config
-#config_file = 'consts.yml'
-#config = yaml.load(open(config_file), Loader=yaml.Loader)
 
 def gen_mesh(
     imgfilename,
@@ -288,8 +285,8 @@ def safe_join(delim, strs):
     safe_join
     ---------
     Joins strs by delim, collapsing any repeats of delim to a single
-    delim.
+    delim. Also removes any leading delim.
     """
     
     joined = delim.join(strs)
-    return re.sub(re.escape(delim) + '+', delim, joined)
+    return re.sub(re.escape(delim) + '+', delim, joined).removeprefix(delim)

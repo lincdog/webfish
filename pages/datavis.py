@@ -196,22 +196,22 @@ def update_figure(selected_genes,): # selected_pos):
     return dcc.Graph(id='test-graph', figure=fig)
 
 
-@app.callback(
-    Output('gene-div', 'children'),
-    Input('pos-select', 'value')
-)
-def select_pos(pos):
-    #....
-    
-    return dcc.Dropdown(
-            id='pos-select',
-            options=[{'label': i, 'value':i} for i in positions],
-            value='Pos0',
-            placeholder='Select position'
-        )
+#@app.callback(
+#    Output('gene-div', 'children'),
+#    Input('pos-select', 'value')
+#)
+#def select_pos(pos):
+#    #....
+#    
+#    return dcc.Dropdown(
+#            id='pos-select',
+#            options=[{'label': i, 'value':i} for i in positions],
+#            value='Pos0',
+#            placeholder='Select position'
+#        )
 
 @app.callback(
-    Output('pos-div', 'children'),
+    Output('gene-div', 'children'),
     [Input('data-select', 'value')]
 )
 def select_data(folder):
