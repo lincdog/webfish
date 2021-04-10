@@ -11,17 +11,11 @@ import dash_html_components as html
 import dash_bootstrap_components as dbc
 from dash.dependencies import Input, Output, State
 from dash.exceptions import PreventUpdate
-from flask_caching import Cache
 
-from app import app, cache, config, s3_client
+from app import app, config, s3_client
 from util import gen_mesh, gen_pcd_df, mesh_from_json, populate_mesh, populate_genes
 from cloud import DatavisStorage
 
-ACTIVE_DATA = {'name': None, 
-               'position': None,
-               'mesh': None, 
-               'dots': None
-              }
 HAS_MESH = False
 
 
@@ -29,7 +23,7 @@ data_manager = DatavisStorage(config=config, s3_client=s3_client)
 data_manager.get_datasets()
 
 
-@cache.memoize()
+#@cache.memoize()
 def _query_df(selected_genes, name):
     """
     _query_df:
@@ -45,14 +39,14 @@ def _query_df(selected_genes, name):
       as the cache is valid only for a specific combo of gene list + active dataset.
     """
     
-    assert ACTIVE_DATA['dots'] is not None, '`query_df` assumes ACTIVE_DATA is populated.'
+    assert data_manager.active_dots is not None, '`query_df` assumes ACTIVE_DATA is populated.'
     
     if 'All' in selected_genes:
-        dots_filt = ACTIVE_DATA['dots']
+        dots_filt = data_manager.active_dots
     elif selected_genes == ['None']:
-        dots_filt = ACTIVE_DATA['dots'].query('geneID == "NOT__A__GENE"')
+        dots_filt = data_manager.active_dots.query('gene == "NOT__A__GENE"')
     else:
-        dots_filt = ACTIVE_DATA['dots'].query('geneID in @selected_genes')
+        dots_filt = data_manager.active_dots.query('gene in @selected_genes')
     
     return dots_filt.to_json()
 
@@ -64,10 +58,10 @@ def query_df(selected_genes):
     
     returns: Filtered DataFrame
     """
-    return pd.read_json(_query_df(selected_genes, ACTIVE_DATA['name']))
+    return pd.read_json(_query_df(selected_genes, data_manager.active_dataset_name))
 
 
-@cache.memoize()
+#@cache.memoize()
 def gen_figure(selected_genes, name):
     """
     gen_figure:
@@ -85,13 +79,13 @@ def gen_figure(selected_genes, name):
     
     # If dots is populated, grab it.
     # Otherwise, set the coords to None to create an empty Scatter3d.
-    if ACTIVE_DATA['dots'] is not None:
+    if data_manager.active_dots is not None:
         dots_filt = query_df(selected_genes)
         
         pz,py,px = dots_filt[['z', 'y', 'x']].values.T
         
         color = dots_filt['geneColor']
-        hovertext = dots_filt['geneID']
+        hovertext = dots_filt['gene']
     
         figdata.append(
             go.Scatter3d(
@@ -111,8 +105,8 @@ def gen_figure(selected_genes, name):
     
     # If the mesh is present, populate it.
     # Else, create an empty Mesh3d.
-    if ACTIVE_DATA['mesh'] is not None:
-        x, y, z, i, j, k = populate_mesh(ACTIVE_DATA['mesh'])
+    if data_manager.active_mesh is not None:
+        x, y, z, i, j, k = populate_mesh(data_manager.active_mesh)
     
         figdata.append(
         go.Mesh3d(x=x, y=y, z=z,
@@ -166,7 +160,7 @@ def update_figure(selected_genes,): # selected_pos):
     #start = datetime.now()
     #print(f'starting callback at {start}, genes = {selected_genes} name = {ACTIVE_DATA["name"]}')
     
-    if (ACTIVE_DATA['name'] is not None 
+    if (data_manager.active_dataset_name is not None 
         and selected_genes == []
        ):
         print(f'reached, has mesh: {HAS_MESH}')
@@ -174,7 +168,7 @@ def update_figure(selected_genes,): # selected_pos):
             raise PreventUpdate
         else:
             HAS_MESH = True
-            return gen_figure(None, ACTIVE_DATA['name'])
+            return gen_figure(None, data_manager.active_dataset_name)
         
     if not isinstance(selected_genes, list):
         selected_genes = [selected_genes]
@@ -185,7 +179,7 @@ def update_figure(selected_genes,): # selected_pos):
     if 'None' in selected_genes and len(selected_genes) > 1:
         selected_genes.remove('None')
     
-    fig = gen_figure(selected_genes, ACTIVE_DATA['name'])
+    fig = gen_figure(selected_genes, data_manager.active_dataset_name)
     
     #end = datetime.now()
     #print(f'returning from callback at {end} after {end-start}')
@@ -193,25 +187,32 @@ def update_figure(selected_genes,): # selected_pos):
     return dcc.Graph(id='test-graph', figure=fig)
 
 
+
+
 @app.callback(
-    Output('gene-div', 'children'),
+    Output('gene-wrapper', 'children'),
     Input('pos-select', 'value')
 )
 def select_pos(pos):
     #....
-    ACTIVE_DATA['position'] = pos
-    return []
-    ACTIVE_DATA['mesh'] = mesh
-    ACTIVE_DATA['dots'] = pcd
-    return dcc.Dropdown(
-            id='pos-select',
-            options=[{'label': i, 'value':i} for i in genes],
-            value='Pos0',
-            placeholder='Select position'
+    active = data_manager.select_position(pos)
+    # combine and flatten all channels' genes FOR NOW
+    all_genes = np.ravel(list(active['genes'].values()))
+    
+    return [
+        dcc.Dropdown(
+            id='gene-select',
+            options=[{'label': i, 'value': i} for i in all_genes],
+            value='None',
+            multi=True,
+            placeholder='Select gene(s)'
         )
+        
+        #for c, genes in active['genes'].items() 
+    ]
 
 @app.callback(
-    Output('pos-wrapper', 'children'),
+    Output('selectors-wrapper', 'children'),
     [Input('data-select', 'value')]
 )
 def select_data(folder):
@@ -220,10 +221,8 @@ def select_data(folder):
     if folder is None:
         return None
     
-    dataset = data_manager.select_dataset(folder)
+    dataset, _ = data_manager.select_dataset(folder)
     positions = list(dataset.keys())
-    ### Set global dots DF and mesh variables
-    ACTIVE_DATA['name'] = folder
     
     return [
         dcc.Dropdown(
@@ -233,7 +232,10 @@ def select_data(folder):
             placeholder='Select position',
             style={}
         ),
-        
+        html.Div([dcc.Loading(dcc.Dropdown(id='gene-select'), id='gene-wrapper')],
+            id='gene-div', 
+            style={'width': '200px', 'margin': 'auto', 'margin': '20px'}
+        )
     ]
     
     
@@ -250,10 +252,14 @@ layout = dbc.Row([
             ),
            ], id='selector-div', style={}),
         
+        dcc.Loading([
         html.Div([dcc.Loading(dcc.Dropdown(id='pos-select'), id='pos-wrapper')],
-             id='pos-div', style={'width': '200px', 'margin': 'auto'}),
-        html.Div([dcc.Dropdown(id='gene-select')],
-             id='gene-div', style={'width': '200px', 'margin': 'auto'})
+             id='pos-div', 
+             style={'width': '200px', 'margin': 'auto', 'margin': '20px'}
+        ),
+        
+        
+        ], id='selectors-wrapper')
     ], width=4),
 
     dbc.Col([

@@ -101,6 +101,9 @@ class DatavisStorage:
         folders, and each of these for channel folders.
         
         Returns: dictionary representing the structure of all available experiments
+        
+        TODO: First check for the CSVs that list the status of downloaded files, before
+        trying to download from S3.
         """
         _, possible_folders = self.client.grab_bucket( 
             self.bucket_name,
@@ -179,12 +182,12 @@ class DatavisStorage:
             
             mesh = safe_join(
                 os.path.sep,
-                [self.local_store, root_dir, self.config['mesh_name']]
+                [root_dir, self.config['mesh_name']]
             )
             
             pcd = safe_join(
                 os.path.sep,
-                [self.local_store, root_dir, self.config['pcd_name']]
+                [root_dir, self.config['pcd_name']]
             )
             
             self.datasets[name][pos] = {
@@ -215,7 +218,12 @@ class DatavisStorage:
         Prepares to load a dataset. Download all needed files if they are not
         already present. **Always call this BEFORE select_position**
         """
+        
+        if self.datasets is None:
+            return None
+        
         self.active_dataset_name = name
+        print(f'getting dataset {name}')
         self.active_dataset = self.datasets.get(name, None)
         self.active_datafiles = self.datafiles.query('dataset == @name')
         
@@ -260,12 +268,13 @@ class DatavisStorage:
         
         cur_pos_files = self.active_datafiles.query('position == @position')
         
+        updated = False
         
         ##### Point cloud (PCD) (dots) processing #####
         if not self.active_position['pcdexists']:
             # we need to read in all the channels' dots CSVs
             channel_dots_files = cur_pos_files.query(
-                f'basename == {self.config["csv_name"]}'
+                'basename == "{}"'.format(self.config['csv_name'])
             )
             
             pcds = []
@@ -282,6 +291,9 @@ class DatavisStorage:
             pcds_combined = pd.concat(pcds)
             del pcds
             
+            print(self.active_position['pcdfile'])
+            print(self.localpath(self.active_position['pcdfile']))
+            
             pcds_processed = gen_pcd_df(
                 pcds_combined,
                 outfile=self.localpath(self.active_position['pcdfile'])
@@ -291,6 +303,8 @@ class DatavisStorage:
             self.active_position['pcdexists'] = True
             self.active_dataset[position]['pcdexists'] = True
             self.datasets[self.active_dataset_name][position]['pcdexists'] = True
+            
+            updated = True
             
         else:
             pcds_processed = pd.read_csv(
@@ -304,7 +318,7 @@ class DatavisStorage:
             
             # find the image file
             im = cur_pos_files.query(
-                f'basename == {self.config["img_name"]}'
+                'basename == "{}"'.format(self.config['img_name'])
             )['file'].values[0]
             im = self.localpath(im)
             print(f'im is {im}')
@@ -322,18 +336,26 @@ class DatavisStorage:
             self.active_dataset[position]['meshexists'] = True
             self.datasets[self.active_dataset_name][position]['meshexists'] = True
             
+            updated = True
+            
         else:
             # read the mesh in
             mesh = mesh_from_json(self.localpath(self.active_position['meshfile']))
             
         self.active_mesh = mesh
-        self.active_dots = pcd_processed
+        self.active_dots = pcds_processed
         
         self.possible_channels = channels
         self.possible_genes = { 
             c: populate_genes(d)
-            for c, d in self.activedots.groupby(['channel'])
+            for c, d in self.active_dots.groupby(['channel'])
         }
+        
+        if updated:
+            json.dump(
+                self.datasets,
+                open(self.localpath('wf_datasets.json'), 'w')
+            )
         
         return {
             'mesh': self.active_mesh,
@@ -342,8 +364,6 @@ class DatavisStorage:
             'genes': self.possible_genes,
         }
         
-        
-         
         
 ###### AWS Code #######
 

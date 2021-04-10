@@ -26,7 +26,7 @@ app = dash.Dash(__name__,
                 suppress_callback_exceptions=True
                )
 
-cache = Cache(app.server, config={
-    'CACHE_TYPE': 'filesystem',
-    'CACHE_DIR': 'cache-directory'
-})
+#cache = Cache(app.server, config={
+#    'CACHE_TYPE': 'filesystem',
+#    'CACHE_DIR': 'cache-directory'
+#})

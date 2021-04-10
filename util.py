@@ -154,7 +154,7 @@ def gen_pcd_df(
     else:
         raise TypeError
     
-    dots['geneInd'] = dots['geneID'].factorize()[0] % 20
+    dots['geneInd'] = dots['gene'].factorize()[0] % 20
     
     def cmap2hex(cmap):
         return '#{:02X}{:02X}{:02X}'.format(cmap[0], cmap[1], cmap[2])
@@ -210,7 +210,7 @@ def populate_mesh(cell_mesh):
     if cell_mesh is None:
         return None, None, None, None, None, None
 
-    z,y,x = cell_mesh['verts'].T
+    z,x,y = cell_mesh['verts'].T
     i,j,k = cell_mesh['faces'].T
     
     return x, y, z, i, j, k
@@ -223,7 +223,7 @@ def populate_genes(dots_pcd):
     
     returns: list of genes (+ None and All options) sorted by frequency descending
     """
-    unique_genes, gene_counts = np.unique(dots_pcd['geneID'], return_counts=True)
+    unique_genes, gene_counts = np.unique(dots_pcd['gene'], return_counts=True)
 
     possible_genes = ['None', 'All'] + list(np.flip(unique_genes[np.argsort(gene_counts)]))
         
