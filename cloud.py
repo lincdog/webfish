@@ -10,7 +10,15 @@ from fnmatch import fnmatch
 import configparser as cfparse
 from collections.abc import Iterable
 from collections import defaultdict
-from util import populate_files, safe_join
+from util import (
+    populate_files, 
+    populate_genes,  
+    populate_mesh,
+    safe_join, 
+    mesh_from_json,
+    gen_pcd_df,
+    gen_mesh
+)
 
 class DatavisStorage:
     """
@@ -38,8 +46,47 @@ class DatavisStorage:
             self.bucket_name = self.config['bucket_name']
             
         self.datasets = None
+        self.datafiles = None
         self.active_dataset = None
+        self.active_position = None
+        self.active_dataset_name = None
+        self.active_position_name = None
+        self.possible_channels = None
+        self.possible_genes = None
+        self.selected_genes = None
+        
+        self.active_mesh = None
+        self.active_dots = None
+    
+    
+    @property
+    def state(self):
+        """
+        :property: state
+        ----------------
+        JSON serializable structure that summarizes the current state of the
+        data manager, and thus the datavis app. Can be stored in the browser
+        to persist selections across reloads etc.
+        """
+        return {
+            'active_dataset_name': self.active_dataset_name,
+            'active_position_name': self.active_position_name,
+            'possible_channels': self.possible_channels,
+            'possible_genes': self.possible_genes,
+            'selected_genes': self.selected_genes
+        }
             
+    def localpath(
+        self,
+        key,
+        delimiter='/'
+    ):
+        key = key.removeprefix(self.local_store + delimiter)
+        return safe_join(
+            os.path.sep,
+            [self.local_store, key.replace(delimiter, os.path.sep)]
+        )
+    
     
     def get_datasets(
         self,
@@ -81,6 +128,7 @@ class DatavisStorage:
             
             #positions = populate_files(positions, config['position_prefix'])
             rel_files = []
+            basenames = []
             positions = []
             channels = []
             downloaded = []
@@ -94,6 +142,7 @@ class DatavisStorage:
                 if (fnmatch(f, img_pat)
                  or fnmatch(f, csv_pat)):
                     rel_files.append(f)
+                    basenames.append(os.path.basename(f))
                     
                     m = pos_re.search(f)
                     positions.append(m.group(1))
@@ -104,17 +153,15 @@ class DatavisStorage:
                     else:
                         channels.append(-1)
                         
-                    key2file = os.path.join(
-                        self.local_store,
-                        f.replace(delimiter, os.path.sep)
-                    )
+                    key2file = self.localpath(f, delimiter=delimiter)
                     downloaded.append(os.path.exists(key2file))
-                        
+            
             
             datafiles.append(pd.DataFrame({
                 'dataset': folder,
                 'downloaded': downloaded,
                 'file': rel_files,
+                'basename': basenames,
                 'position': positions,
                 'channel': channels
             }))
@@ -123,10 +170,7 @@ class DatavisStorage:
         # time a dataset is added, then we just need to download it and check
         # our local files.
         self.datafiles = pd.concat(datafiles)
-        self.datafiles.to_csv(os.path.join(
-            self.local_store, 
-            'wf_datafiles.csv' 
-        ), index=False)
+        self.datafiles.to_csv(self.localpath('wf_datafiles.csv'), index=False)
         
         self.datasets = defaultdict(dict)
         
@@ -171,10 +215,12 @@ class DatavisStorage:
         Prepares to load a dataset. Download all needed files if they are not
         already present. **Always call this BEFORE select_position**
         """
+        self.active_dataset_name = name
         self.active_dataset = self.datasets.get(name, None)
+        self.active_datafiles = self.datafiles.query('dataset == @name')
         
-        needed_files = self.datafiles.query(
-            'dataset == @name and downloaded == False'
+        needed_files = self.active_datafiles.query(
+            'downloaded == False'
         )['file'].values
                 
         for f in needed_files:
@@ -195,8 +241,8 @@ class DatavisStorage:
             np.isin(self.datafiles['file'], needed_files),
             'downloaded'
         ] = True
-        
-        return self.active_dataset
+
+        return self.active_dataset, self.active_datafiles
     
     def select_position(
         self,
@@ -209,11 +255,95 @@ class DatavisStorage:
         downloaded!** Creates mesh and processed dots file if they don't exist.
         """
         
+        self.active_position_name = position
         self.active_position = self.active_dataset.get(position, None)
         
-        if not self.active_position['meshexists']:
-            pass
+        cur_pos_files = self.active_datafiles.query('position == @position')
+        
+        
+        ##### Point cloud (PCD) (dots) processing #####
+        if not self.active_position['pcdexists']:
+            # we need to read in all the channels' dots CSVs
+            channel_dots_files = cur_pos_files.query(
+                f'basename == {self.config["csv_name"]}'
+            )
             
+            pcds = []
+            channels = []
+            
+            for _, row in channel_dots_files.iterrows():
+                pcd_single = pd.read_csv(self.localpath(row['file']))
+                channel = row['channel']
+                pcd_single['channel'] = channel
+                
+                pcds.append(pcd_single)
+                channels.append(channel)
+            
+            pcds_combined = pd.concat(pcds)
+            del pcds
+            
+            pcds_processed = gen_pcd_df(
+                pcds_combined,
+                outfile=self.localpath(self.active_position['pcdfile'])
+            )
+            
+            # update every copy of the active position...?
+            self.active_position['pcdexists'] = True
+            self.active_dataset[position]['pcdexists'] = True
+            self.datasets[self.active_dataset_name][position]['pcdexists'] = True
+            
+        else:
+            pcds_processed = pd.read_csv(
+                self.localpath(self.active_position['pcdfile'])
+            )
+            
+            channels = list(pcds_processed['channel'].unique())
+            
+        ##### Mesh processing #####
+        if not self.active_position['meshexists']:
+            
+            # find the image file
+            im = cur_pos_files.query(
+                f'basename == {self.config["img_name"]}'
+            )['file'].values[0]
+            im = self.localpath(im)
+            print(f'im is {im}')
+            
+            # generate the mesh from the image
+            mesh = mesh_from_json(gen_mesh(
+                im,
+                separate_regions=False,
+                region_data=None,
+                outfile=self.localpath(self.active_position['meshfile'])
+            ))
+            
+            # update every copy of the active position...?
+            self.active_position['meshexists'] = True
+            self.active_dataset[position]['meshexists'] = True
+            self.datasets[self.active_dataset_name][position]['meshexists'] = True
+            
+        else:
+            # read the mesh in
+            mesh = mesh_from_json(self.localpath(self.active_position['meshfile']))
+            
+        self.active_mesh = mesh
+        self.active_dots = pcd_processed
+        
+        self.possible_channels = channels
+        self.possible_genes = { 
+            c: populate_genes(d)
+            for c, d in self.activedots.groupby(['channel'])
+        }
+        
+        return {
+            'mesh': self.active_mesh,
+            'dots': self.active_dots,
+            'channels': self.possible_channels,
+            'genes': self.possible_genes,
+        }
+        
+        
+         
         
 ###### AWS Code #######
 

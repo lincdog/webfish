@@ -130,7 +130,7 @@ def gen_mesh(
     
 
 def gen_pcd_df(
-    csvfilename,
+    csv,
     px_size=(0.5, 0.11, 0.11),
     cmap='tab20',
     outfile=None
@@ -147,7 +147,12 @@ def gen_pcd_df(
     
     print('entering gen_pcd_df')
     
-    dots = pd.read_csv(csvfilename)
+    if isinstance(csv, str):
+        dots = pd.read_csv(csv)
+    elif isinstance(csv, pd.DataFrame):
+        dots = csv.copy()
+    else:
+        raise TypeError
     
     dots['geneInd'] = dots['geneID'].factorize()[0] % 20
     
@@ -233,7 +238,7 @@ def populate_files(
     converter=int
 ):
     """
-    populate_positions
+    populate_files
     ------------------
     Takes either a *list* of files/folders OR a directory name 
     and searches in it for entries that match `regex` of the form 
