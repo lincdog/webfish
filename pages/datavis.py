@@ -1,7 +1,3 @@
-import os
-import json
-from datetime import datetime
-import yaml
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
@@ -13,17 +9,15 @@ from dash.dependencies import Input, Output, State
 from dash.exceptions import PreventUpdate
 
 from app import app, config, s3_client
-from util import gen_mesh, gen_pcd_df, mesh_from_json, populate_mesh, populate_genes
+from util import populate_mesh
 from cloud import DatavisStorage
 
 HAS_MESH = False
-
 
 data_manager = DatavisStorage(config=config, s3_client=s3_client)
 data_manager.get_datasets()
 
 
-#@cache.memoize()
 def _query_df(selected_genes, name):
     """
     _query_df:
@@ -49,6 +43,7 @@ def _query_df(selected_genes, name):
         dots_filt = data_manager.active_dots.query('gene in @selected_genes')
     
     return dots_filt.to_json()
+
 
 def query_df(selected_genes):
     """
@@ -82,7 +77,7 @@ def gen_figure(selected_genes, name):
     if data_manager.active_dots is not None:
         dots_filt = query_df(selected_genes)
         
-        pz,py,px = dots_filt[['z', 'y', 'x']].values.T
+        pz, py, px = dots_filt[['z', 'y', 'x']].values.T
         
         color = dots_filt['geneColor']
         hovertext = dots_filt['gene']
@@ -109,21 +104,21 @@ def gen_figure(selected_genes, name):
         x, y, z, i, j, k = populate_mesh(data_manager.active_mesh)
     
         figdata.append(
-        go.Mesh3d(x=x, y=y, z=z,
-                  i=i, j=j, k=k,
-            color='lightgray',
-            opacity=0.7,
-            hoverinfo='skip',
+            go.Mesh3d(
+                x=x, y=y, z=z,
+                i=i, j=j, k=k,
+                color='lightgray',
+                opacity=0.7,
+                hoverinfo='skip',
             )
         )
-            
 
     figscene = go.layout.Scene(
         aspectmode='manual',
         aspectratio=dict(x=1, y=1, z=0.07),
     )
 
-    figlayout= go.Layout(
+    figlayout = go.Layout(
         height=800,
         width=800,
         #plot_bgcolor='black',
@@ -141,12 +136,10 @@ def gen_figure(selected_genes, name):
 
 @app.callback(
     Output('graph-wrapper', 'children'),
-    [Input('gene-select', 'value'),
-     #Input('pos-select', 'value')
-    ],
+    [Input('gene-select', 'value')],
     prevent_initial_call=False
 )
-def update_figure(selected_genes,): # selected_pos):
+def update_figure(selected_genes,):
     """
     update_figure:
     Callback triggered by by selecting
@@ -157,12 +150,8 @@ def update_figure(selected_genes,): # selected_pos):
     #### NOTE may need to use Dash's callback context to determine
     ## whether data-select or gene-select triggered this
     
-    #start = datetime.now()
-    #print(f'starting callback at {start}, genes = {selected_genes} name = {ACTIVE_DATA["name"]}')
-    
     if (data_manager.active_dataset_name is not None 
-        and selected_genes == []
-       ):
+       and selected_genes == []):
         print(f'reached, has mesh: {HAS_MESH}')
         if HAS_MESH:
             raise PreventUpdate
@@ -187,8 +176,6 @@ def update_figure(selected_genes,): # selected_pos):
     return dcc.Graph(id='test-graph', figure=fig)
 
 
-
-
 @app.callback(
     Output('gene-wrapper', 'children'),
     Input('pos-select', 'value')
@@ -207,8 +194,6 @@ def select_pos(pos):
             multi=True,
             placeholder='Select gene(s)'
         )
-        
-        #for c, genes in active['genes'].items() 
     ]
 
 @app.callback(
@@ -230,12 +215,10 @@ def select_data(folder):
             options=[{'label': i, 'value': i} for i in positions],
             value=positions[0],
             placeholder='Select position',
-            style={}
-        ),
+            style={}),
         html.Div([dcc.Loading(dcc.Dropdown(id='gene-select'), id='gene-wrapper')],
             id='gene-div', 
-            style={'width': '200px', 'margin': 'auto', 'margin': '20px'}
-        )
+            style={'width': '200px', 'margin': '20px'})
     ]
     
     
@@ -253,13 +236,11 @@ layout = dbc.Row([
            ], id='selector-div', style={}),
         
         dcc.Loading([
-        html.Div([dcc.Loading(dcc.Dropdown(id='pos-select'), id='pos-wrapper')],
-             id='pos-div', 
-             style={'width': '200px', 'margin': 'auto', 'margin': '20px'}
-        ),
-        
-        
-        ], id='selectors-wrapper')
+            html.Div(
+                [dcc.Loading(dcc.Dropdown(id='pos-select'), id='pos-wrapper')],
+                id='pos-div',
+                style={'width': '200px', 'margin': '20px'}),
+            ], id='selectors-wrapper')
     ], width=4),
 
     dbc.Col([

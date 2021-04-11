@@ -1,12 +1,8 @@
-import json
-import os
 import dash
 
-from flask_caching import Cache
+# from flask_caching import Cache
 import dash_bootstrap_components as dbc
 
-import numpy as np
-import pandas as pd
 import yaml
 
 from cloud import S3Connect
@@ -21,10 +17,11 @@ s3_client = S3Connect(config=config)
 ############# Begin app code ############
 
 THEME = getattr(dbc.themes, config.get('theme', 'MINTY').upper())
-app = dash.Dash(__name__, 
-                external_stylesheets=[THEME],
-                suppress_callback_exceptions=True
-               )
+app = dash.Dash(
+    __name__,
+    external_stylesheets=[THEME],
+    suppress_callback_exceptions=True
+)
 
 #cache = Cache(app.server, config={
 #    'CACHE_TYPE': 'filesystem',

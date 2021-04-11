@@ -1,11 +1,8 @@
 import os
 
-import dash
 import dash_core_components as dcc
 import dash_html_components as html
-import dash_bootstrap_components as db
 from dash.dependencies import Input, Output, State
-from dash.exceptions import PreventUpdate
 
 from app import app, config, s3_client
 from pages import datavis, dotdetection
@@ -18,7 +15,8 @@ app.layout = html.Div(children=[
         dcc.Tab(label='Dot detection preview', value='dotdetection')
     ], style={'width': '500px'}),
     html.Div(id='content-main')
-], style={'margin': 'auto',})
+], style={'margin': 'auto'})
+
 
 @app.callback(
     Output('content-main', 'children'),
