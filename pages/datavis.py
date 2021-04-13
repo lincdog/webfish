@@ -185,9 +185,6 @@ def populate_analytics(pos):
     data1 = base64_image(file1)
     file2 = active.get('onoff_sorted_file', None)
     data2 = base64_image(file2)
-    print(f'file1: {file1}, data2: {file1}')
-
-    print(f'data1: {data1[:50]}, data2: {data2[:50]}')
 
     return [html.Img(src=data1, style={'max-width': '100%'}),
             html.Hr(),
@@ -226,17 +223,18 @@ def select_data(folder):
     positions = list(dataset.keys())
     
     return [
+        'Position select: ',
         dcc.Dropdown(
             id='pos-select',
             options=[{'label': i, 'value': i} for i in positions],
             value=positions[0],
             placeholder='Select position',
             clearable=False,
-            style={'width': '200px', 'margin': '20px'}),
-
+            style={'width': '200px',}),
+        'Gene select: ',
             html.Div([dcc.Loading(dcc.Dropdown(id='gene-select'), id='gene-wrapper')],
                 id='gene-div',
-                style={'width': '200px', 'margin': '20px'})
+                style={'width': '200px',})
     ]
 
 ######## Layout ########
@@ -246,6 +244,7 @@ layout = dbc.Container(dbc.Row([
         html.Div([
             html.H2('Data selection'),
             html.Hr(),
+            'Dataset select:',
             dcc.Dropdown(
                 id='data-select',
                 options=[{'label': i, 'value': i} for i in data_manager.datasets.keys()],
@@ -259,6 +258,7 @@ layout = dbc.Container(dbc.Row([
                 [dcc.Loading(dcc.Dropdown(id='pos-select'), id='pos-wrapper')],
                 id='pos-div'),
             ], id='selectors-wrapper', style={'width': '200px', 'margin': '20px'}),
+        html.Hr(),
 
         html.Div([
             html.H2('Analytics'),
