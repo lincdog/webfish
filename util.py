@@ -295,4 +295,4 @@ def safe_join(delim, strs):
     """
 
     joined = delim.join(strs)
-    return re.sub(re.escape(delim) + '+', delim, joined).removeprefix(delim)
+    return re.sub(re.escape(delim) + '+', delim, joined).lstrip(delim)

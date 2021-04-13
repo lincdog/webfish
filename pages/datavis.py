@@ -241,7 +241,7 @@ layout = dbc.Row([
                 id='pos-div',
                 style={'width': '200px', 'margin': '20px'}),
             ], id='selectors-wrapper')
-    ], width=4),
+    ], width=4, style={'border-right': '2px solid black'}),
 
     dbc.Col([
         html.Div([
