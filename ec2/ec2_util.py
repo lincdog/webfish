@@ -14,6 +14,7 @@ import yaml
 import paramiko
 import scp
 import pandas as pd
+import numpy as np
 
 
 
@@ -28,6 +29,7 @@ class Webfish:
         self.ip = ip
         self.keyfile = keyfile
         self.credfile = credfile
+        self.webfish_process = ''
         
     def prepare_webfish(
         self
@@ -49,7 +51,7 @@ class Webfish:
         ) as conn:
             command = ('cd webfish && '
                'env WEBFISH_CREDS=../ec2-readcredentials '
-               'WEBFISH_HOST=0.0.0.0 python app.py &'
+               'WEBFISH_HOST=0.0.0.0 python index.py > webfish.log'
               )
             try:
                 conn.exec_command(
@@ -59,6 +61,37 @@ class Webfish:
                 )
             except:
                 pass
+
+            try:
+                _, out, _ = conn.exec_command(
+                    'pgrep -f python -d " "',
+                    read_outputs=True
+                )
+
+                self.webfish_processes = out.decode().strip()
+
+            except:
+                pass
+
+    def kill_webfish(self):
+
+        if len(self.webfish_processes) == 0:
+            return
+
+        with EasySSH(
+                self.ip,
+                self.keyfile,
+                username='ec2-user'
+        ) as conn:
+            try:
+                _, out, _ = conn.exec_command(
+                    f'kill {self.webfish_processes}',
+                    read_outputs=True
+                )
+            except:
+                pass
+
+
 
 class EasyEC2:
     """
@@ -287,7 +320,10 @@ class EasySSH:
         self.client = paramiko.SSHClient()
         self.client.load_system_host_keys(keyfile)
         self.client.set_missing_host_key_policy(paramiko.AutoAddPolicy)
-        self.client.connect(addr, username=username, password=password)
+        self.client.connect(addr,
+                            username=username,
+                            password=password,
+                            key_filename=keyfile)
         
         self.scp = scp.SCPClient(self.client.get_transport())
         
