@@ -14,7 +14,7 @@ app.layout = html.Div(children=[
         dcc.Tab(label='Data Visualization', value='datavis'),
         dcc.Tab(label='Dot detection preview', value='dotdetection')
     ], style={'width': '500px'}),
-    html.Div(id='content-main')
+    html.Div(id='content-main', style={'width': '100%', 'height': '100%'})
 ], style={'margin': 'auto'})
 
 

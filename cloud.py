@@ -82,7 +82,11 @@ class DatavisStorage:
             key,
             delimiter='/'
     ):
-        key = key.removeprefix(self.local_store + delimiter)
+        key = re.sub('^{0}?{1}{0}'.format(
+                re.escape(delimiter),
+                re.escape(self.local_store)),
+            '', key)
+
         return safe_join(
             os.path.sep,
             [self.local_store, key.replace(delimiter, os.path.sep)]

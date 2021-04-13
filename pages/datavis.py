@@ -12,7 +12,6 @@ from app import app, config, s3_client
 from util import populate_mesh
 from cloud import DatavisStorage
 
-HAS_MESH = False
 
 data_manager = DatavisStorage(config=config, s3_client=s3_client)
 data_manager.get_datasets()
@@ -152,12 +151,7 @@ def update_figure(selected_genes,):
     
     if (data_manager.active_dataset_name is not None 
        and selected_genes == []):
-        print(f'reached, has mesh: {HAS_MESH}')
-        if HAS_MESH:
-            raise PreventUpdate
-        else:
-            HAS_MESH = True
-            return gen_figure(None, data_manager.active_dataset_name)
+        raise PreventUpdate
         
     if not isinstance(selected_genes, list):
         selected_genes = [selected_genes]
@@ -183,14 +177,13 @@ def update_figure(selected_genes,):
 def select_pos(pos):
     #....
     active = data_manager.select_position(pos)
-    # combine and flatten all channels' genes FOR NOW
+    # TODO: separate dropdowns for each channel?
     all_genes = np.ravel(list(active['genes'].values()))
     
     return [
         dcc.Dropdown(
             id='gene-select',
             options=[{'label': i, 'value': i} for i in all_genes],
-            value='None',
             multi=True,
             placeholder='Select gene(s)'
         )
@@ -201,8 +194,7 @@ def select_pos(pos):
     [Input('data-select', 'value')]
 )
 def select_data(folder):
-    HAS_MESH = False
-    
+
     if folder is None:
         return None
     
@@ -215,7 +207,7 @@ def select_data(folder):
             options=[{'label': i, 'value': i} for i in positions],
             value=positions[0],
             placeholder='Select position',
-            style={}),
+            style={'width': '200px', 'margin': '20px'}),
         html.Div([dcc.Loading(dcc.Dropdown(id='gene-select'), id='gene-wrapper')],
             id='gene-div', 
             style={'width': '200px', 'margin': '20px'})
@@ -224,7 +216,7 @@ def select_data(folder):
     
 ######## Layout ########
 
-layout = dbc.Row([
+layout = dbc.Container(dbc.Row([
     dbc.Col([
         html.Div([
             dcc.Dropdown(
@@ -233,15 +225,14 @@ layout = dbc.Row([
                 placeholder='Select a data folder',
                 style={'width': '200px', 'margin': 'auto'}
             ),
-           ], id='selector-div', style={}),
+           ], id='selector-div', style={'width': '200px'}),
         
         dcc.Loading([
             html.Div(
                 [dcc.Loading(dcc.Dropdown(id='pos-select'), id='pos-wrapper')],
-                id='pos-div',
-                style={'width': '200px', 'margin': '20px'}),
-            ], id='selectors-wrapper')
-    ], width=4, style={'border-right': '2px solid black'}),
+                id='pos-div'),
+            ], id='selectors-wrapper', style={'width': '200px', 'margin': '20px'})
+    ], width=4, style={'border-right': '1px solid gray'}),
 
     dbc.Col([
         html.Div([
@@ -252,4 +243,4 @@ layout = dbc.Row([
             )
         ])
     ], width="auto")
-])
+]), fluid=True)
