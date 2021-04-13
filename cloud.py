@@ -126,6 +126,8 @@ class DatavisStorage:
             # we want to make as few requests to AWS as possible, so it is
             # better to list ALL the objects and filter to find the ones we 
             # want. I think!
+            # Note that we have set the MaxKeys parameter to 5000, which is hopefully enough.
+            # But in the future we want to use a Paginator in S3Connect to avoid this possibility.
             f_all, _ = self.client.grab_bucket(
                 self.bucket_name,
                 delimiter=delimiter,
@@ -140,13 +142,15 @@ class DatavisStorage:
             channels = []
             downloaded = []
 
-            img_pat = safe_join(delimiter, [folder, self.config['img_pattern']])
-            csv_pat = safe_join(delimiter, [folder, self.config['csv_pattern']])
+            patterns = [safe_join(delimiter, [folder, self.config[p]])
+                        for p in ['img_pattern',
+                                  'csv_pattern',
+                                  'onoff_intensity_pattern',
+                                  'onoff_sorted_pattern']
+                        ]
 
             for f in f_all:
-
-                if (fnmatch(f, img_pat)
-                        or fnmatch(f, csv_pat)):
+                if any([fnmatch(f, pat) for pat in patterns]):
                     rel_files.append(f)
                     basenames.append(os.path.basename(f))
 
@@ -192,12 +196,21 @@ class DatavisStorage:
                 [root_dir, self.config['pcd_name']]
             )
 
+            onoff_int_file = grp.query(
+                'basename == "{}"'.format(self.config['onoff_intensity_name'])
+            )['file'].values[0]
+            onoff_sorted_file = grp.query(
+                'basename == "{}"'.format(self.config['onoff_sorted_name'])
+            )['file'].values[0]
+
             self.datasets[name][pos] = {
                 'rootdir': root_dir,
                 'meshfile': mesh,
                 'meshexists': os.path.isfile(mesh),
                 'pcdfile': pcd,
-                'pcdexists': os.path.isfile(pcd)
+                'pcdexists': os.path.isfile(pcd),
+                'onoff_int_file': self.localpath(onoff_int_file),
+                'onoff_sorted_file': self.localpath(onoff_sorted_file)
             }
 
         json.dump(

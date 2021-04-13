@@ -12,6 +12,12 @@ channel_prefix: Channel_
 img_pattern: "MMStack_Pos*/Segmentation/*.tif"
 csv_pattern: "MMStack_Pos*/Segmentation/Channel_*/*.csv"
 
+onoff_intensity_pattern: "MMStack_Pos*/False_Positive_Rate_Analysis/Channel_*/*.png"
+onoff_sorted_pattern: "MMStack_Pos*/On_Off_Barcode_Plot/Channel_*/*.png"
+
+onoff_intensity_name: "On-Off-Barcode-Intensity-Analysis.png"
+onoff_sorted_name: "On_Off_Sorted_Barcode_Plot.png"
+
 img_name: labeled_img.tif
 csv_name: gene_locations_assigned_to_cell.csv
 cell_csv_name: cell_info.csv

@@ -9,7 +9,7 @@ from dash.dependencies import Input, Output, State
 from dash.exceptions import PreventUpdate
 
 from app import app, config, s3_client
-from util import populate_mesh
+from util import populate_mesh, base64_image
 from cloud import DatavisStorage
 
 
@@ -171,6 +171,30 @@ def update_figure(selected_genes,):
 
 
 @app.callback(
+    Output('analytics-wrapper', 'children'),
+    Input('pos-select', 'value'),
+    prevent_initial_call=True
+)
+def populate_analytics(pos):
+    if data_manager.active_position_name != pos:
+        active = data_manager.select_position(pos)
+    else:
+        active = data_manager.active_position
+
+    file1 = active.get('onoff_int_file', None)
+    data1 = base64_image(file1)
+    file2 = active.get('onoff_sorted_file', None)
+    data2 = base64_image(file2)
+    print(f'file1: {file1}, data2: {file1}')
+
+    print(f'data1: {data1[:50]}, data2: {data2[:50]}')
+
+    return [html.Img(src=data1, style={'max-width': '100%'}),
+            html.Hr(),
+            html.Img(src=data2, style={'max-width': '100%'})
+        ]
+
+@app.callback(
     Output('gene-wrapper', 'children'),
     Input('pos-select', 'value')
 )
@@ -207,31 +231,43 @@ def select_data(folder):
             options=[{'label': i, 'value': i} for i in positions],
             value=positions[0],
             placeholder='Select position',
+            clearable=False,
             style={'width': '200px', 'margin': '20px'}),
-        html.Div([dcc.Loading(dcc.Dropdown(id='gene-select'), id='gene-wrapper')],
-            id='gene-div', 
-            style={'width': '200px', 'margin': '20px'})
+
+            html.Div([dcc.Loading(dcc.Dropdown(id='gene-select'), id='gene-wrapper')],
+                id='gene-div',
+                style={'width': '200px', 'margin': '20px'})
     ]
-    
-    
+
 ######## Layout ########
 
 layout = dbc.Container(dbc.Row([
     dbc.Col([
         html.Div([
+            html.H2('Data selection'),
+            html.Hr(),
             dcc.Dropdown(
                 id='data-select',
                 options=[{'label': i, 'value': i} for i in data_manager.datasets.keys()],
                 placeholder='Select a data folder',
-                style={'width': '200px', 'margin': 'auto'}
+                style={'width': '200px'}
             ),
-           ], id='selector-div', style={'width': '200px'}),
+           ], id='selector-div'),
         
         dcc.Loading([
             html.Div(
                 [dcc.Loading(dcc.Dropdown(id='pos-select'), id='pos-wrapper')],
                 id='pos-div'),
-            ], id='selectors-wrapper', style={'width': '200px', 'margin': '20px'})
+            ], id='selectors-wrapper', style={'width': '200px', 'margin': '20px'}),
+
+        html.Div([
+            html.H2('Analytics'),
+            html.Hr(),
+            dcc.Loading([
+
+            ], id='analytics-wrapper')
+        ])
+
     ], width=4, style={'border-right': '1px solid gray'}),
 
     dbc.Col([

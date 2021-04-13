@@ -8,6 +8,7 @@ import yaml
 import json
 import re
 import os
+import base64
 from matplotlib.pyplot import get_cmap
 
 
@@ -296,3 +297,17 @@ def safe_join(delim, strs):
 
     joined = delim.join(strs)
     return re.sub(re.escape(delim) + '+', delim, joined).lstrip(delim)
+
+def base64_image(filename, with_header=True):
+    if filename is not None:
+        data = base64.b64encode(open(filename, 'rb').read()).decode()
+        print(f'BASE64_IMAGE: filename {filename}, len data {len(data)}')
+    else:
+        data = ''
+
+    if with_header:
+        prefix = 'data:image/png;base64,'
+    else:
+        prefix = ''
+
+    return prefix + data
