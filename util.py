@@ -6,7 +6,7 @@ import pandas as pd
 import json
 import re
 import os
-from pathlib import Path
+from pathlib import Path, PurePath
 import base64
 from matplotlib.pyplot import get_cmap
 
@@ -185,8 +185,12 @@ def mesh_from_json(jsonfile):
     """
     if isinstance(jsonfile, str):
         cell_mesh = json.load(open(jsonfile))
+    elif isinstance(jsonfile, PurePath):
+        cell_mesh = json.load(open(str(jsonfile)))
     elif isinstance(jsonfile, dict):
         cell_mesh = jsonfile
+    else:
+        raise TypeError('mesh_from_json requires a string, Path, or dict.')
 
     assert 'verts' in cell_mesh.keys(), f'Key "verts" not found in file {jsonfile}'
     assert 'faces' in cell_mesh.keys(), f'Key "faces" not found in file {jsonfile}'
@@ -316,6 +320,7 @@ def safe_join(delim,
         subbed = subbed.rstrip(delim)
 
     return subbed
+
 
 def base64_image(filename, with_header=True):
     if filename is not None:
