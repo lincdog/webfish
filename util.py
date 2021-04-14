@@ -1,13 +1,12 @@
 import tifffile as tif
 import skimage.measure as skim
-import skimage.feature as skif
 import skimage.transform as skit
 import numpy as np
 import pandas as pd
-import yaml
 import json
 import re
 import os
+from pathlib import Path
 import base64
 from matplotlib.pyplot import get_cmap
 
@@ -287,16 +286,36 @@ def populate_files(
     return sorted(result, key=lambda n: n[1])
 
 
-def safe_join(delim, strs):
+def safe_join(delim,
+              strs,
+              leading=False,
+              trailing=False
+              ):
     """
     safe_join
     ---------
     Joins strs by delim, collapsing any repeats of delim to a single
-    delim. Also removes any leading delim.
+    delim. If leading or trailing is False, also removes any leading
+    or trailing (respectively) instances of delim. Otherwise will leave
+    up to 1 instance of delim at the start or end.
     """
 
     joined = delim.join(strs)
-    return re.sub(delim + '+', delim, joined).lstrip(delim)
+
+    if len(delim) > 0:
+        pat = re.escape(delim) + '+'
+    else:
+        return joined
+
+    subbed = re.sub(pat, delim, joined)
+
+    if not leading:
+        subbed = subbed.lstrip(delim)
+
+    if not trailing:
+        subbed = subbed.rstrip(delim)
+
+    return subbed
 
 def base64_image(filename, with_header=True):
     if filename is not None:
@@ -310,3 +329,4 @@ def base64_image(filename, with_header=True):
         prefix = ''
 
     return prefix + data
+

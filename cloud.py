@@ -3,18 +3,14 @@ import pandas as pd
 import boto3
 import botocore.exceptions as boto3_exc
 import json
-import yaml
 import os
 import re
 from fnmatch import fnmatch
+from pathlib import Path, PurePath
 import configparser as cfparse
-from collections.abc import Iterable
 from collections import defaultdict
 from util import (
-    populate_files,
     populate_genes,
-    populate_mesh,
-    safe_join,
     mesh_from_json,
     gen_pcd_df,
     gen_mesh
@@ -38,10 +34,10 @@ class DatavisStorage:
         self.config = config
         self.client = s3_client
 
-        self.local_store = self.config.get('local_store', 'webfish_data/')
+        self.local_store = Path(self.config.get('local_store', 'webfish_data/'))
 
-        if not os.path.isdir(self.local_store):
-            os.makedirs(self.local_store)
+        if not self.local_store.is_dir():
+            self.local_store.mkdir(parents=True)
 
         if bucket_name is None:
             self.bucket_name = self.config['bucket_name']
@@ -82,15 +78,20 @@ class DatavisStorage:
             key,
             delimiter='/'
     ):
-        key = re.sub('^{0}?{1}{0}'.format(
-                delimiter,
-                self.local_store),
-            '', key)
+        """
+        localpath:
+        ---------
+        Takes an s3-style key with an optional custom delimiter (default '/',
+        just like Unix filesystem), and returns the local filename where that
+        object will be stored.
+        """
 
-        return safe_join(
-            os.path.sep,
-            [self.local_store, key.replace(delimiter, os.path.sep)]
-        )
+        key = PurePath(str(key).replace(delimiter, '/'))
+
+        if not key.is_relative_to(self.local_store):
+            key = self.local_store / key
+
+        return Path(key)
 
     def get_datasets(
             self,
@@ -113,8 +114,11 @@ class DatavisStorage:
             self.bucket_name,
             delimiter=delimiter,
             prefix=prefix,
-            recursive=False
+            recursive=False,
+            to_path=False
         )
+
+        print(f'possible_folders: {possible_folders}')
 
         datafiles = []
 
@@ -128,43 +132,49 @@ class DatavisStorage:
             # want. I think!
             # Note that we have set the MaxKeys parameter to 5000, which is hopefully enough.
             # But in the future we want to use a Paginator in S3Connect to avoid this possibility.
-            f_all, _ = self.client.grab_bucket(
+            k_all, _ = self.client.grab_bucket(
                 self.bucket_name,
                 delimiter=delimiter,
                 prefix=folder,
-                recursive=True
+                recursive=True,
+                to_path=False
             )
+            # we want to have two versions: the list of actual keys k_all,
+            # and the PurePath list f for efficient matching and translation
+            # to local filesystem conventions
+            f_all = [PurePath(k.replace(delimiter, '/')) for k in k_all]
 
-            # positions = populate_files(positions, config['position_prefix'])
             rel_files = []
             basenames = []
             positions = []
             channels = []
             downloaded = []
 
-            patterns = [safe_join(delimiter, [folder, self.config[p]])
+            patterns = [PurePath(folder, self.config[p])
                         for p in ['img_pattern',
                                   'csv_pattern',
                                   'onoff_intensity_pattern',
                                   'onoff_sorted_pattern']
                         ]
 
-            for f in f_all:
-                if any([fnmatch(f, pat) for pat in patterns]):
-                    rel_files.append(f)
-                    basenames.append(os.path.basename(f))
+            for k, f in zip(k_all, f_all):
+                if any([f.match(str(pat)) for pat in patterns]):
+                    # append the *key*, since that is what we download
+                    rel_files.append(k)
+                    # grab the filename from the PurePath
+                    basenames.append(f.name)
 
-                    m = pos_re.search(f)
+                    m = pos_re.search(k)
                     positions.append(m.group(1))
 
-                    m = chan_re.search(f)
+                    m = chan_re.search(k)
                     if m is not None:
                         channels.append(m.group(1))
                     else:
                         channels.append(-1)
 
                     key2file = self.localpath(f, delimiter=delimiter)
-                    downloaded.append(os.path.exists(key2file))
+                    downloaded.append(key2file.is_file())
 
             datafiles.append(pd.DataFrame({
                 'dataset': folder,
@@ -186,15 +196,8 @@ class DatavisStorage:
         for (name, pos), grp in self.datafiles.groupby(['dataset', 'position']):
             root_dir = os.path.commonpath(list(grp['file'].values))
 
-            mesh = safe_join(
-                os.path.sep,
-                [root_dir, self.config['mesh_name']]
-            )
-
-            pcd = safe_join(
-                os.path.sep,
-                [root_dir, self.config['pcd_name']]
-            )
+            mesh = Path(root_dir, self.config['mesh_name'])
+            pcd = Path(root_dir, self.config['pcd_name'])
 
             onoff_int_file = grp.query(
                 'basename == "{}"'.format(self.config['onoff_intensity_name'])
@@ -206,16 +209,18 @@ class DatavisStorage:
             self.datasets[name][pos] = {
                 'rootdir': root_dir,
                 'meshfile': mesh,
-                'meshexists': os.path.isfile(mesh),
+                'meshexists': mesh.is_file(),
                 'pcdfile': pcd,
-                'pcdexists': os.path.isfile(pcd),
+                'pcdexists': pcd.is_file(),
                 'onoff_int_file': self.localpath(onoff_int_file),
                 'onoff_sorted_file': self.localpath(onoff_sorted_file)
             }
 
         json.dump(
             self.datasets,
-            open(os.path.join(self.local_store, 'wf_datasets.json'), 'w'))
+            open(self.localpath('wf_datasets.json'), 'w'),
+            default=str
+        )
 
     def select_dataset(
             self,
@@ -241,10 +246,10 @@ class DatavisStorage:
             'downloaded == False'
         )['file'].values
 
-        for f in needed_files:
+        for k in needed_files:
             errors = self.client.download_s3_objects(
                 self.bucket_name,
-                f,
+                k,
                 local_dir=self.local_store
             )
 
@@ -300,9 +305,6 @@ class DatavisStorage:
 
             pcds_combined = pd.concat(pcds)
             del pcds
-
-            print(self.active_position['pcdfile'])
-            print(self.localpath(self.active_position['pcdfile']))
 
             pcds_processed = gen_pcd_df(
                 pcds_combined,
@@ -364,7 +366,8 @@ class DatavisStorage:
         if updated:
             json.dump(
                 self.datasets,
-                open(self.localpath('wf_datasets.json'), 'w')
+                open(self.localpath('wf_datasets.json'), 'w'),
+                default=str
             )
 
         return {
@@ -452,7 +455,8 @@ class S3Connect:
             bucket_name,
             delimiter='/',
             prefix='',
-            recursive=False
+            recursive=False,
+            to_path=True
     ):
         """
         grab_bucket
@@ -464,7 +468,8 @@ class S3Connect:
         If this is exceeded the "IsTruncated" field will be True in the output.
 
         Returns: bucket object and alphabetically-sorted list of unique top-level
-        folders from the bucket.
+        folders from the bucket. If to_path is True, we return lists of pathlib.PurePath
+        objects, replacing delimiter with the standard '/'.
         """
 
         if prefix != '' and not prefix.endswith(delimiter):
@@ -491,6 +496,10 @@ class S3Connect:
         if 'CommonPrefixes' in objects.keys():
             folders = sorted([p['Prefix'] for p in objects['CommonPrefixes']])
 
+        if to_path:
+            files = [PurePath(f) for f in files]
+            folders = [PurePath(f) for f in folders]
+
         return files, folders
 
     def download_s3_objects(
@@ -509,6 +518,7 @@ class S3Connect:
         * If s3_key is a "folder" (a CommonPrefix), download *only files* within
           it - i.e. not further prefixes (folders), *unless* recursive = True.
         """
+        local_dir = Path(local_dir)
 
         bucket = self.s3.Bucket(bucket_name)
 
@@ -516,7 +526,8 @@ class S3Connect:
             bucket_name,
             delimiter=delimiter,
             prefix=s3_key,
-            recursive=recursive
+            recursive=recursive,
+            to_path=False
         )
 
         if len(files) + len(folders) == 0:
@@ -536,21 +547,22 @@ class S3Connect:
 
         for obj in objects:
 
-            if local_dir is None:
-                target = obj
-            else:
-                target = os.path.join(local_dir, obj)
+            f = PurePath(obj.replace(delimiter, '/'))
 
-            if not os.path.exists(os.path.dirname(target)):
-                os.makedirs(os.path.dirname(target))
+            if local_dir is None:
+                target = f
+            else:
+                target = Path(local_dir) / f
+
+            if not target.parent.is_dir():
+                target.parent.mkdir(parents=True)
 
             if obj.endswith('/'):
                 continue
             try:
                 bucket.download_file(
-                    # bucket_name,
                     obj,
-                    target
+                    str(target)
                 )
             except boto3_exc.ClientError as error:
                 errors.append({'key': obj, 'error': error})
