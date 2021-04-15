@@ -290,38 +290,6 @@ def populate_files(
     return sorted(result, key=lambda n: n[1])
 
 
-def safe_join(delim,
-              strs,
-              leading=False,
-              trailing=False
-              ):
-    """
-    safe_join
-    ---------
-    Joins strs by delim, collapsing any repeats of delim to a single
-    delim. If leading or trailing is False, also removes any leading
-    or trailing (respectively) instances of delim. Otherwise will leave
-    up to 1 instance of delim at the start or end.
-    """
-
-    joined = delim.join(strs)
-
-    if len(delim) > 0:
-        pat = re.escape(delim) + '+'
-    else:
-        return joined
-
-    subbed = re.sub(pat, delim, joined)
-
-    if not leading:
-        subbed = subbed.lstrip(delim)
-
-    if not trailing:
-        subbed = subbed.rstrip(delim)
-
-    return subbed
-
-
 def base64_image(filename, with_header=True):
     if filename is not None:
         data = base64.b64encode(open(filename, 'rb').read()).decode()

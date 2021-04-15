@@ -1,0 +1,7 @@
+.git
+.idea
+.ipynb_checkpoints
+*.jupyterlab-workspace
+ec2
+env.yaml
+*__pycache__
