@@ -1,7 +1,8 @@
 .git
 .idea
-.ipynb_checkpoints
+**/.ipynb_checkpoints
 *.jupyterlab-workspace
 ec2
 env.yaml
-*__pycache__
+**/__pycache__
+webfish_data
