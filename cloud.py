@@ -5,7 +5,7 @@ import botocore.exceptions as boto3_exc
 import json
 import os
 import re
-from fnmatch import fnmatch
+from time import sleep
 from pathlib import Path, PurePath
 import configparser as cfparse
 from collections import defaultdict
@@ -411,18 +411,25 @@ class S3Connect:
             key_id=None,
             secret_key=None,
             endpoint_url=None,
-            region_name=None
+            region_name=None,
+            wait_for_creds=True,
+            sleep_time=1,
+            wait_timeout=90
     ):
+        def try_creds_file(file, wait_for_creds):
+            cf = cfparse.ConfigParser()
+            result = cf.read(file)
 
-        if key_id is None or secret_key is None:
+            if len(result) == 0:
+                if wait_for_creds:
+                    return False, None, None
+                else:
+                     raise FileNotFoundError(
+                         f'S3Connect: unable to read credentials file'
+                         f' {file} and not waiting for it.'
+                     )
+
             try:
-                # Find the name of the credential file from the environment
-                cred_file = os.environ.get(config['credentials'],
-                                           os.path.expanduser('~/.aws/credentials'))
-
-                cf = cfparse.ConfigParser()
-                cf.read(cred_file)
-
                 # Find the desired profile section
                 profile_name = config.get('cred_profile_name', 'default')
                 csec = cf[profile_name]
@@ -434,6 +441,39 @@ class S3Connect:
             except KeyError:
                 key_id = None
                 secret_key = None
+
+            return True, key_id, secret_key
+
+        if key_id is None or secret_key is None:
+            cred_file = os.environ.get(
+                config['credentials'],
+                os.path.expanduser('~/.aws/credentials'))
+
+            success, key_id, secret_key = False, None, None
+
+            time_slept = 0
+
+            while success is False:
+                success, key_id, secret_key = try_creds_file(cred_file, wait_for_creds)
+
+                if success is True:
+                    break
+                else:
+                    # If wait_for_creds == False and we *didn't* find the file.
+                    # try_creds_file will raise an exception. So we only get here
+                    # if wait_for_creds == True
+                    print(f'S3Connect: waiting for credentials file {cred_file}')
+                    sleep(sleep_time)
+                    time_slept += sleep_time
+
+                if time_slept > wait_timeout:
+                    raise FileNotFoundError(
+                        f'S3Connect: no file {cred_file} found '
+                        f'within {wait_timeout} seconds'
+                    )
+
+
+
 
         if endpoint_url is None:
             endpoint_url = config.get('endpoint_url', None)
