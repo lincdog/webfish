@@ -6,6 +6,7 @@ import pandas as pd
 import json
 import re
 import os
+import string
 from pathlib import Path, PurePath
 import base64
 from matplotlib.pyplot import get_cmap
@@ -303,3 +304,83 @@ def base64_image(filename, with_header=True):
 
     return prefix + data
 
+
+def fmt2regex(fmt):
+    """
+    fmt2regex:
+    convert a curly-brace format string with named fields
+    into a regex that captures those fields as named groups,
+
+    Returns:
+    * reg: compiled regular expression to capture format fields as named groups
+    * globstr: equivalent glob string (with * wildcards for each field) that can
+        be used to find potential files that will be analyzed with reg.
+    """
+    sf = string.Formatter()
+
+    regex = ['^']
+    globstr = []
+    keys = set()
+
+    numkey = 0
+
+    for a in sf.parse(fmt):
+        r = re.escape(a[0])
+
+        globstr.append(a[0])
+
+        if a[1] is not None:
+            k = re.escape(a[1])
+
+            if len(k) == 0:
+                k = f'k{numkey}'
+                numkey += 1
+
+            if k in keys:
+                r = r + f'(?P={k})'
+            else:
+                r = r + f'(?P<{k}>.+)'
+
+            keys.add(k)
+
+
+        regex.append(r)
+
+    reg = re.compile(''.join(regex))
+    globstr = '*'.join(globstr)
+
+    return reg, globstr
+
+def findAllMatchingFiles(base, fmt):
+    """
+    findAllMatchingFiles: Starting within a base directory,
+    find all files that match format `fmt` with named fields.
+
+    Returns:
+    * files: list of filenames, including `base`, that match fmt
+    * keys: Dict of lists, where the keys are each named key from fmt,
+        and the lists contain the value for each field of each file in `files`,
+        in the same order as `files`.
+    """
+
+    reg, globstr = fmt2regex(fmt)
+
+    base = Path(base)
+
+    files = []
+    keys = {}
+
+    for f in base.glob(globstr):
+
+        m = reg.match(str(f.relative_to(base)))
+
+        if m:
+            files.append(f)
+
+            for k, v in m.groupdict().items():
+                if k not in keys.keys():
+                    keys[k] = []
+
+                keys[k].append(v)
+
+    return files, keys

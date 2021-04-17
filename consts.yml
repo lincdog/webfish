@@ -1,3 +1,5 @@
+theme: COSMO
+
 credentials: WEBFISH_CREDS
 cred_profile_name: ec2-read
 endpoint_url: "https://s3.us-west-1.wasabisys.com"
@@ -9,20 +11,22 @@ local_store: webfish_data/
 position_prefix: MMStack_Pos
 channel_prefix: Channel_
 
-img_pattern: "MMStack_Pos*/Segmentation/*.tif"
-csv_pattern: "MMStack_Pos*/Segmentation/Channel_*/*.csv"
+variables: ["user", "dataset", "position", "channel"]
 
-onoff_intensity_pattern: "MMStack_Pos*/False_Positive_Rate_Analysis/Channel_*/*.png"
-onoff_sorted_pattern: "MMStack_Pos*/On_Off_Barcode_Plot/Channel_*/*.png"
+dataset_root: "{user}/{dataset}/"
 
-onoff_intensity_name: "On-Off-Barcode-Intensity-Analysis.png"
-onoff_sorted_name: "On_Off_Sorted_Barcode_Plot.png"
+source_files:
+  segmentation: "MMStack_Pos{position}/Segmentation/labeled_img.tif"
+  dots_csv:
+    "MMStack_Pos{position}/Segmentation/Channel_{channel}/gene_locations_assigned_to_cell.csv"
+  cell_info:
+    "MMStack_Pos{position}/Segmentation/Channel_{channel}/cell_info.csv"
+  onoff_intensity_plot:
+    "MMStack_Pos{position}/False_Positive_Rate_Analysis/Channel_{channel}/On-Off-Barcode-Intensity-Analysis.png"
+  onoff_sorted_plot:
+    "MMStack_Pos{position}/On_Off_Barcode_Plot/Channel_{channel}/On_Off_Sorted_Barcode_Plot.png"
 
-img_name: labeled_img.tif
-csv_name: gene_locations_assigned_to_cell.csv
-cell_csv_name: cell_info.csv
+output_files:
+  mesh: "MMStack_Pos{position}/labeled_mesh.json"
+  dots: "MMStack_Pos{position}/dots_um_with_colors.csv"
 
-mesh_name: labeled_mesh.json
-pcd_name: dots_um_with_colors.csv
-
-theme: COSMO

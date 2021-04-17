@@ -29,7 +29,7 @@ class Webfish:
         self.ip = ip
         self.keyfile = keyfile
         self.credfile = credfile
-        self.webfish_process = ''
+        self.webfish_processes = ''
         
     def prepare_webfish(
         self
@@ -130,13 +130,16 @@ class EasyEC2:
         self,
         num_instances,
         launch_template=None,
-        user_data=None
+        user_data=None,
+        user_data_file=None
     ):
         if launch_template is None:
             launch_template = self.default_launch_template
         
-        if os.path.isfile(user_data):
-            user_data = open(user_data, 'r').read()
+        if bool(user_data) is False:
+            if bool(user_data_file) is True \
+             and os.path.isfile(user_data_file):
+                user_data = open(user_data_file, 'r').read()
             
             if 4*ceil(len(user_data)/3) > 2**14: # base64 limited to 16KB
                 raise ValueError(f'File {user_data} would be larger than the'

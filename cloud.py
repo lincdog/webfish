@@ -13,37 +13,23 @@ from util import (
     populate_genes,
     mesh_from_json,
     gen_pcd_df,
-    gen_mesh
+    gen_mesh,
+    fmt2regex,
+    findAllMatchingFiles
 )
 
 
-class DatavisStorage:
+class DatavisClient:
     """
-    DatavisStorage
-    --------------
-    Class that serves mesh and dots files to the datavis sub-app. Pulls from
-    S3 storage if necessary and performs processing. 
+    DatavisClient
+    -------------
+    Client-side class that keeps track of active dataset, position, and other information
+    for a single session of the Datavis subapp.
     """
 
     def __init__(
-            self,
-            config,
-            s3_client,
-            bucket_name=None
+        self,
     ):
-        self.config = config
-        self.client = s3_client
-
-        self.local_store = Path(self.config.get('local_store', 'webfish_data/'))
-
-        if not self.local_store.is_dir():
-            self.local_store.mkdir(parents=True)
-
-        if bucket_name is None:
-            self.bucket_name = self.config['bucket_name']
-
-        self.datasets = None
-        self.datafiles = None
         self.active_datafiles = None
         self.active_dataset = None
         self.active_position = None
@@ -72,6 +58,59 @@ class DatavisStorage:
             'possible_genes': self.possible_genes,
             'selected_genes': self.selected_genes
         }
+
+    def request_dataset(
+        self,
+        name
+    ):
+        """
+        request_dataset
+        ---------------
+        Ask the manager for a given dataset.
+        """
+
+        if name == self.active_dataset_name:
+            return
+
+    def request_position(
+        self,
+        position
+    ):
+        pass
+
+class DatavisStorage:
+    """
+    DatavisStorage
+    --------------
+    Class that serves mesh and dots files to the datavis sub-app. Pulls from
+    S3 storage if necessary and performs processing. 
+    """
+
+    def __init__(
+        self,
+        config,
+        s3_client,
+        bucket_name=None
+    ):
+        self.config = config
+        self.client = s3_client
+
+        self.local_store = Path(self.config.get('local_store', 'webfish_data/'))
+
+        if not self.local_store.is_dir():
+            self.local_store.mkdir(parents=True)
+
+        if bucket_name is None:
+            self.bucket_name = self.config['bucket_name']
+
+        self.datasets = None
+        self.datafiles = None
+
+        self.dataset_root = config.get('dataset_root', '')
+        # How many levels do we have to fetch to reach the datasets?
+        self.dataset_nest = len(self.dataset_root.strip('/').split('/'))
+        self.source_files = config['source_files']
+        self.output_files = config['output_files']
 
     def localpath(
             self,
@@ -110,6 +149,10 @@ class DatavisStorage:
         TODO: First check for the CSVs that list the status of downloaded files, before
         trying to download from S3.
         """
+
+        self.datasets = defaultdict(dict)
+
+
         _, possible_folders = self.client.grab_bucket(
             self.bucket_name,
             delimiter=delimiter,
@@ -541,6 +584,98 @@ class S3Connect:
             folders = [PurePath(f) for f in folders]
 
         return files, folders
+
+    def list_to_n_level(
+        self,
+        bucket_name,
+        prefix='',
+        level=0,
+        delimiter='/'
+    ):
+        """
+        list_to_n_level
+        ---------------
+        Finds subfolders up to level N from the s3 storage. Uses a brute-force
+        approach of just listing all the objects under prefix in the bucket, then
+        post-filtering them for the common prefixes with N occurrences of delimiter.
+
+        Because the API call has a limit to the number of keys it will return, and
+        if a bucket has many objects that are deeply nested, this method might become
+        inefficient, especially for shallow queries (i.e. listing millions of deeply
+        nested objects when we are going to only take the first two levels). Also
+        it will require the use of a paginator in grab_bucket to go through all those
+        keys.
+
+        But it is faster for smallish buckets like we have now compared to the below
+        recursive version, because the recursive version must make an API call for
+        every subfolder of every level.
+
+        Returns: list of prefixes up to level N
+        """
+        all_objects, _ = self.grab_bucket(
+            bucket_name,
+            prefix=prefix,
+            recursive=True,
+            to_path=False
+        )
+
+        level += 1
+
+        prefixes = [delimiter.join(obj.split(delimiter)[:level]) + delimiter
+                    for obj in all_objects if obj.count(delimiter) >= level]
+
+        return list(np.unique(prefixes))
+
+    def list_to_n_level_recursive(
+        self,
+        bucket_name,
+        prefix='',
+        level=0,
+        delimiter='/',
+    ):
+        """
+        list_to_n_level_recursive
+        -------------------------
+        Mimics searching N levels down into a directory tree but on
+        s3 keys. Note that level 0 is top level of the bucket, so level
+        1 is the subfolders of the top level folders, and so on.
+
+        This is recursive, which means it avoids listing **all** objects from
+        the root of the bucket, but it is significantly slower for smaller buckets
+        because of the need to call the S3 API for each subfolder of each level.
+
+        I think this may help it scale into buckets with many thousands or millions
+        of objects that are deeply nested, especially for shallow queries.
+        But the alternate version of this list_to_n_level() is faster for a small
+        bucket.
+        """
+        def recurse_levels(result,
+                           current_prefix,
+                           current_level=0,
+                           max_level=level
+                           ):
+            _, next_level = self.grab_bucket(
+                bucket_name,
+                delimiter=delimiter,
+                prefix=current_prefix,
+                recursive=False,
+                to_path=False
+            )
+
+            if len(next_level) == 0:
+                return
+
+            if current_level >= max_level:
+                result.extend(next_level)
+                return
+
+            for folder in next_level:
+                recurse_levels(result, folder, current_level+1, max_level)
+
+        tree = []
+        recurse_levels(tree, prefix, 0, level)
+
+        return tree
 
     def download_s3_objects(
             self,
