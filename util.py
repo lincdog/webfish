@@ -351,7 +351,8 @@ def fmt2regex(fmt):
 
     return reg, globstr
 
-def findAllMatchingFiles(base, fmt):
+
+def find_matching_files(base, fmt, paths=None):
     """
     findAllMatchingFiles: Starting within a base directory,
     find all files that match format `fmt` with named fields.
@@ -365,13 +366,15 @@ def findAllMatchingFiles(base, fmt):
 
     reg, globstr = fmt2regex(fmt)
 
-    base = Path(base)
+    base = PurePath(base)
 
     files = []
     keys = {}
 
-    for f in base.glob(globstr):
+    if paths is None:
+        paths = Path(base).glob(globstr)
 
+    for f in paths:
         m = reg.match(str(f.relative_to(base)))
 
         if m:
@@ -384,3 +387,17 @@ def findAllMatchingFiles(base, fmt):
                 keys[k].append(v)
 
     return files, keys
+
+
+def k2f(
+    k,
+    delimiter='/'
+):
+    return PurePath(str(k).replace(delimiter, os.sep))
+
+
+def f2k(
+    f,
+    delimiter='/'
+):
+    return str(f).replace(os.sep, delimiter)

@@ -13,7 +13,7 @@ channel_prefix: Channel_
 
 variables: ["user", "dataset", "position", "channel"]
 
-dataset_root: "{user}/{dataset}/"
+dataset_root: "{dataset}/"
 
 source_files:
   segmentation: "MMStack_Pos{position}/Segmentation/labeled_img.tif"

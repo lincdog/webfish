@@ -15,7 +15,9 @@ from util import (
     gen_pcd_df,
     gen_mesh,
     fmt2regex,
-    findAllMatchingFiles
+    find_matching_files,
+    k2f,
+    f2k
 )
 
 
@@ -78,6 +80,7 @@ class DatavisClient:
     ):
         pass
 
+
 class DatavisStorage:
     """
     DatavisStorage
@@ -108,24 +111,29 @@ class DatavisStorage:
 
         self.dataset_root = config.get('dataset_root', '')
         # How many levels do we have to fetch to reach the datasets?
-        self.dataset_nest = len(self.dataset_root.strip('/').split('/'))
+        self.dataset_nest = self.dataset_root.strip('/').split('/').count('/')
         self.source_files = config['source_files']
         self.output_files = config['output_files']
 
-    def localpath(
-            self,
-            key,
-            delimiter='/'
+        self.source_patterns = {k: p for k, p in self.source_files.items()}
+        self.output_patterns = {k: p for k, p in self.output_files.items()}
+        self.file_fields = list(self.source_files.keys()) + \
+                           list(self.output_files.keys())
+
+    def local(
+        self,
+        key,
+        delimiter='/'
     ):
         """
-        localpath:
+        local:
         ---------
         Takes an s3-style key with an optional custom delimiter (default '/',
         just like Unix filesystem), and returns the local filename where that
         object will be stored.
         """
 
-        key = PurePath(str(key).replace(delimiter, '/'))
+        key = k2f(key, delimiter)
 
         if not key.is_relative_to(self.local_store):
             key = self.local_store / key
@@ -152,21 +160,19 @@ class DatavisStorage:
 
         self.datasets = defaultdict(dict)
 
-
-        _, possible_folders = self.client.grab_bucket(
+        # TODO: In the future, the possible users/datasets/analyses will be
+        #   published by the HPC in a json or similar file and we won't have
+        #   to do this.
+        possible_folders = self.client.list_to_n_level_recursive(
             self.bucket_name,
             delimiter=delimiter,
             prefix=prefix,
-            recursive=False,
-            to_path=False
+            level=self.dataset_nest
         )
 
         print(f'possible_folders: {possible_folders}')
 
         datafiles = []
-
-        pos_re = re.compile(re.escape(self.config['position_prefix']) + '(\d+)')
-        chan_re = re.compile(re.escape(self.config['channel_prefix']) + '(\d+)')
 
         for folder in possible_folders:
 
@@ -187,107 +193,46 @@ class DatavisStorage:
             # to local filesystem conventions
             f_all = [PurePath(k.replace(delimiter, '/')) for k in k_all]
 
-            rel_files = []
-            basenames = []
-            positions = []
-            channels = []
-            downloaded = []
+            for k, p in self.source_patterns.items():
+                filenames, fields = find_matching_files(folder, p, paths=f_all)
 
-            patterns = [PurePath(folder, self.config[p])
-                        for p in ['img_pattern',
-                                  'csv_pattern',
-                                  'onoff_intensity_pattern',
-                                  'onoff_sorted_pattern']
-                        ]
+                n_matches = len(filenames)
 
-            for k, f in zip(k_all, f_all):
-                if any([f.match(str(pat)) for pat in patterns]):
-                    # append the *key*, since that is what we download
-                    rel_files.append(k)
-                    # grab the filename from the PurePath
-                    basenames.append(f.name)
+                fields['dataset'] = n_matches * [folder]
+                fields['filename'] = filenames
+                fields['field'] = n_matches * [k]
 
-                    m = pos_re.search(k)
-                    positions.append(m.group(1))
+                downloaded = [self.local(f).is_file() for f in filenames]
+                fields['downloaded'] = downloaded
 
-                    m = chan_re.search(k)
-                    if m is not None:
-                        channels.append(m.group(1))
-                    else:
-                        channels.append(-1)
-
-                    key2file = self.localpath(f, delimiter=delimiter)
-                    downloaded.append(key2file.is_file())
-
-            datafiles.append(pd.DataFrame({
-                'dataset': folder,
-                'downloaded': downloaded,
-                'file': rel_files,
-                'basename': basenames,
-                'position': positions,
-                'channel': channels
-            }))
+                datafiles.append(pd.DataFrame(fields))
 
         # one could imagine this table is stored on the cloud and updated every
         # time a dataset is added, then we just need to download it and check
         # our local files.
         self.datafiles = pd.concat(datafiles)
-        self.datafiles.to_csv(self.localpath('wf_datafiles.csv'), index=False)
+        self.datafiles.to_csv(self.local('wf_datafiles.csv'), index=False)
 
-        self.datasets = defaultdict(dict)
+        return self.datafiles
 
-        for (name, pos), grp in self.datafiles.groupby(['dataset', 'position']):
-            root_dir = os.path.commonpath(list(grp['file'].values))
-
-            mesh = Path(root_dir, self.config['mesh_name'])
-            pcd = Path(root_dir, self.config['pcd_name'])
-
-            onoff_int_file = grp.query(
-                'basename == "{}"'.format(self.config['onoff_intensity_name'])
-            )['file'].values[0]
-            onoff_sorted_file = grp.query(
-                'basename == "{}"'.format(self.config['onoff_sorted_name'])
-            )['file'].values[0]
-
-            self.datasets[name][pos] = {
-                'rootdir': root_dir,
-                'meshfile': mesh,
-                'meshexists': mesh.is_file(),
-                'pcdfile': pcd,
-                'pcdexists': pcd.is_file(),
-                'onoff_int_file': self.localpath(onoff_int_file),
-                'onoff_sorted_file': self.localpath(onoff_sorted_file)
-            }
-
-        json.dump(
-            self.datasets,
-            open(self.localpath('wf_datasets.json'), 'w'),
-            default=str
-        )
-
-    def select_dataset(
+    def request(
             self,
-            name,
+            request,
+            field=None
     ):
         """
-        select_dataset
+        request
         --------------
         
-        Prepares to load a dataset. Download all needed files if they are not
-        already present. **Always call this BEFORE select_position**
+        Requests output
         """
 
-        if self.datasets is None:
+        if self.datafiles is None:
             return None
 
-        self.active_dataset_name = name
-        print(f'getting dataset {name}')
-        self.active_dataset = self.datasets.get(name, None)
-        self.active_datafiles = self.datafiles.query('dataset == @name')
+        query = ' and '.join([f'{k} == {v}' for k, v in request.items()])
 
-        needed_files = self.active_datafiles.query(
-            'downloaded == False'
-        )['file'].values
+        needed_files = self.datafiles.query(query)
 
         for k in needed_files:
             errors = self.client.download_s3_objects(
@@ -339,7 +284,7 @@ class DatavisStorage:
             channels = []
 
             for _, row in channel_dots_files.iterrows():
-                pcd_single = pd.read_csv(self.localpath(row['file']))
+                pcd_single = pd.read_csv(self.local(row['file']))
                 channel = row['channel']
                 pcd_single['channel'] = channel
 
@@ -351,7 +296,7 @@ class DatavisStorage:
 
             pcds_processed = gen_pcd_df(
                 pcds_combined,
-                outfile=self.localpath(self.active_position['pcdfile'])
+                outfile=self.local(self.active_position['pcdfile'])
             )
 
             # update every copy of the active position...?
@@ -363,7 +308,7 @@ class DatavisStorage:
 
         else:
             pcds_processed = pd.read_csv(
-                self.localpath(self.active_position['pcdfile'])
+                self.local(self.active_position['pcdfile'])
             )
 
             channels = list(pcds_processed['channel'].unique())
@@ -375,7 +320,7 @@ class DatavisStorage:
             im = cur_pos_files.query(
                 'basename == "{}"'.format(self.config['img_name'])
             )['file'].values[0]
-            im = self.localpath(im)
+            im = self.local(im)
             print(f'im is {im}')
 
             # generate the mesh from the image
@@ -383,7 +328,7 @@ class DatavisStorage:
                 im,
                 separate_regions=False,
                 region_data=None,
-                outfile=self.localpath(self.active_position['meshfile'])
+                outfile=self.local(self.active_position['meshfile'])
             ))
 
             # update every copy of the active position...?
@@ -395,7 +340,7 @@ class DatavisStorage:
 
         else:
             # read the mesh in
-            mesh = mesh_from_json(self.localpath(self.active_position['meshfile']))
+            mesh = mesh_from_json(self.local(self.active_position['meshfile']))
 
         self.active_mesh = mesh
         self.active_dots = pcds_processed
@@ -409,7 +354,7 @@ class DatavisStorage:
         if updated:
             json.dump(
                 self.datasets,
-                open(self.localpath('wf_datasets.json'), 'w'),
+                open(self.local('wf_datasets.json'), 'w'),
                 default=str
             )
 
@@ -514,9 +459,6 @@ class S3Connect:
                         f'S3Connect: no file {cred_file} found '
                         f'within {wait_timeout} seconds'
                     )
-
-
-
 
         if endpoint_url is None:
             endpoint_url = config.get('endpoint_url', None)
