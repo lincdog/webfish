@@ -389,6 +389,10 @@ def find_matching_files(base, fmt, paths=None):
     return files, keys
 
 
+def fmts2file(*fmts, fields={}):
+    fullpath = str(Path(*fmts))
+    return Path(fullpath.format(**fields))
+
 def k2f(
     k,
     delimiter='/'

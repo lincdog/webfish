@@ -26,7 +26,14 @@ source_files:
   onoff_sorted_plot:
     "MMStack_Pos{position}/On_Off_Barcode_Plot/Channel_{channel}/On_Off_Sorted_Barcode_Plot.png"
 
+#generator_class: "DatavisProcessing"
 output_files:
-  mesh: "MMStack_Pos{position}/labeled_mesh.json"
-  dots: "MMStack_Pos{position}/dots_um_with_colors.csv"
+  mesh:
+    pattern: "MMStack_Pos{position}/labeled_mesh.json"
+    requires: ["segmentation"]
+    generator: "generate_mesh"
+  dots:
+    pattern: "MMStack_Pos{position}/dots_um_with_colors.csv"
+    requires: ["dots_csv"]
+    generator: "generate_dots"
 

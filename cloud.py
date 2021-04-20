@@ -15,6 +15,7 @@ from util import (
     gen_pcd_df,
     gen_mesh,
     fmt2regex,
+    fmts2file,
     find_matching_files,
     k2f,
     f2k
@@ -81,6 +82,39 @@ class DatavisClient:
         pass
 
 
+class DatavisProcessing:
+    """
+    DatavisProcessing
+    -----------------
+    Namespace class used to get generating functions for datasets
+
+    FUNCTION TEMPLATE:
+    infiles: dictionary of field: local_filepath for required inputs
+    outfile: local file name at which to save the result
+
+    returns: result of the generation. Typically a dataframe or something.
+    """
+    @classmethod
+    def generate_mesh(
+        cls,
+        infiles,
+        outfile
+    ):
+        """
+        generate_mesh
+        ------------
+        """
+        pass
+
+    @classmethod
+    def generate_dots(
+        cls,
+        infiles,
+        outfile
+    ):
+        pass
+
+
 class DatavisStorage:
     """
     DatavisStorage
@@ -116,7 +150,10 @@ class DatavisStorage:
         self.output_files = config['output_files']
 
         self.source_patterns = {k: p for k, p in self.source_files.items()}
-        self.output_patterns = {k: p for k, p in self.output_files.items()}
+        self.output_patterns = {k: p['pattern'] for k, p in self.output_files.items()}
+        self.output_generators = {k: getattr(DatavisProcessing, g, None)
+                                  for k, g in self.output_files.items()}
+
         self.file_fields = list(self.source_files.keys()) + \
                            list(self.output_files.keys())
 
@@ -218,42 +255,114 @@ class DatavisStorage:
     def request(
             self,
             request,
-            field=None
+            fields=[]
     ):
         """
         request
         --------------
         
         Requests output
+        example: dataman.request({
+          'dataset': 'linus_data',
+          'position': '1'
+          }, fields='mesh')
         """
 
         if self.datafiles is None:
             return None
 
-        query = ' and '.join([f'{k} == {v}' for k, v in request.items()])
+        if isinstance(fields, str):
+            fields = [fields]
 
-        needed_files = self.datafiles.query(query)
+        # Query the datafiles index
+        query = ' and '.join([f'{k} == {v}'
+                              for k, v in request.items()
+                              if k in self.datafiles.columns])
 
-        for k in needed_files:
-            errors = self.client.download_s3_objects(
-                self.bucket_name,
-                k,
-                local_dir=self.local_store
-            )
+        query = 'downloaded is False ' + query
 
-            if len(errors) > 0:
-                raise FileNotFoundError(
-                    f'select_dataset: errors downloading keys:',
-                    errors
+        needed = self.datafiles.query(query)
+
+        results = {}
+
+        for field in fields:
+            if field in self.source_files.keys():
+                files = needed.query('field == @field')['filename'].values
+                results[field] = self.retrieve_or_download(files)
+            elif field in self.output_files.keys():
+                required_fields = self.output_files[field].get('requirements', [])
+                required_keys = needed.query(
+                    'field in @required_fields')['filename'].values
+                required_files = self.retrieve_or_download(
+                    required_keys, fields=required_fields)
+
+                # call the generating function with args required_files
+                generator = self.output_generators[field]
+
+                if generator is not None:
+                    # Set the results for this field as the output of calling
+                    # the appropriate generator function with input the dict
+                    # of local required files, and output the **populated format
+                    # string** supplied from config. Assumes that the request dict
+                    # is sufficient to populate this, INCLUDING the dataset root.
+                    # In other words, request should contain ALL the fields used
+                    # to specify a key or file completely: union of those in
+                    # config['dataset_root'] and in the output patterns.
+                    # Alternatively, we could use the commonpath from the needed
+                    # files.
+                    results[field] = generator(
+                        infiles=required_files,
+                        outfile=fmts2file(
+                            self.local(self.dataset_root),
+                            self.output_patterns[field],
+                            fields=request))
+
+            else:
+                raise ValueError(f'Request for invalid field {field}, valid'
+                                 f' options are {self.file_fields}')
+
+    def retrieve_or_download(
+        self,
+        keys,
+        fields=None,
+        delimiter='/'
+    ):
+        if isinstance(keys, Path) or isinstance(keys, str):
+            keys = [keys]
+
+        errors = []
+        localpaths = []
+
+        for f in keys:
+            lp = self.local(f)
+            if not lp.is_file():
+
+                error = self.client.download_s3_objects(
+                    self.bucket_name,
+                    f2k(f, delimiter=delimiter),
+                    local_dir=self.local_store
                 )
+
+                errors.append(error)
+
+            localpaths.append(lp)
+
+        if len(errors) > 0:
+            raise FileNotFoundError(
+                f'select_dataset: errors downloading keys:',
+                errors)
 
         # update file index with new downloads
         self.datafiles.loc[
-            np.isin(self.datafiles['file'], needed_files),
+            np.isin(self.datafiles['filename'], keys),
             'downloaded'
         ] = True
 
-        return self.active_dataset, self.active_datafiles
+        if fields is None:
+            return localpaths
+
+        if len(fields) == len(keys):
+            return {f: p for f, p in zip(fields, localpaths)}
 
     def select_position(
             self,
