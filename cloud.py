@@ -2,19 +2,14 @@ import numpy as np
 import pandas as pd
 import boto3
 import botocore.exceptions as boto3_exc
-import json
 import os
-import re
 from time import sleep
 from pathlib import Path, PurePath
 import configparser as cfparse
 from collections import defaultdict
 from util import (
-    populate_genes,
-    mesh_from_json,
     gen_pcd_df,
     gen_mesh,
-    fmt2regex,
     fmts2file,
     find_matching_files,
     k2f,
@@ -143,18 +138,20 @@ class DatavisProcessing:
         return outfile
 
 
-class DatavisStorage:
+class DataManager:
     """
-    DatavisStorage
+    DataManager
     --------------
-    Class that serves mesh and dots files to the datavis sub-app. Pulls from
-    S3 storage if necessary and performs processing. 
+    Class that serves files based on config values. Pulls from
+    S3 storage if necessary and performs processing using supplied "generator"
+    class.
     """
 
     def __init__(
         self,
         config,
         s3_client,
+        generator_class=None,
         bucket_name=None
     ):
         self.config = config
@@ -174,16 +171,23 @@ class DatavisStorage:
         self.dataset_root = config.get('dataset_root', '')
         # How many levels do we have to fetch to reach the datasets?
         self.dataset_nest = self.dataset_root.strip('/').split('/').count('/')
-        self.source_files = config['source_files']
-        self.output_files = config['output_files']
+        self.source_files = config.get('source_files')
+        self.output_files = config.get('output_files')
+        self.global_files = config.get('global_files')
+        self.file_fields = []
 
-        self.source_patterns = {k: p for k, p in self.source_files.items()}
-        self.output_patterns = {k: p['pattern'] for k, p in self.output_files.items()}
-        self.output_generators = {k: getattr(DatavisProcessing, g['generator'], None)
-                                  for k, g in self.output_files.items()}
+        if self.source_files:
+            self.source_patterns = {k: p for k, p in self.source_files.items()}
+            self.file_fields.extend(list(self.source_files.keys()))
 
-        self.file_fields = list(self.source_files.keys()) + \
-                           list(self.output_files.keys())
+        if self.output_files:
+            self.output_patterns = {k: p['pattern'] for k, p in self.output_files.items()}
+            self.output_generators = {k: getattr(generator_class, g.get('generator'), None)
+                                      for k, g in self.output_files.items()}
+            self.file_fields.extend(list(self.output_files.keys()))
+
+        if self.global_files:
+            self.file_fields.extend(list(self.global_files.keys()))
 
     def local(
         self,
@@ -237,6 +241,9 @@ class DatavisStorage:
 
         datafiles = []
 
+        if not self.source_files:
+            return pd.DataFrame(columns=['dataset', 'filename', 'field', 'downloaded'])
+
         for folder in possible_folders:
 
             # we want to make as few requests to AWS as possible, so it is
@@ -244,7 +251,7 @@ class DatavisStorage:
             # want. I think!
             # Note that we have set the MaxKeys parameter to 5000, which is hopefully enough.
             # But in the future we want to use a Paginator in S3Connect to avoid this possibility.
-            k_all, _ = self.client.grab_bucket(
+            k_all, _ = self.client.list_objects(
                 self.bucket_name,
                 delimiter=delimiter,
                 prefix=folder,
@@ -281,7 +288,8 @@ class DatavisStorage:
     def request(
             self,
             request,
-            fields=[]
+            fields=[],
+            force_download=False
     ):
         """
         request
@@ -295,19 +303,28 @@ class DatavisStorage:
 
           Returns: dict of form {field: filename}
         """
+        if isinstance(fields, str):
+            fields = [fields]
+
+        if all([field in self.global_files.keys() for field in fields]):
+            return {
+                field: self.retrieve_or_download(
+                    self.global_files[field], force_download=force_download)
+                for field in fields
+            }
 
         if self.datafiles is None:
             return None
 
-        if isinstance(fields, str):
-            fields = [fields]
+        if request:
+            # Query the datafiles index
+            query = ' and '.join([f'{k} == "{v}"'
+                                  for k, v in request.items()
+                                  if k in self.datafiles.columns])
 
-        # Query the datafiles index
-        query = ' and '.join([f'{k} == "{v}"'
-                              for k, v in request.items()
-                              if k in self.datafiles.columns])
-
-        needed = self.datafiles.query(query)
+            needed = self.datafiles.query(query)
+        else:
+            needed = self.datafiles
 
         if not fields:
             return needed
@@ -317,7 +334,10 @@ class DatavisStorage:
         for field in fields:
             if field in self.source_files.keys():
                 files = needed.query('field == @field')['filename'].values
-                results[field] = [ self.retrieve_or_download(f) for f in files ]
+                results[field] = [
+                    self.retrieve_or_download(f, force_download=force_download)
+                    for f in files
+                ]
             elif field in self.output_files.keys():
                 required_fields = self.output_files[field].get('requires', [])
                 required_rows = needed.query('field in @required_fields')
@@ -325,7 +345,8 @@ class DatavisStorage:
                 required_files = defaultdict(list)
                 for row in required_rows[['field', 'filename']].values:
                     required_files[row[0]].append(
-                        self.retrieve_or_download(row[1]))
+                        self.retrieve_or_download(row[1],
+                                                  force_download=force_download))
 
                 # call the generating function with args required_files
                 generator = self.output_generators[field]
@@ -366,13 +387,14 @@ class DatavisStorage:
         self,
         key,
         field=None,
-        delimiter='/'
+        delimiter='/',
+        force_download=False
     ):
         error = []
 
         lp = self.local(k2f(key, delimiter=delimiter))
 
-        if not lp.is_file():
+        if force_download or not lp.is_file():
             error = self.client.download_s3_objects(
                 self.bucket_name,
                 f2k(key, delimiter=delimiter),
@@ -499,7 +521,7 @@ class S3Connect:
         )
         self.client = self.s3.meta.client
 
-    def grab_bucket(
+    def list_objects(
             self,
             bucket_name,
             delimiter='/',
@@ -508,7 +530,7 @@ class S3Connect:
             to_path=True
     ):
         """
-        grab_bucket
+        list_objects
         -----------
         Takes an s3 client and a bucket name, fetches the bucket,
         and lists top-level folder-like keys in the bucket (keys that have a '/').
@@ -535,7 +557,7 @@ class S3Connect:
         )
 
         # should probably use a paginator ti handle this gracefully
-        assert not objects['IsTruncated'], 'grab_bucket: query had over 5000 keys, response was truncated...'
+        assert not objects['IsTruncated'], 'list_objects: query had over 5000 keys, response was truncated...'
 
         files = []
         folders = []
@@ -569,7 +591,7 @@ class S3Connect:
         if a bucket has many objects that are deeply nested, this method might become
         inefficient, especially for shallow queries (i.e. listing millions of deeply
         nested objects when we are going to only take the first two levels). Also
-        it will require the use of a paginator in grab_bucket to go through all those
+        it will require the use of a paginator in list_objects to go through all those
         keys.
 
         But it is faster for smallish buckets like we have now compared to the below
@@ -578,7 +600,7 @@ class S3Connect:
 
         Returns: list of prefixes up to level N
         """
-        all_objects, _ = self.grab_bucket(
+        all_objects, _ = self.list_objects(
             bucket_name,
             prefix=prefix,
             recursive=True,
@@ -620,7 +642,7 @@ class S3Connect:
                            current_level=0,
                            max_level=level
                            ):
-            _, next_level = self.grab_bucket(
+            _, next_level = self.list_objects(
                 bucket_name,
                 delimiter=delimiter,
                 prefix=current_prefix,
@@ -663,7 +685,7 @@ class S3Connect:
 
         bucket = self.s3.Bucket(bucket_name)
 
-        files, folders = self.grab_bucket(
+        files, folders = self.list_objects(
             bucket_name,
             delimiter=delimiter,
             prefix=s3_key,

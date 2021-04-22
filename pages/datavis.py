@@ -10,10 +10,12 @@ from dash.exceptions import PreventUpdate
 
 from app import app, config, s3_client
 from util import populate_mesh, base64_image, populate_genes, mesh_from_json
-from cloud import DatavisStorage
+from cloud import DataManager, DatavisProcessing
 
 
-data_manager = DatavisStorage(config=config, s3_client=s3_client)
+data_manager = DataManager(config=config['datavis'],
+                           s3_client=s3_client,
+                           generator_class=DatavisProcessing)
 datasets = data_manager.get_datasets()
 
 
@@ -118,7 +120,7 @@ def gen_figure(selected_genes, active):
     Input('gene-select', 'value'),
     State('data-select', 'value'),
     State('pos-select', 'value'),
-    prevent_initial_call=False
+    prevent_initial_call=True
 )
 def update_figure(selected_genes, dataset, pos):
     """
@@ -175,7 +177,8 @@ def populate_analytics(pos, dataset):
 @app.callback(
     Output('gene-wrapper', 'children'),
     Input('pos-select', 'value'),
-    State('data-select', 'value')
+    State('data-select', 'value'),
+    prevent_initial_call=True
 )
 def select_pos(pos, dataset):
     if not pos:
@@ -278,13 +281,13 @@ layout = dbc.Container(dbc.Row([
             ),
            ], id='selector-div'),
 
-        dcc.Loading([
+        html.Div([
             html.Div(
-                dcc.Loading(dcc.Dropdown(id='pos-select'),
+                dcc.Loading(dcc.Dropdown(id='pos-select', disabled=True),
                     id='pos-wrapper'),
                 id='pos-div'),
             html.Div(
-                dcc.Loading(dcc.Dropdown(id='gene-select'),
+                dcc.Loading(dcc.Dropdown(id='gene-select', disabled=True),
                     id='gene-wrapper'),
                 id='gene-div')
             ], id='selectors-wrapper', style={'width': '200px', 'margin': '20px'}),
