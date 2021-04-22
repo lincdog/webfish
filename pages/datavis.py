@@ -9,54 +9,24 @@ from dash.dependencies import Input, Output, State
 from dash.exceptions import PreventUpdate
 
 from app import app, config, s3_client
-from util import populate_mesh, base64_image
+from util import populate_mesh, base64_image, populate_genes, mesh_from_json
 from cloud import DatavisStorage
 
 
 data_manager = DatavisStorage(config=config, s3_client=s3_client)
-data_manager.get_datasets()
+datasets = data_manager.get_datasets()
 
 
-def _query_df(selected_genes, name):
-    """
-    _query_df:
-    memoizable function (though see note below) that filters the active
-    data dataframe for a given list of genes.
-    
-    returns: JSON representation (for caching) of filtered dot list
-    
-    Memoization note:
-      This needs to assume that ACTIVE_DATA['dots'] is populated
-      So we need to only call it in that case (see `gen_figure`)
-      Also, we supply it with ACTIVE_DATA['name'] for proper memoization,
-      as the cache is valid only for a specific combo of gene list + active dataset.
-    """
-    
-    assert data_manager.active_dots is not None, '`query_df` assumes ACTIVE_DATA is populated.'
-    
-    if 'All' in selected_genes:
-        dots_filt = data_manager.active_dots
-    elif selected_genes == ['None']:
-        dots_filt = data_manager.active_dots.query('gene == "NOT__A__GENE"')
-    else:
-        dots_filt = data_manager.active_dots.query('gene in @selected_genes')
-    
-    return dots_filt.to_json()
-
-
-def query_df(selected_genes):
+def query_df(df, selected_genes):
     """
     query_df:
-    memoization helper that feeds `_query_df` the gene list and dataset name,
-    and decodes from JSON into a DataFrame.
     
     returns: Filtered DataFrame
     """
-    return pd.read_json(_query_df(selected_genes, data_manager.active_dataset_name))
+    return df.query('gene in @selected_genes')
 
 
-#@cache.memoize()
-def gen_figure(selected_genes, name):
+def gen_figure(selected_genes, active):
     """
     gen_figure:
     Given a list of selected genes and a dataset, generates a Plotly figure with 
@@ -68,13 +38,19 @@ def gen_figure(selected_genes, name):
     
     Returns: plotly.graph_objects.Figure containing the selected data.
     """
-    
+
+    dots = active.get('dots')
+    mesh = active.get('mesh')
+
     figdata = []
     
     # If dots is populated, grab it.
     # Otherwise, set the coords to None to create an empty Scatter3d.
-    if data_manager.active_dots is not None:
-        dots_filt = query_df(selected_genes)
+    if dots is not None:
+
+        dots_df = pd.read_csv(dots)
+        dots_filt = query_df(dots_df, selected_genes).copy()
+        del dots_df
         
         pz, py, px = dots_filt[['z', 'y', 'x']].values.T
         
@@ -99,8 +75,9 @@ def gen_figure(selected_genes, name):
     
     # If the mesh is present, populate it.
     # Else, create an empty Mesh3d.
-    if data_manager.active_mesh is not None:
-        x, y, z, i, j, k = populate_mesh(data_manager.active_mesh)
+    if mesh is not None:
+
+        x, y, z, i, j, k = populate_mesh(mesh_from_json(mesh))
     
         figdata.append(
             go.Mesh3d(
@@ -127,7 +104,7 @@ def gen_figure(selected_genes, name):
     )
 
     fig = go.Figure(data=figdata, layout=figlayout)
-    
+
     return fig
 
 
@@ -135,71 +112,86 @@ def gen_figure(selected_genes, name):
 
 @app.callback(
     Output('graph-wrapper', 'children'),
-    [Input('gene-select', 'value')],
+    Input('wf-store', 'modified_timestamp'),
+    State('wf-store', 'data'),
     prevent_initial_call=False
 )
-def update_figure(selected_genes,):
+def update_figure(ts, store):
     """
     update_figure:
     Callback triggered by by selecting
     gene(s) to display. Calls `gen_figure` to populate the figure on the page.
     
     """
-    
-    #### NOTE may need to use Dash's callback context to determine
-    ## whether data-select or gene-select triggered this
-    
-    if (data_manager.active_dataset_name is not None 
-       and selected_genes == []):
+    selected_genes = store.get('datavis-selected-genes')
+    dataset = store.get('datavis-dataset')
+    position = store.get('datavis-position')
+
+    if not all((dataset, position)):
         raise PreventUpdate
-        
+
     if not isinstance(selected_genes, list):
         selected_genes = [selected_genes]
         
     if 'All' in selected_genes:
         selected_genes = ['All']
+
+    active = data_manager.request({
+        'dataset': store['datavis-dataset'],
+        'position': store['datavis-position']
+    }, fields=['mesh', 'dots'])
     
-    if 'None' in selected_genes and len(selected_genes) > 1:
-        selected_genes.remove('None')
-    
-    fig = gen_figure(selected_genes, data_manager.active_dataset_name)
-    
-    #end = datetime.now()
-    #print(f'returning from callback at {end} after {end-start}')
+    fig = gen_figure(selected_genes, active)
     
     return dcc.Graph(id='test-graph', figure=fig)
 
 
 @app.callback(
     Output('analytics-wrapper', 'children'),
-    Input('pos-select', 'value'),
+    Input('wf-store', 'modified_timestamp'),
+    State('wf-store', 'data'),
     prevent_initial_call=True
 )
-def populate_analytics(pos):
-    if data_manager.active_position_name != pos:
-        active = data_manager.select_position(pos)
-    else:
-        active = data_manager.active_position
+def populate_analytics(ts, store):
+    pos = store.get('datavis-position')
 
-    file1 = active.get('onoff_int_file', None)
-    data1 = base64_image(file1)
-    file2 = active.get('onoff_sorted_file', None)
-    data2 = base64_image(file2)
+    if not pos:
+        raise PreventUpdate
+
+    active = data_manager.request({
+        'dataset': store['datavis-dataset'],
+        'position': pos
+    }, fields=['onoff_intensity_plot', 'onoff_sorted_plot'])
+
+    data1 = base64_image(active['onoff_intensity_plot'])
+    data2 = base64_image(active['onoff_sorted_plot'])
 
     return [html.Img(src=data1, style={'max-width': '100%'}),
             html.Hr(),
             html.Img(src=data2, style={'max-width': '100%'})
         ]
 
+
 @app.callback(
     Output('gene-wrapper', 'children'),
-    Input('pos-select', 'value')
+    Input('wf-store', 'modified_timestamp'),
+    State('wf-store', 'data'),
 )
-def select_pos(pos):
-    #....
-    active = data_manager.select_position(pos)
+def select_pos(ts, store):
+    pos = store.get('datavis-position')
+
+    if not pos:
+        raise PreventUpdate
+
+    active = data_manager.request({
+        'dataset': store['datavis-dataset'],
+        'position': pos
+    }, fields=['dots'])
     # TODO: separate dropdowns for each channel?
-    all_genes = np.ravel(list(active['genes'].values()))
+
+    dots = pd.read_csv(active['dots'])
+
+    all_genes = populate_genes(dots)
     
     return [
         dcc.Dropdown(
@@ -210,18 +202,26 @@ def select_pos(pos):
         )
     ]
 
+
 @app.callback(
     Output('selectors-wrapper', 'children'),
-    [Input('data-select', 'value')]
+    Input('wf-store', 'modified_timestamp'),
+    State('wf-store', 'data')
 )
-def select_data(folder):
+def select_data(ts, store):
 
-    if folder is None:
-        return None
-    
-    dataset, _ = data_manager.select_dataset(folder)
-    positions = list(dataset.keys())
-    
+    folder = store.get('datavis-dataset')
+
+    if not folder:
+        raise PreventUpdate
+
+    print(folder)
+    print(f'dataset == "{folder}"')
+    rel_files = datasets.query(f'dataset == "{folder}"')
+
+    positions = sorted(rel_files['position'].unique())
+    print(rel_files)
+
     return [
         'Position select: ',
         dcc.Dropdown(
@@ -237,7 +237,37 @@ def select_data(folder):
                 style={'width': '200px',})
     ]
 
+
+@app.callback(
+    Output('wf-store', 'data'),
+    Input('data-select', 'value'),
+    Input('pos-select', 'value'),
+    Input('gene-select', 'value'),
+    State('wf-store', 'data')
+)
+def store_manager(folder, pos, selected_genes, store):
+    store = store or {'datavis-dataset': None,
+                      'datavis-position': None,
+                      'datavis-selected-genes': None
+                      }
+
+    print(f'store_manager called with store = {store}')
+    print(f'folder: {folder} pos: {pos} selected_genes: {selected_genes}')
+
+    if folder != store['datavis-dataset']:
+        store['datavis-dataset'] = folder
+
+    if pos != store['datavis-position']:
+        store['datavis-position'] = pos
+
+    if selected_genes != store['datavis-selected-genes']:
+        store['datavis-selected-genes'] = selected_genes
+
+    return store
+
+
 ######## Layout ########
+
 
 layout = dbc.Container(dbc.Row([
     dbc.Col([
@@ -247,7 +277,7 @@ layout = dbc.Container(dbc.Row([
             'Dataset select:',
             dcc.Dropdown(
                 id='data-select',
-                options=[{'label': i, 'value': i} for i in data_manager.datasets.keys()],
+                options=[{'label': i, 'value': i} for i in datasets['dataset'].unique()],
                 placeholder='Select a data folder',
                 style={'width': '200px'}
             ),
@@ -255,8 +285,13 @@ layout = dbc.Container(dbc.Row([
         
         dcc.Loading([
             html.Div(
-                [dcc.Loading(dcc.Dropdown(id='pos-select'), id='pos-wrapper')],
+                dcc.Loading(dcc.Dropdown(id='pos-select', value=None),
+                    id='pos-wrapper'),
                 id='pos-div'),
+            html.Div(
+                dcc.Loading(dcc.Dropdown(id='gene-select', value=None),
+                    id='gene-wrapper'),
+                id='gene-div')
             ], id='selectors-wrapper', style={'width': '200px', 'margin': '20px'}),
         html.Hr(),
 

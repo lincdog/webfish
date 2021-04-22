@@ -393,6 +393,7 @@ def fmts2file(*fmts, fields={}):
     fullpath = str(Path(*fmts))
     return Path(fullpath.format(**fields))
 
+
 def k2f(
     k,
     delimiter='/'

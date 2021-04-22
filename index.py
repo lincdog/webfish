@@ -9,6 +9,7 @@ from pages import datavis, dotdetection
 
 app.layout = html.Div(children=[
     dcc.Location(id='url', refresh=False),
+    dcc.Store(id='wf-store', storage_type='session', data={}),
     html.H1('webfish app'),
     dcc.Tabs(id='main-tabs', value='datavis', children=[
         dcc.Tab(label='Data Visualization', value='datavis'),

@@ -94,9 +94,8 @@ class DatavisProcessing:
 
     returns: result of the generation. Typically a dataframe or something.
     """
-    @classmethod
+    @staticmethod
     def generate_mesh(
-        cls,
         infiles,
         outfile
     ):
@@ -104,15 +103,44 @@ class DatavisProcessing:
         generate_mesh
         ------------
         """
-        pass
+        if Path(outfile).is_file():
+            return outfile
 
-    @classmethod
+        im = infiles['segmentation'][0] # this should be a length 1 list
+        # generate the mesh from the image
+        gen_mesh(
+            im,
+            separate_regions=False,
+            region_data=None,
+            outfile=outfile)
+
+        return outfile
+
+    @staticmethod
     def generate_dots(
-        cls,
         infiles,
         outfile
     ):
-        pass
+        # If the processed file already exists just return it
+        if Path(outfile).is_file():
+            return outfile
+
+        pcds = []
+
+        # FIXME: we are currently just assigning channel numbers by the
+        #   order that infiles['dots_csv'] has them, not actually from their
+        #   file path. We could match the regular expression on the file paths
+        #   to find the channel.
+        for i, csv in enumerate(infiles['dots_csv']):
+            pcd_single = pd.read_csv(csv)
+            pcds.append(pcd_single)
+
+        pcds_combined = pd.concat(pcds)
+        del pcds
+
+        gen_pcd_df(pcds_combined, outfile=outfile)
+
+        return outfile
 
 
 class DatavisStorage:
@@ -151,7 +179,7 @@ class DatavisStorage:
 
         self.source_patterns = {k: p for k, p in self.source_files.items()}
         self.output_patterns = {k: p['pattern'] for k, p in self.output_files.items()}
-        self.output_generators = {k: getattr(DatavisProcessing, g, None)
+        self.output_generators = {k: getattr(DatavisProcessing, g['generator'], None)
                                   for k, g in self.output_files.items()}
 
         self.file_fields = list(self.source_files.keys()) + \
@@ -194,8 +222,6 @@ class DatavisStorage:
         TODO: First check for the CSVs that list the status of downloaded files, before
         trying to download from S3.
         """
-
-        self.datasets = defaultdict(dict)
 
         # TODO: In the future, the possible users/datasets/analyses will be
         #   published by the HPC in a json or similar file and we won't have
@@ -266,6 +292,8 @@ class DatavisStorage:
           'dataset': 'linus_data',
           'position': '1'
           }, fields='mesh')
+
+          Returns: dict of form {field: filename}
         """
 
         if self.datafiles is None:
@@ -275,11 +303,11 @@ class DatavisStorage:
             fields = [fields]
 
         # Query the datafiles index
-        query = ' and '.join([f'{k} == {v}'
+        query = ' and '.join([f'{k} == "{v}"'
                               for k, v in request.items()
                               if k in self.datafiles.columns])
 
-        query = 'downloaded is False ' + query
+        query = 'not downloaded and ' + query
 
         needed = self.datafiles.query(query)
 
@@ -298,7 +326,8 @@ class DatavisStorage:
 
                 # call the generating function with args required_files
                 generator = self.output_generators[field]
-
+                # FIXME: what if the output file already exists??? generator
+                #  needs to check if 'outfile' already exists.
                 if generator is not None:
                     # Set the results for this field as the output of calling
                     # the appropriate generator function with input the dict
@@ -321,6 +350,8 @@ class DatavisStorage:
                 raise ValueError(f'Request for invalid field {field}, valid'
                                  f' options are {self.file_fields}')
 
+        return results
+
     def retrieve_or_download(
         self,
         keys,
@@ -335,15 +366,15 @@ class DatavisStorage:
 
         for f in keys:
             lp = self.local(f)
-            if not lp.is_file():
 
+            if not lp.is_file():
                 error = self.client.download_s3_objects(
                     self.bucket_name,
                     f2k(f, delimiter=delimiter),
                     local_dir=self.local_store
                 )
 
-                errors.append(error)
+                errors.extend(error)
 
             localpaths.append(lp)
 
@@ -375,97 +406,13 @@ class DatavisStorage:
         downloaded!** Creates mesh and processed dots file if they don't exist.
         """
 
-        self.active_position_name = position
-        self.active_position = self.active_dataset.get(position, None)
-
-        cur_pos_files = self.active_datafiles.query('position == @position')
-
-        updated = False
-
-        ##### Point cloud (PCD) (dots) processing #####
-        if not self.active_position['pcdexists']:
-            # we need to read in all the channels' dots CSVs
-            channel_dots_files = cur_pos_files.query(
-                'basename == "{}"'.format(self.config['csv_name'])
-            )
-
-            pcds = []
-            channels = []
-
-            for _, row in channel_dots_files.iterrows():
-                pcd_single = pd.read_csv(self.local(row['file']))
-                channel = row['channel']
-                pcd_single['channel'] = channel
-
-                pcds.append(pcd_single)
-                channels.append(channel)
-
-            pcds_combined = pd.concat(pcds)
-            del pcds
-
-            pcds_processed = gen_pcd_df(
-                pcds_combined,
-                outfile=self.local(self.active_position['pcdfile'])
-            )
-
-            # update every copy of the active position...?
-            self.active_position['pcdexists'] = True
-            self.active_dataset[position]['pcdexists'] = True
-            self.datasets[self.active_dataset_name][position]['pcdexists'] = True
-
-            updated = True
-
-        else:
-            pcds_processed = pd.read_csv(
-                self.local(self.active_position['pcdfile'])
-            )
-
-            channels = list(pcds_processed['channel'].unique())
-
-        ##### Mesh processing #####
-        if not self.active_position['meshexists']:
-
-            # find the image file
-            im = cur_pos_files.query(
-                'basename == "{}"'.format(self.config['img_name'])
-            )['file'].values[0]
-            im = self.local(im)
-            print(f'im is {im}')
-
-            # generate the mesh from the image
-            mesh = mesh_from_json(gen_mesh(
-                im,
-                separate_regions=False,
-                region_data=None,
-                outfile=self.local(self.active_position['meshfile'])
-            ))
-
-            # update every copy of the active position...?
-            self.active_position['meshexists'] = True
-            self.active_dataset[position]['meshexists'] = True
-            self.datasets[self.active_dataset_name][position]['meshexists'] = True
-
-            updated = True
-
-        else:
-            # read the mesh in
-            mesh = mesh_from_json(self.local(self.active_position['meshfile']))
-
-        self.active_mesh = mesh
-        self.active_dots = pcds_processed
+        assert False, 'select_position will be deleted soon'
 
         self.possible_channels = channels
         self.possible_genes = {
             c: populate_genes(d)
             for c, d in self.active_dots.groupby(['channel'])
         }
-
-        if updated:
-            json.dump(
-                self.datasets,
-                open(self.local('wf_datasets.json'), 'w'),
-                default=str
-            )
 
         return {
             'mesh': self.active_mesh,
