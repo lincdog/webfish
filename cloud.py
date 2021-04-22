@@ -17,66 +17,6 @@ from util import (
 )
 
 
-class DatavisClient:
-    """
-    DatavisClient
-    -------------
-    Client-side class that keeps track of active dataset, position, and other information
-    for a single session of the Datavis subapp.
-    """
-
-    def __init__(
-        self,
-    ):
-        self.active_datafiles = None
-        self.active_dataset = None
-        self.active_position = None
-        self.active_dataset_name = None
-        self.active_position_name = None
-        self.possible_channels = None
-        self.possible_genes = None
-        self.selected_genes = None
-
-        self.active_mesh = None
-        self.active_dots = None
-
-    @property
-    def state(self):
-        """
-        :property: state
-        ----------------
-        JSON serializable structure that summarizes the current state of the
-        data manager, and thus the datavis app. Can be stored in the browser
-        to persist selections across reloads etc.
-        """
-        return {
-            'active_dataset_name': self.active_dataset_name,
-            'active_position_name': self.active_position_name,
-            'possible_channels': self.possible_channels,
-            'possible_genes': self.possible_genes,
-            'selected_genes': self.selected_genes
-        }
-
-    def request_dataset(
-        self,
-        name
-    ):
-        """
-        request_dataset
-        ---------------
-        Ask the manager for a given dataset.
-        """
-
-        if name == self.active_dataset_name:
-            return
-
-    def request_position(
-        self,
-        position
-    ):
-        pass
-
-
 class DatavisProcessing:
     """
     DatavisProcessing
