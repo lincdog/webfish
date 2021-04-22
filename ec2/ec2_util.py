@@ -53,25 +53,19 @@ class Webfish:
                'env WEBFISH_CREDS=../ec2-readcredentials '
                'WEBFISH_HOST=0.0.0.0 python index.py > webfish.log'
               )
-            try:
-                conn.exec_command(
-                    command, 
-                    read_outputs=True,
-                    timeout=10
-                )
-            except:
-                pass
 
-            try:
-                _, out, _ = conn.exec_command(
-                    'pgrep -f python -d " "',
-                    read_outputs=True
-                )
+            conn.exec_command(
+                command,
+                read_outputs=True,
+                timeout=10
+            )
 
-                self.webfish_processes = out.decode().strip()
+            _, out, _ = conn.exec_command(
+                'pgrep -f python -d " "',
+                read_outputs=True
+            )
 
-            except:
-                pass
+            self.webfish_processes = out.decode().strip()
 
     def kill_webfish(self):
 

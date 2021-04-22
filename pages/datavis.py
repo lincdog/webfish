@@ -20,22 +20,25 @@ datasets = data_manager.get_datasets()
 def query_df(df, selected_genes):
     """
     query_df:
-    
+
     returns: Filtered DataFrame
     """
+    if 'All' in selected_genes:
+        return df
+
     return df.query('gene in @selected_genes')
 
 
 def gen_figure(selected_genes, active):
     """
     gen_figure:
-    Given a list of selected genes and a dataset, generates a Plotly figure with 
+    Given a list of selected genes and a dataset, generates a Plotly figure with
     Scatter3d and Mesh3d traces for dots and cells, respectively. Memoizes using the
     gene selection and active dataset name.
-    
+
     If ACTIVE_DATA is not set, as it isn't at initialization, this function
-    generates a figure with an empty Mesh3d and Scatter3d. 
-    
+    generates a figure with an empty Mesh3d and Scatter3d.
+
     Returns: plotly.graph_objects.Figure containing the selected data.
     """
 
@@ -43,7 +46,7 @@ def gen_figure(selected_genes, active):
     mesh = active.get('mesh')
 
     figdata = []
-    
+
     # If dots is populated, grab it.
     # Otherwise, set the coords to None to create an empty Scatter3d.
     if dots is not None:
@@ -51,12 +54,12 @@ def gen_figure(selected_genes, active):
         dots_df = pd.read_csv(dots)
         dots_filt = query_df(dots_df, selected_genes).copy()
         del dots_df
-        
+
         pz, py, px = dots_filt[['z', 'y', 'x']].values.T
-        
+
         color = dots_filt['geneColor']
         hovertext = dots_filt['gene']
-    
+
         figdata.append(
             go.Scatter3d(
                 name='dots',
@@ -72,13 +75,13 @@ def gen_figure(selected_genes, active):
                 hovertext=hovertext
             )
         )
-    
+
     # If the mesh is present, populate it.
     # Else, create an empty Mesh3d.
     if mesh is not None:
 
         x, y, z, i, j, k = populate_mesh(mesh_from_json(mesh))
-    
+
         figdata.append(
             go.Mesh3d(
                 x=x, y=y, z=z,
@@ -112,59 +115,56 @@ def gen_figure(selected_genes, active):
 
 @app.callback(
     Output('graph-wrapper', 'children'),
-    Input('wf-store', 'modified_timestamp'),
-    State('wf-store', 'data'),
+    Input('gene-select', 'value'),
+    State('data-select', 'value'),
+    State('pos-select', 'value'),
     prevent_initial_call=False
 )
-def update_figure(ts, store):
+def update_figure(selected_genes, dataset, pos):
     """
     update_figure:
     Callback triggered by by selecting
     gene(s) to display. Calls `gen_figure` to populate the figure on the page.
-    
-    """
-    selected_genes = store.get('datavis-selected-genes')
-    dataset = store.get('datavis-dataset')
-    position = store.get('datavis-position')
 
-    if not all((dataset, position)):
+    """
+
+    if not all((dataset, pos)):
         raise PreventUpdate
 
     if not isinstance(selected_genes, list):
         selected_genes = [selected_genes]
-        
+
     if 'All' in selected_genes:
         selected_genes = ['All']
 
     active = data_manager.request({
-        'dataset': store['datavis-dataset'],
-        'position': store['datavis-position']
+        'dataset': dataset,
+        'position': pos
     }, fields=['mesh', 'dots'])
-    
+
     fig = gen_figure(selected_genes, active)
-    
+
     return dcc.Graph(id='test-graph', figure=fig)
 
 
 @app.callback(
     Output('analytics-wrapper', 'children'),
-    Input('wf-store', 'modified_timestamp'),
-    State('wf-store', 'data'),
+    Input('pos-select', 'value'),
+    State('data-select', 'value'),
     prevent_initial_call=True
 )
-def populate_analytics(ts, store):
-    pos = store.get('datavis-position')
+def populate_analytics(pos, dataset):
 
     if not pos:
         raise PreventUpdate
 
     active = data_manager.request({
-        'dataset': store['datavis-dataset'],
+        'dataset': dataset,
         'position': pos
     }, fields=['onoff_intensity_plot', 'onoff_sorted_plot'])
 
-    data1 = base64_image(active['onoff_intensity_plot'])
-    data2 = base64_image(active['onoff_sorted_plot'])
+    data1 = base64_image(active['onoff_intensity_plot'][0])
+    data2 = base64_image(active['onoff_sorted_plot'][0])
 
     return [html.Img(src=data1, style={'max-width': '100%'}),
             html.Hr(),
@@ -174,17 +174,15 @@ def populate_analytics(ts, store):
 
 @app.callback(
     Output('gene-wrapper', 'children'),
-    Input('wf-store', 'modified_timestamp'),
-    State('wf-store', 'data'),
+    Input('pos-select', 'value'),
+    State('data-select', 'value')
 )
-def select_pos(ts, store):
-    pos = store.get('datavis-position')
-
+def select_pos(pos, dataset):
     if not pos:
         raise PreventUpdate
 
     active = data_manager.request({
-        'dataset': store['datavis-dataset'],
+        'dataset': dataset,
         'position': pos
     }, fields=['dots'])
     # TODO: separate dropdowns for each channel?
@@ -192,7 +190,7 @@ def select_pos(ts, store):
     dots = pd.read_csv(active['dots'])
 
     all_genes = populate_genes(dots)
-    
+
     return [
         dcc.Dropdown(
             id='gene-select',
@@ -205,12 +203,9 @@ def select_pos(ts, store):
 
 @app.callback(
     Output('selectors-wrapper', 'children'),
-    Input('wf-store', 'modified_timestamp'),
-    State('wf-store', 'data')
+    Input('data-select', 'value')
 )
-def select_data(ts, store):
-
-    folder = store.get('datavis-dataset')
+def select_data(folder):
 
     if not folder:
         raise PreventUpdate
@@ -243,7 +238,8 @@ def select_data(ts, store):
     Input('data-select', 'value'),
     Input('pos-select', 'value'),
     Input('gene-select', 'value'),
-    State('wf-store', 'data')
+    State('wf-store', 'data'),
+    prevent_initial_call=True
 )
 def store_manager(folder, pos, selected_genes, store):
     store = store or {'datavis-dataset': None,
@@ -265,7 +261,6 @@ def store_manager(folder, pos, selected_genes, store):
 
     return store
 
-
 ######## Layout ########
 
 
@@ -282,14 +277,14 @@ layout = dbc.Container(dbc.Row([
                 style={'width': '200px'}
             ),
            ], id='selector-div'),
-        
+
         dcc.Loading([
             html.Div(
-                dcc.Loading(dcc.Dropdown(id='pos-select', value=None),
+                dcc.Loading(dcc.Dropdown(id='pos-select'),
                     id='pos-wrapper'),
                 id='pos-div'),
             html.Div(
-                dcc.Loading(dcc.Dropdown(id='gene-select', value=None),
+                dcc.Loading(dcc.Dropdown(id='gene-select'),
                     id='gene-wrapper'),
                 id='gene-div')
             ], id='selectors-wrapper', style={'width': '200px', 'margin': '20px'}),

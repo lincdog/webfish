@@ -307,22 +307,25 @@ class DatavisStorage:
                               for k, v in request.items()
                               if k in self.datafiles.columns])
 
-        query = 'not downloaded and ' + query
-
         needed = self.datafiles.query(query)
+
+        if not fields:
+            return needed
 
         results = {}
 
         for field in fields:
             if field in self.source_files.keys():
                 files = needed.query('field == @field')['filename'].values
-                results[field] = self.retrieve_or_download(files)
+                results[field] = [ self.retrieve_or_download(f) for f in files ]
             elif field in self.output_files.keys():
-                required_fields = self.output_files[field].get('requirements', [])
-                required_keys = needed.query(
-                    'field in @required_fields')['filename'].values
-                required_files = self.retrieve_or_download(
-                    required_keys, fields=required_fields)
+                required_fields = self.output_files[field].get('requires', [])
+                required_rows = needed.query('field in @required_fields')
+
+                required_files = defaultdict(list)
+                for row in required_rows[['field', 'filename']].values:
+                    required_files[row[0]].append(
+                        self.retrieve_or_download(row[1]))
 
                 # call the generating function with args required_files
                 generator = self.output_generators[field]
@@ -339,6 +342,13 @@ class DatavisStorage:
                     # config['dataset_root'] and in the output patterns.
                     # Alternatively, we could use the commonpath from the needed
                     # files.
+
+                    # FIXME: if all fields in the pattern for this output are not
+                    #   present in the original request (e.g. we got more than one
+                    #   position by just asking for a dataset) then this errors,
+                    #   how to run once for each possible outfile?
+                    #   Note in practice we currently only ever uniquely specify
+                    #   an outfile, so this error will not affect us at first.
                     results[field] = generator(
                         infiles=required_files,
                         outfile=fmts2file(
@@ -354,72 +364,30 @@ class DatavisStorage:
 
     def retrieve_or_download(
         self,
-        keys,
-        fields=None,
+        key,
+        field=None,
         delimiter='/'
     ):
-        if isinstance(keys, Path) or isinstance(keys, str):
-            keys = [keys]
+        error = []
 
-        errors = []
-        localpaths = []
+        lp = self.local(k2f(key, delimiter=delimiter))
 
-        for f in keys:
-            lp = self.local(f)
+        if not lp.is_file():
+            error = self.client.download_s3_objects(
+                self.bucket_name,
+                f2k(key, delimiter=delimiter),
+                local_dir=self.local_store
+            )
 
-            if not lp.is_file():
-                error = self.client.download_s3_objects(
-                    self.bucket_name,
-                    f2k(f, delimiter=delimiter),
-                    local_dir=self.local_store
-                )
-
-                errors.extend(error)
-
-            localpaths.append(lp)
-
-        if len(errors) > 0:
+        if len(error) > 0:
             raise FileNotFoundError(
                 f'select_dataset: errors downloading keys:',
-                errors)
+                error)
 
-        # update file index with new downloads
-        self.datafiles.loc[
-            np.isin(self.datafiles['filename'], keys),
-            'downloaded'
-        ] = True
+        if field is None:
+            return lp
 
-        if fields is None:
-            return localpaths
-
-        if len(fields) == len(keys):
-            return {f: p for f, p in zip(fields, localpaths)}
-
-    def select_position(
-            self,
-            position
-    ):
-        """
-        select_position
-        ---------------
-        Prepare to actually display a dataset. **Assumes data files are already
-        downloaded!** Creates mesh and processed dots file if they don't exist.
-        """
-
-        assert False, 'select_position will be deleted soon'
-
-        self.possible_channels = channels
-        self.possible_genes = {
-            c: populate_genes(d)
-            for c, d in self.active_dots.groupby(['channel'])
-        }
-
-        return {
-            'mesh': self.active_mesh,
-            'dots': self.active_dots,
-            'channels': self.possible_channels,
-            'genes': self.possible_genes,
-        }
+        return {field: lp}
 
 
 ###### AWS Code #######
