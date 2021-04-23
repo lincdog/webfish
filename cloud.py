@@ -246,12 +246,13 @@ class DataManager:
         if isinstance(fields, str):
             fields = [fields]
 
-        if all([field in self.global_files.keys() for field in fields]):
-            return {
-                field: self.retrieve_or_download(
-                    self.global_files[field], force_download=force_download)
-                for field in fields
-            }
+        if self.global_files:
+            if all([field in self.global_files.keys() for field in fields]):
+                return {
+                    field: self.retrieve_or_download(
+                        self.global_files[field], force_download=force_download)
+                    for field in fields
+                }
 
         if self.datafiles is None:
             return None
