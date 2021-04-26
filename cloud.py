@@ -443,9 +443,9 @@ class S3Connect:
             return True, key_id, secret_key
 
         if key_id is None or secret_key is None:
-            cred_file = os.environ.get(
+            cred_file = Path(os.environ.get(
                 config['credentials'],
-                os.path.expanduser('~/.aws/credentials'))
+                '~/.aws/credentials')).expanduser()
 
             success, key_id, secret_key = False, None, None
 
