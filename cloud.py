@@ -11,9 +11,11 @@ from util import (
     gen_pcd_df,
     gen_mesh,
     fmts2file,
+    fmt2regex,
     find_matching_files,
     k2f,
-    f2k
+    f2k,
+    ls_recursive
 )
 
 
@@ -117,10 +119,12 @@ class DataManager:
         config,
         s3_client,
         generator_class=None,
-        bucket_name=None
+        bucket_name=None,
+        is_local=False
     ):
         self.config = config
         self.client = s3_client
+        self.is_local = is_local
 
         self.local_store = Path(self.config.get('local_store', 'webfish_data/'))
 
@@ -135,7 +139,11 @@ class DataManager:
 
         self.dataset_root = config.get('dataset_root', '')
         # How many levels do we have to fetch to reach the datasets?
-        self.dataset_nest = self.dataset_root.strip('/').split('/').count('/')
+        self.dataset_nest = len(self.dataset_root.strip('/').split('/')) - 1
+        re, glob = fmt2regex(self.dataset_root)
+        self.dataset_re = re
+        self.dataset_glob = glob
+
         self.source_files = config.get('source_files')
         self.output_files = config.get('output_files')
         self.global_files = config.get('global_files')
@@ -187,21 +195,24 @@ class DataManager:
         folders, and each of these for channel folders.
         
         Returns: dictionary representing the structure of all available experiments
-        
+
         """
 
-        # TODO: In the future, the possible users/datasets/analyses will be
-        #   published by the HPC in a json or similar file and we won't have
-        #   to do this.
-        possible_folders = self.client.list_to_n_level_recursive(
-            self.bucket_name,
-            delimiter=delimiter,
-            prefix=prefix,
-            level=self.dataset_nest
-        )
+        if self.is_local:
+            possible_folders = ls_recursive(root=self.local_store,
+                                            level=self.dataset_nest,
+                                            flat=True)
+        else:
+            possible_folders = self.client.list_to_n_level_recursive(
+                self.bucket_name,
+                delimiter=delimiter,
+                prefix=prefix,
+                level=self.dataset_nest
+            )
 
         print(f'possible_folders: {possible_folders}')
 
+        datasets =
         datafiles = []
 
         if not self.source_files:
@@ -209,22 +220,37 @@ class DataManager:
 
         for folder in possible_folders:
 
-            # we want to make as few requests to AWS as possible, so it is
-            # better to list ALL the objects and filter to find the ones we 
-            # want. I think!
-            # Note that we have set the MaxKeys parameter to 5000, which is hopefully enough.
-            # But in the future we want to use a Paginator in S3Connect to avoid this possibility.
-            k_all, _ = self.client.list_objects(
-                self.bucket_name,
-                delimiter=delimiter,
-                prefix=folder,
-                recursive=True,
-                to_path=False
-            )
-            # we want to have two versions: the list of actual keys k_all,
-            # and the PurePath list f for efficient matching and translation
-            # to local filesystem conventions
-            f_all = [PurePath(k.replace(delimiter, '/')) for k in k_all]
+            dataset = f2k(folder, delimiter).strip(delimiter)
+            dataset_info =
+
+            if self.is_local:
+                f_all = []
+                # Concatenates all full paths (dirpath + f) for all files in
+                # folders beneath folder, recursively.
+                [f_all.extend([
+                    os.path.join(dirpath, f)
+                    for f in fs])
+                    for dirpath, _, fs in os.walk(folder)]
+
+                k_all = [f2k(os.path.relpath(f, folder), delimiter=delimiter)
+                         for f in f_all]
+            else:
+                # we want to make as few requests to AWS as possible, so it is
+                # better to list ALL the objects and filter to find the ones we
+                # want. I think!
+                # Note that we have set the MaxKeys parameter to 5000, which is hopefully enough.
+                # But in the future we want to use a Paginator in S3Connect to avoid this possibility.
+                k_all, _ = self.client.list_objects(
+                    self.bucket_name,
+                    delimiter=delimiter,
+                    prefix=folder,
+                    recursive=True,
+                    to_path=False
+                )
+                # we want to have two versions: the list of actual keys k_all,
+                # and the PurePath list f for efficient matching and translation
+                # to local filesystem conventions
+                f_all = [PurePath(k.replace(delimiter, '/')) for k in k_all]
 
             for k, p in self.source_patterns.items():
                 filenames, fields = find_matching_files(folder, p, paths=f_all)

@@ -6,10 +6,10 @@ endpoint_url: "https://s3.us-west-1.wasabisys.com"
 region_name: us-west-1
 
 datavis:
-  local_store: webfish_data/datavis/
-  variables: [ "user", "dataset", "position", "channel" ]
-  bucket_name: dashboard-test-plotly
-  dataset_root: "{dataset}/"
+  local_store: hpc_data_test/
+  variables: [ "user", "dataset", "analysis", "position", "channel" ]
+  bucket_name: hpc-wasabi
+  dataset_root: "{user}/{dataset}/{analysis}/"
   source_files:
     segmentation: "MMStack_Pos{position}/Segmentation/labeled_img.tif"
     dots_csv:

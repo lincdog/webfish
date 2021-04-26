@@ -305,7 +305,7 @@ def base64_image(filename, with_header=True):
     return prefix + data
 
 
-def fmt2regex(fmt):
+def fmt2regex(fmt, delim=os.path.sep):
     """
     fmt2regex:
     convert a curly-brace format string with named fields
@@ -318,36 +318,47 @@ def fmt2regex(fmt):
     """
     sf = string.Formatter()
 
-    regex = ['^']
+    regex = []
     globstr = []
     keys = set()
 
     numkey = 0
 
-    for a in sf.parse(fmt):
-        r = re.escape(a[0])
+    if delim:
+        parts = fmt.split(delim)
+    else:
+        delim = ''
+        parts = [fmt]
 
-        globstr.append(a[0])
+    re_delim = re.escape(delim)
 
-        if a[1] is not None:
-            k = re.escape(a[1])
+    for part in parts:
+        for a in sf.parse(part):
+            r = re.escape(a[0])
 
-            if len(k) == 0:
-                k = f'k{numkey}'
-                numkey += 1
+            newglob = a[0]
+            if a[1]:
+                newglob = newglob + '*'
+            globstr.append(newglob)
 
-            if k in keys:
-                r = r + f'(?P={k})'
-            else:
-                r = r + f'(?P<{k}>.+)'
+            if a[1] is not None:
+                k = re.escape(a[1])
 
-            keys.add(k)
+                if len(k) == 0:
+                    k = f'k{numkey}'
+                    numkey += 1
 
+                if k in keys:
+                    r = r + f'(?P={k})'
+                else:
+                    r = r + f'(?P<{k}>[^{re_delim}]+)'
 
-        regex.append(r)
+                keys.add(k)
 
-    reg = re.compile(''.join(regex))
-    globstr = '*'.join(globstr)
+            regex.append(r)
+
+    reg = re.compile('^'+delim.join(regex))
+    globstr = delim.join(globstr)
 
     return reg, globstr
 
@@ -373,6 +384,8 @@ def find_matching_files(base, fmt, paths=None):
 
     if paths is None:
         paths = Path(base).glob(globstr)
+    else:
+        paths = [Path(p) for p in paths]
 
     for f in paths:
         m = reg.match(str(f.relative_to(base)))
@@ -406,3 +419,58 @@ def f2k(
     delimiter='/'
 ):
     return str(f).replace(os.sep, delimiter)
+
+
+def ls_recursive(root='.', level=1, ignore=[], dirsonly=True, flat=False):
+    if flat:
+        result = []
+    else:
+        result = {}
+
+    def _ls_recursive(
+        contents=None,
+        folder='.',
+        root='',
+        maxlevel=level,
+        curlevel=0,
+        dirsonly=dirsonly,
+        flat=flat
+    ):
+        if curlevel == maxlevel:
+            if flat:
+                contents.extend([f.relative_to(root) for f in Path(folder).iterdir()
+                        if f.is_dir() or not dirsonly])
+                return contents
+            else:
+                return [f.name for f in Path(folder).iterdir()
+                        if f.is_dir() or not dirsonly]
+
+        args = dict(
+            contents=contents,
+            root=root,
+            maxlevel=level,
+            curlevel=curlevel+1,
+            dirsonly=dirsonly,
+            flat=flat
+        )
+
+        subfolders =[f for f in Path(folder).iterdir() if (
+            f.is_dir() and not any([f.match(p) for p in ignore]))]
+
+        if flat:
+            [_ls_recursive(folder=f, **args) for f in subfolders]
+        else:
+            contents = {f.name: _ls_recursive(folder=f, **args) for f in subfolders}
+
+        return contents
+
+    result = _ls_recursive(
+        result,
+        folder=root,
+        root=root,
+        maxlevel=level,
+        curlevel=0,
+        dirsonly=dirsonly,
+        flat=flat
+    )
+    return result
