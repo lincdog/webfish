@@ -357,7 +357,7 @@ def fmt2regex(fmt, delim=os.path.sep):
 
             regex.append(r)
 
-    reg = re.compile('^'+delim.join(regex))
+    reg = re.compile('^'+re_delim.join(regex))
     globstr = delim.join(globstr)
 
     return reg, globstr

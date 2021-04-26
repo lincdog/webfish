@@ -133,6 +133,8 @@ class DataManager:
 
         if bucket_name is None:
             self.bucket_name = self.config['bucket_name']
+        else:
+            self.bucket_name = bucket_name
 
         self.datasets = None
         self.datafiles = None
@@ -212,28 +214,36 @@ class DataManager:
 
         print(f'possible_folders: {possible_folders}')
 
-        datasets =
+        self.datasets = []
         datafiles = []
 
         if not self.source_files:
-            return pd.DataFrame(columns=['dataset', 'filename', 'field', 'downloaded'])
+            return pd.DataFrame()
 
         for folder in possible_folders:
 
             dataset = f2k(folder, delimiter).strip(delimiter)
-            dataset_info =
+            print(f'dataset: {dataset}')
+            d_match = self.dataset_re.match(dataset)
+            if d_match:
+                dataset_info = d_match.groupdict()
+                self.datasets.append(dataset_info)
+            else:
+                continue
 
             if self.is_local:
                 f_all = []
                 # Concatenates all full paths (dirpath + f) for all files in
                 # folders beneath folder, recursively.
                 [f_all.extend([
-                    os.path.join(dirpath, f)
+                    os.path.join(os.path.relpath(dirpath, self.local_store), f)
                     for f in fs])
-                    for dirpath, _, fs in os.walk(folder)]
+                    for dirpath, _, fs in os.walk(Path(self.local_store, folder))]
 
                 k_all = [f2k(os.path.relpath(f, folder), delimiter=delimiter)
                          for f in f_all]
+
+                print(f'k_all: {k_all[:5]}')
             else:
                 # we want to make as few requests to AWS as possible, so it is
                 # better to list ALL the objects and filter to find the ones we
@@ -257,7 +267,11 @@ class DataManager:
 
                 n_matches = len(filenames)
 
-                fields['dataset'] = n_matches * [folder]
+                fields['analysisid'] = folder
+
+                for dk, v in dataset_info.items():
+                    fields[dk] = n_matches * [v]
+
                 fields['filename'] = filenames
                 fields['field'] = n_matches * [k]
 
@@ -269,8 +283,11 @@ class DataManager:
         # one could imagine this table is stored on the cloud and updated every
         # time a dataset is added, then we just need to download it and check
         # our local files.
-        self.datafiles = pd.concat(datafiles)
-        self.datafiles.to_csv(self.local('wf_datafiles.csv'), index=False)
+        if datafiles:
+            self.datafiles = pd.concat(datafiles)
+            self.datafiles.to_csv(self.local('wf_datafiles.csv'), index=False)
+        else:
+            self.datafiles = pd.DataFrame()
 
         return self.datafiles
 

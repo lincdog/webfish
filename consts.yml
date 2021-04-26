@@ -9,7 +9,7 @@ datavis:
   local_store: hpc_data_test/
   variables: [ "user", "dataset", "analysis", "position", "channel" ]
   bucket_name: hpc-wasabi
-  dataset_root: "{user}/{dataset}/{analysis}/"
+  dataset_root: "{dataset}/"
   source_files:
     segmentation: "MMStack_Pos{position}/Segmentation/labeled_img.tif"
     dots_csv:
