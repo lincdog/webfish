@@ -217,6 +217,7 @@ class DataManager:
     def local(
         self,
         key,
+        to_master=False,
         page=None,
         delimiter='/'
     ):
@@ -236,13 +237,16 @@ class DataManager:
         if not key.is_relative_to(self.pages[page]['local_store']):
             key = self.pages[page]['local_store'] / key
 
+        if to_master and self.master_root:
+            key = self.master_root / key
+
         return Path(key)
 
     def get_datasets(
             self,
             delimiter='/',
             prefix='',
-            page=None
+            progress=False
     ):
         """
         get_datasets
@@ -256,7 +260,7 @@ class DataManager:
         """
 
         if self.is_local:
-            possible_folders = ls_recursive(root=self.local_store,
+            possible_folders = ls_recursive(root=self.master_root,
                                             level=self.dataset_nest,
                                             flat=True)
         else:
@@ -275,7 +279,15 @@ class DataManager:
         if not self.source_files:
             return pd.DataFrame()
 
+        n = 0
+
         for folder in possible_folders:
+
+            if progress:
+                n += 1
+                if n % 20 == 0:
+                    print(f'get_datasets: finished {n} folders')
+
             datafiles = []
             dataset = f2k(folder, delimiter).rstrip(delimiter)
 
@@ -294,9 +306,9 @@ class DataManager:
                 # This is because the dataset_root stuff is all specified relative to
                 # the local_store (which will be the bucket root on s3)
                 [f_all.extend([
-                    os.path.join(os.path.relpath(dirpath, self.local_store), f)
+                    os.path.join(os.path.relpath(dirpath, self.master_root), f)
                     for f in fs])
-                    for dirpath, _, fs in os.walk(self.local(folder))]
+                    for dirpath, _, fs in os.walk(self.local(folder, to_master=True))]
 
                 k_all = [f2k(os.path.relpath(f, folder), delimiter=delimiter)
                          for f in f_all]
