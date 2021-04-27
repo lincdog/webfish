@@ -5,34 +5,41 @@ cred_profile_name: hpc-wasabi-user
 endpoint_url: "https://s3.us-west-1.wasabisys.com"
 region_name: us-west-1
 
-datavis:
-  local_store: hpc_data_test/
-  variables: [ "user", "dataset", "analysis", "position", "channel" ]
-  bucket_name: hpc-wasabi
-  dataset_root: "{dataset}/"
-  source_files:
-    segmentation: "MMStack_Pos{position}/Segmentation/labeled_img.tif"
-    dots_csv:
-      "MMStack_Pos{position}/Segmentation/Channel_{channel}/gene_locations_assigned_to_cell.csv"
-    cell_info:
-      "MMStack_Pos{position}/Segmentation/Channel_{channel}/cell_info.csv"
-    onoff_intensity_plot:
-      "MMStack_Pos{position}/False_Positive_Rate_Analysis/Channel_{channel}/On-Off-Barcode-Intensity-Analysis.png"
-    onoff_sorted_plot:
-      "MMStack_Pos{position}/On_Off_Barcode_Plot/Channel_{channel}/On_Off_Sorted_Barcode_Plot.png"
+master_root: /groups/CaiLab/analyses/
+sync_folder: monitoring/
 
-  output_files:
-    mesh:
-      pattern: "MMStack_Pos{position}/labeled_mesh.json"
-      requires: ["segmentation"]
-      generator: "generate_mesh"
-    dots:
-      pattern: "MMStack_Pos{position}/dots_um_with_colors.csv"
-      requires: ["dots_csv"]
-      generator: "generate_dots"
+pages:
+  datavis:
+    bucket_name: dashboard-test-plotly
+    sync_file: "datavis_datasets.json"
+    local_store: webfish_data/datavis/
+    generator_class: DatavisProcessing
+    variables: [ "user", "dataset", "analysis", "position", "channel" ]
+    dataset_root: "{dataset}/"
+    source_files:
+      segmentation: "MMStack_Pos{position}/Segmentation/labeled_img.tif"
+      dots_csv:
+        "MMStack_Pos{position}/Segmentation/Channel_{channel}/gene_locations_assigned_to_cell.csv"
+      cell_info:
+        "MMStack_Pos{position}/Segmentation/Channel_{channel}/cell_info.csv"
+      onoff_intensity_plot:
+        "MMStack_Pos{position}/False_Positive_Rate_Analysis/Channel_{channel}/On-Off-Barcode-Intensity-Analysis.png"
+      onoff_sorted_plot:
+        "MMStack_Pos{position}/On_Off_Barcode_Plot/Channel_{channel}/On_Off_Sorted_Barcode_Plot.png"
 
-dotdetection:
-  bucket_name: hpc-wasabi
-  local_store: webfish_data/dotdetection/
-  global_files:
-    exp_tree: "monitoring/exp_tree.json"
+    output_files:
+      mesh:
+        pattern: "MMStack_Pos{position}/labeled_mesh.json"
+        requires: ["segmentation"]
+        generator: "generate_mesh"
+      dots:
+        pattern: "MMStack_Pos{position}/dots_um_with_colors.csv"
+        requires: ["dots_csv"]
+        generator: "generate_dots"
+
+  dotdetection:
+    bucket_name: hpc-wasabi
+    sync_file: "dotdetection_datasets.json"
+    local_store: webfish_data/dotdetection/
+    global_files:
+      exp_tree: "monitoring/exp_tree.json"

@@ -7,6 +7,8 @@ from time import sleep
 from pathlib import Path, PurePath
 import configparser as cfparse
 from collections import defaultdict
+import json
+import sys
 from util import (
     gen_pcd_df,
     gen_mesh,
@@ -114,59 +116,108 @@ class DataManager:
     class.
     """
 
+    _page_properties = ('bucket_name', 'sync_file', 'local_store', 'variables',
+                        'dataset_root', 'dataset_nest', 'source_files', 'output_files',
+                        'source_patterns', 'output_patterns', 'output_generators',
+                        'global_files', 'dataset_re', 'dataset_glob', 'file_fields')
+
     def __init__(
         self,
-        config,
-        s3_client,
-        generator_class=None,
+        config=None,
+        s3_client=None,
         bucket_name=None,
+        pagename=None,
         is_local=False
     ):
         self.config = config
         self.client = s3_client
         self.is_local = is_local
 
-        self.local_store = Path(self.config.get('local_store', 'webfish_data/'))
+        self.sync_folder = config.get('sync_folder', 'monitoring/')
+        self.pages = config['pages']
+        self.pagenames = tuple(self.pages.keys())
+        self.active_page = pagename
 
-        if not self.local_store.is_dir():
-            self.local_store.mkdir(parents=True)
-
-        if bucket_name is None:
-            self.bucket_name = self.config['bucket_name']
-        else:
-            self.bucket_name = bucket_name
+        if self.is_local:
+            self.master_root = config['master_root']
 
         self.datasets = None
         self.datafiles = None
 
-        self.dataset_root = config.get('dataset_root', '')
-        # How many levels do we have to fetch to reach the datasets?
-        self.dataset_nest = len(self.dataset_root.strip('/').split('/')) - 1
-        re, glob = fmt2regex(self.dataset_root)
-        self.dataset_re = re
-        self.dataset_glob = glob
+        for name, page in self.pages.items():
+            local_store = Path(page.get('local_store', f'webfish_data/{name}/'))
+            local_store.mkdir(parents=True, exist_ok=True)
+            self.pages[name]['local_store'] = local_store
 
-        self.source_files = config.get('source_files')
-        self.output_files = config.get('output_files')
-        self.global_files = config.get('global_files')
-        self.file_fields = []
+            self.pages[name]['source_files'] = page.get('source_files', {})
+            self.pages[name]['output_files'] = page.get('output_files', {})
+            self.pages[name]['global_files'] = page.get('global_files', {})
 
-        if self.source_files:
-            self.source_patterns = {k: p for k, p in self.source_files.items()}
-            self.file_fields.extend(list(self.source_files.keys()))
+            dr = page.get('dataset_root', '')
+            self.pages[name]['dataset_root'] = dr
+            # How many levels do we have to fetch to reach the datasets?
+            self.pages[name]['dataset_nest'] = len(dr.rstrip('/').split('/')) - 1
 
-        if self.output_files:
-            self.output_patterns = {k: p['pattern'] for k, p in self.output_files.items()}
-            self.output_generators = {k: getattr(generator_class, g.get('generator'), None)
-                                      for k, g in self.output_files.items()}
-            self.file_fields.extend(list(self.output_files.keys()))
+            re, glob = fmt2regex(dr)
+            self.pages[name]['dataset_re'] = re
+            self.pages[name]['dataset_glob'] = glob
 
-        if self.global_files:
-            self.file_fields.extend(list(self.global_files.keys()))
+            self.pages[name]['file_fields'] = list(page.get('source_files', {}).keys()) + \
+                list(page.get('output_files', {}).keys()) + \
+                list(page.get('global_files', {}).keys())
+
+            self.pages[name]['source_patterns'] = page.get('source_files', {})
+
+            output_files = page.get('output_files', {})
+
+            self.pages[name]['output_patterns'] = {}
+            self.pages[name]['output_generators'] = {}
+
+            # Try to grab the generator class object from this module
+            if 'generator_class' in page.keys():
+                generator_class = getattr(sys.modules.get(__name__),
+                                          page['generator_class'])
+            else:
+                generator_class = None
+
+            for f, v in output_files.items():
+                self.pages[name]['output_patterns'][f] = v['pattern']
+
+                if 'generator' in v.keys():
+                    self.pages[name]['output_generators'][f] = getattr(
+                        generator_class,
+                        v['generator']
+                    )
+
+    def __getattr__(self, item):
+        if item in type(self)._page_properties:
+            if self.active_page and not self.is_local:
+                return self.pages[self.active_page].get(item, None)
+            else:
+                return {n: p[item] for n, p in self.pages.items()}
+        else:
+            try:
+                result = self.__dict__[item]
+            except KeyError:
+                raise AttributeError(f'Unknown attribute {item}')
+            return result
+
+    @property
+    def active_page(self):
+        return self._active_page
+
+    @active_page.setter
+    def active_page(self, val):
+        if val is not None and val not in self.pagenames:
+            raise ValueError(f'Attempt to set active_page to invalid value {val}'
+                             f'valid names are {self.pagenames}')
+
+        self._active_page = val
 
     def local(
         self,
         key,
+        page=None,
         delimiter='/'
     ):
         """
@@ -179,15 +230,19 @@ class DataManager:
 
         key = k2f(key, delimiter)
 
-        if not key.is_relative_to(self.local_store):
-            key = self.local_store / key
+        if page is None:
+            page = self.active_page
+
+        if not key.is_relative_to(self.pages[page]['local_store']):
+            key = self.pages[page]['local_store'] / key
 
         return Path(key)
 
     def get_datasets(
             self,
             delimiter='/',
-            prefix=''
+            prefix='',
+            page=None
     ):
         """
         get_datasets
@@ -215,19 +270,18 @@ class DataManager:
         print(f'possible_folders: {possible_folders}')
 
         self.datasets = []
-        datafiles = []
+        all_datafiles = []
 
         if not self.source_files:
             return pd.DataFrame()
 
         for folder in possible_folders:
+            datafiles = []
+            dataset = f2k(folder, delimiter).rstrip(delimiter)
 
-            dataset = f2k(folder, delimiter).strip(delimiter)
-            print(f'dataset: {dataset}')
             d_match = self.dataset_re.match(dataset)
             if d_match:
                 dataset_info = d_match.groupdict()
-                self.datasets.append(dataset_info)
             else:
                 continue
 
@@ -235,15 +289,17 @@ class DataManager:
                 f_all = []
                 # Concatenates all full paths (dirpath + f) for all files in
                 # folders beneath folder, recursively.
+                # Note we need to list these from self.local_store, but then we remove
+                # that (with os.path.relpath) to make it LOOK like an s3 key.
+                # This is because the dataset_root stuff is all specified relative to
+                # the local_store (which will be the bucket root on s3)
                 [f_all.extend([
                     os.path.join(os.path.relpath(dirpath, self.local_store), f)
                     for f in fs])
-                    for dirpath, _, fs in os.walk(Path(self.local_store, folder))]
+                    for dirpath, _, fs in os.walk(self.local(folder))]
 
                 k_all = [f2k(os.path.relpath(f, folder), delimiter=delimiter)
                          for f in f_all]
-
-                print(f'k_all: {k_all[:5]}')
             else:
                 # we want to make as few requests to AWS as possible, so it is
                 # better to list ALL the objects and filter to find the ones we
@@ -262,39 +318,53 @@ class DataManager:
                 # to local filesystem conventions
                 f_all = [PurePath(k.replace(delimiter, '/')) for k in k_all]
 
+            missing_source = False
+
             for k, p in self.source_patterns.items():
                 filenames, fields = find_matching_files(folder, p, paths=f_all)
 
                 n_matches = len(filenames)
+
+                # if any of the patterns don't match at all, skip this dataset entirely
+                if n_matches == 0:
+                    missing_source = True
+                    break
+
+                fields['filename'] = filenames
+                fields['field'] = n_matches * [k]
 
                 fields['analysisid'] = folder
 
                 for dk, v in dataset_info.items():
                     fields[dk] = n_matches * [v]
 
-                fields['filename'] = filenames
-                fields['field'] = n_matches * [k]
-
-                downloaded = [self.local(f).is_file() for f in filenames]
-                fields['downloaded'] = downloaded
-
                 datafiles.append(pd.DataFrame(fields))
+
+            # If we found at least 1 of each source file, append this dataset's
+            # info to the global datafile and datasets arrays. Otherwise skip it.
+            if not missing_source:
+                all_datafiles.extend(datafiles)
+                self.datasets.append(dataset_info)
 
         # one could imagine this table is stored on the cloud and updated every
         # time a dataset is added, then we just need to download it and check
         # our local files.
         if datafiles:
-            self.datafiles = pd.concat(datafiles)
+            self.datafiles = pd.concat(all_datafiles)
             self.datafiles.to_csv(self.local('wf_datafiles.csv'), index=False)
         else:
             self.datafiles = pd.DataFrame()
+
+        if self.is_local:
+            json.dump(self.datasets, open('wf_dataset.json', 'w'))
+            self.client.client.put
 
         return self.datafiles
 
     def request(
             self,
             request,
-            fields=[],
+            fields=(),
             force_download=False
     ):
         """
@@ -310,7 +380,7 @@ class DataManager:
           Returns: dict of form {field: filename}
         """
         if isinstance(fields, str):
-            fields = [fields]
+            fields = (fields,)
 
         if self.global_files:
             if all([field in self.global_files.keys() for field in fields]):
@@ -357,6 +427,7 @@ class DataManager:
 
                 # call the generating function with args required_files
                 generator = self.output_generators[field]
+                print(f'generators: {self.output_generators}')
                 # FIXME: what if the output file already exists??? generator
                 #  needs to check if 'outfile' already exists.
                 if generator is not None:
@@ -549,6 +620,8 @@ class S3Connect:
         folders from the bucket. If to_path is True, we return lists of pathlib.PurePath
         objects, replacing delimiter with the standard '/'.
         """
+
+        prefix = str(prefix)
 
         if prefix != '' and not prefix.endswith(delimiter):
             prefix = prefix + delimiter

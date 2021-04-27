@@ -13,9 +13,9 @@ from dash.dependencies import Input, Output, State
 from dash.exceptions import PreventUpdate
 
 from app import app, config, s3_client
-from cloud import DataManager
+import cloud
 
-data_manager = DataManager(config=config['dotdetection'], s3_client=s3_client)
+data_manager = cloud.DataManager(config=config, s3_client=s3_client, pagename='dotdetection')
 data_manager.get_datasets()
 
 

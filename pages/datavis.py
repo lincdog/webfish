@@ -10,12 +10,12 @@ from dash.exceptions import PreventUpdate
 
 from app import app, config, s3_client
 from util import populate_mesh, base64_image, populate_genes, mesh_from_json
-from cloud import DataManager, DatavisProcessing
+import cloud
 
 
-data_manager = DataManager(config=config['datavis'],
+data_manager = cloud.DataManager(config=config,
                            s3_client=s3_client,
-                           generator_class=DatavisProcessing)
+                           pagename='datavis')
 datasets = data_manager.get_datasets()
 
 
@@ -139,10 +139,12 @@ def update_figure(selected_genes, dataset, pos):
     if 'All' in selected_genes:
         selected_genes = ['All']
 
+    print(f'dataset request: {dataset}, pos: {type(pos)}')
+
     active = data_manager.request({
         'dataset': dataset,
         'position': pos
-    }, fields=['mesh', 'dots'])
+    }, fields=('mesh', 'dots'))
 
     fig = gen_figure(selected_genes, active)
 
