@@ -279,6 +279,7 @@ class DataManager:
 
         self.pages[self.active_page]['datasets'] = []
         all_datafiles = []
+        datasets = []
 
         if not self.source_files:
             return pd.DataFrame()
@@ -306,7 +307,7 @@ class DataManager:
             # roots are enough. We will generate an empty datafiles but still the
             # dataset JSON with all possible datasets.
             if not self.source_files:
-                self.datasets.append(dataset_info)
+                datasets.append(dataset_info)
                 continue
 
             if self.is_local:
@@ -358,7 +359,7 @@ class DataManager:
             # info to the global datafile and datasets arrays. Otherwise skip it.
             if missing_source < len(self.source_patterns):
                 all_datafiles.extend(datafiles)
-                self.datasets.append(dataset_info)
+                datasets.append(dataset_info)
 
         # one could imagine this table is stored on the cloud and updated every
         # time a dataset is added, then we just need to download it and check
@@ -372,9 +373,10 @@ class DataManager:
             self.pages[self.active_page]['datafiles'] = pd.DataFrame()
 
         if self.is_local:
+            self.pages[self.active_page]['datasets'] = datasets.copy()
             monitor_dir = Path(self.sync_folder, self.active_page)
             monitor_dir.mkdir(parents=True, exist_ok=True)
-            json.dump(self.datasets, open(monitor_dir / 'wf_dataset.json'), 'w'))
+            json.dump(datasets, open(monitor_dir / 'wf_dataset.json', 'w'))
             #self.client.client.put
 
         return self.datafiles
