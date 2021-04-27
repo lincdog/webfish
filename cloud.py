@@ -130,6 +130,7 @@ class DataManager:
         pagename=None,
         is_local=False
     ):
+        self._active_page = None
         self.config = config
         self.client = s3_client
         self.is_local = is_local
