@@ -234,11 +234,10 @@ class DataManager:
         if page is None:
             page = self.active_page
 
-        if not key.is_relative_to(self.pages[page]['local_store']):
-            key = self.pages[page]['local_store'] / key
-
         if to_master and self.master_root:
             key = self.master_root / key
+        elif not key.is_relative_to(self.pages[page]['local_store']):
+            key = self.pages[page]['local_store'] / key
 
         return Path(key)
 
@@ -394,7 +393,7 @@ class DataManager:
             self.datafiles['page'] = self.active_page
             self.datafiles.to_csv(self.local('wf_datafiles.csv'), index=False)
         else:
-            self.datafiles = pd.DataFrame({'page': self.active_page})
+            self.datafiles = pd.DataFrame()
 
         if self.is_local:
             json.dump(self.datasets, open('wf_dataset.json', 'w'))
