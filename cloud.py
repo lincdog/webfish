@@ -198,7 +198,7 @@ class DataManager:
                 return {n: p[item] for n, p in self.pages.items()}
         else:
             try:
-                result = self.__dict__[item]
+                result = self.__getattribute__(item)
             except KeyError:
                 raise AttributeError(f'Unknown attribute {item}')
             return result
@@ -325,20 +325,8 @@ class DataManager:
                 continue
 
             if self.is_local:
-                f_all = []
-                # Concatenates all full paths (dirpath + f) for all files in
-                # folders beneath folder, recursively.
-                # Note we need to list these from self.local_store, but then we remove
-                # that (with os.path.relpath) to make it LOOK like an s3 key.
-                # This is because the dataset_root stuff is all specified relative to
-                # the local_store (which will be the bucket root on s3)
-                [f_all.extend([
-                    os.path.join(os.path.relpath(dirpath, self.master_root), f)
-                    for f in fs])
-                    for dirpath, _, fs in os.walk(self.local(folder, to_master=True))]
-
-                k_all = [f2k(os.path.relpath(f, folder), delimiter=delimiter)
-                         for f in f_all]
+                f_all = None
+                folder_prefix = self.master_root
 
                 #source_patterns = {}
                 # create a unified source_patterns dict by prefixing pattern names
@@ -363,12 +351,12 @@ class DataManager:
                 # to local filesystem conventions
                 f_all = [PurePath(k.replace(delimiter, '/')) for k in k_all]
 
-                #source_patterns = self.source_patterns
+                folder_prefix = Path()
 
             missing_source = 0
 
             for k, p in self.source_patterns.items():
-                filenames, fields = find_matching_files(folder, p, paths=f_all)
+                filenames, fields = find_matching_files(folder_prefix / folder, p, paths=f_all)
 
                 n_matches = len(filenames)
 
