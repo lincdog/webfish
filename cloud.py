@@ -237,6 +237,7 @@ class DataManager:
         if self.is_local:
             results = {}
             for page in self.pagenames:
+                print(f'page={page}')
                 self.active_page = page
 
                 results[page] = self._get_datasets(delimiter, prefix, progress)
@@ -275,21 +276,18 @@ class DataManager:
                 level=self.dataset_nest
             )
 
-        print(f'possible_folders: {possible_folders}')
+        #print(f'possible_folders: {possible_folders}')
 
         self.pages[self.active_page]['datasets'] = []
         all_datafiles = []
         datasets = []
-
-        if not self.source_files:
-            return pd.DataFrame()
 
         n = 0
 
         for folder in possible_folders:
 
             if progress:
-                if n % 20 == 0:
+                if n % 50 == 0:
                     print(f'get_datasets: finished {n} folders')
                 n += 1
 
@@ -375,6 +373,7 @@ class DataManager:
         if self.is_local:
             self.pages[self.active_page]['datasets'] = datasets.copy()
             monitor_dir = Path(self.sync_folder, self.active_page)
+            print(f'monitor_dir: {monitor_dir}')
             monitor_dir.mkdir(parents=True, exist_ok=True)
             json.dump(datasets, open(monitor_dir / 'wf_dataset.json', 'w'))
             #self.client.client.put
