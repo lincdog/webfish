@@ -243,6 +243,23 @@ class DataManager:
         return Path(key)
 
     def get_datasets(
+        self,
+        delimiter='/',
+        prefix='',
+        progress=False
+    ):
+        if self.is_local:
+            results = {}
+            for page in self.pagenames:
+                self.active_page = page
+
+                results[page] = self._get_datasets(delimiter, prefix, progress)
+
+            return results
+        else:
+            return self._get_datasets(delimiter, prefix, progress)
+
+    def _get_datasets(
             self,
             delimiter='/',
             prefix='',
@@ -260,9 +277,9 @@ class DataManager:
         """
 
         if self.is_local:
-            max_nest = max(self.dataset_nest.values())
+            # max_nest = max(self.dataset_nest.values())
             possible_folders = ls_recursive(root=self.master_root,
-                                            level=max_nest,
+                                            level=self.dataset_nest,
                                             flat=True)
         else:
             possible_folders = self.client.list_to_n_level_recursive(
@@ -291,7 +308,7 @@ class DataManager:
 
             datafiles = []
             dataset = f2k(folder, delimiter).rstrip(delimiter)
-            print(f'dataset: {dataset}')
+
             d_match = self.dataset_re.match(dataset)
             if d_match:
                 dataset_info = d_match.groupdict()
@@ -315,11 +332,11 @@ class DataManager:
                 k_all = [f2k(os.path.relpath(f, folder), delimiter=delimiter)
                          for f in f_all]
 
-                source_patterns = {}
+                #source_patterns = {}
                 # create a unified source_patterns dict by prefixing pattern names
                 # with their parent page using dot notation e.g. datavis.segmentation
-                for pa, ps in self.source_patterns.items():
-                    source_patterns.update({'.'.join([pa, k]): p for k, p in ps.items()})
+                #for pa, ps in self.source_patterns.items():
+                #    source_patterns.update({'.'.join([pa, k]): p for k, p in ps.items()})
             else:
                 # we want to make as few requests to AWS as possible, so it is
                 # better to list ALL the objects and filter to find the ones we
@@ -338,11 +355,11 @@ class DataManager:
                 # to local filesystem conventions
                 f_all = [PurePath(k.replace(delimiter, '/')) for k in k_all]
 
-                source_patterns = self.source_patterns
+                #source_patterns = self.source_patterns
 
             missing_source = False
 
-            for k, p in source_patterns.items():
+            for k, p in self.source_patterns.items():
                 print('before find_matching_files')
                 filenames, fields = find_matching_files(folder, p, paths=f_all)
 
@@ -374,13 +391,14 @@ class DataManager:
         # our local files.
         if datafiles:
             self.datafiles = pd.concat(all_datafiles)
+            self.datafiles['page'] = self.active_page
             self.datafiles.to_csv(self.local('wf_datafiles.csv'), index=False)
         else:
-            self.datafiles = pd.DataFrame()
+            self.datafiles = pd.DataFrame({'page': self.active_page})
 
         if self.is_local:
             json.dump(self.datasets, open('wf_dataset.json', 'w'))
-            self.client.client.put
+            #self.client.client.put
 
         return self.datafiles
 
