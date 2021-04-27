@@ -119,7 +119,8 @@ class DataManager:
     _page_properties = ('bucket_name', 'sync_file', 'local_store', 'variables',
                         'dataset_root', 'dataset_nest', 'source_files', 'output_files',
                         'source_patterns', 'output_patterns', 'output_generators',
-                        'global_files', 'dataset_re', 'dataset_glob', 'file_fields')
+                        'global_files', 'dataset_re', 'dataset_glob', 'file_fields',
+                        'datafiles', 'datasets')
 
     def __init__(
         self,
@@ -201,6 +202,16 @@ class DataManager:
             except KeyError:
                 raise AttributeError(f'Unknown attribute {item}')
             return result
+
+    def __setattr__(self, key, value):
+        if item in type(self)._page_properties:
+            if self.active_page:
+                self.pages[self.active_page][key] = value
+            else:
+                self.__dict__[key] = value
+        else:
+            self.__dict__[key] = value
+
 
     @property
     def active_page(self):
@@ -327,7 +338,6 @@ class DataManager:
                     for f in fs])
                     for dirpath, _, fs in os.walk(self.local(folder, to_master=True))]
 
-                print(f'len(f_all): {len(f_all)}')
                 k_all = [f2k(os.path.relpath(f, folder), delimiter=delimiter)
                          for f in f_all]
 
@@ -359,7 +369,6 @@ class DataManager:
             missing_source = False
 
             for k, p in self.source_patterns.items():
-                print('before find_matching_files')
                 filenames, fields = find_matching_files(folder, p, paths=f_all)
 
                 n_matches = len(filenames)
