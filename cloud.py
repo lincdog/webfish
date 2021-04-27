@@ -143,9 +143,6 @@ class DataManager:
         if self.is_local:
             self.master_root = config['master_root']
 
-        self.datasets = []
-        self.datafiles = None
-
         for name, page in self.pages.items():
             local_store = Path(page.get('local_store', f'webfish_data/{name}/'))
             local_store.mkdir(parents=True, exist_ok=True)
@@ -304,15 +301,17 @@ class DataManager:
             else:
                 continue
 
+            # If we specify "null" for source_files, this is indication that
+            # this page does not require any specific files, but just the dataset
+            # roots are enough. We will generate an empty datafiles but still the
+            # dataset JSON with all possible datasets.
+            if self.source_files is None:
+                self.datasets.append(dataset_info)
+                continue
+
             if self.is_local:
                 f_all = None
                 folder_prefix = self.master_root
-
-                #source_patterns = {}
-                # create a unified source_patterns dict by prefixing pattern names
-                # with their parent page using dot notation e.g. datavis.segmentation
-                #for pa, ps in self.source_patterns.items():
-                #    source_patterns.update({'.'.join([pa, k]): p for k, p in ps.items()})
             else:
                 # we want to make as few requests to AWS as possible, so it is
                 # better to list ALL the objects and filter to find the ones we
@@ -373,7 +372,7 @@ class DataManager:
             self.pages[self.active_page]['datafiles'] = pd.DataFrame()
 
         if self.is_local:
-            json.dump(self.datasets, open('wf_dataset.json', 'w'))
+            json.dump(self.datasets, open(Path(self.sync_folder, 'wf_dataset.json'), 'w'))
             #self.client.client.put
 
         return self.datafiles

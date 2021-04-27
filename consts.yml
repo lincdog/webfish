@@ -15,7 +15,7 @@ pages:
     local_store: webfish_data/datavis/
     generator_class: DatavisProcessing
     variables: [ "user", "dataset", "analysis", "position", "channel" ]
-    dataset_root: "{user}/{dataset}/{analysis}"
+    dataset_root: "{user/{dataset}/{analysis}"
     source_files:
       segmentation: "MMStack_Pos{position}/Segmentation/labeled_img.tif"
       dots_csv:
@@ -41,5 +41,6 @@ pages:
     bucket_name: hpc-wasabi
     sync_file: "dotdetection_datasets.json"
     local_store: webfish_data/dotdetection/
+    source_files: null
     global_files:
       exp_tree: "monitoring/exp_tree.json"
