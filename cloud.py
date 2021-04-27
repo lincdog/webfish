@@ -204,7 +204,7 @@ class DataManager:
             return result
 
     def __setattr__(self, key, value):
-        if item in type(self)._page_properties:
+        if key in type(self)._page_properties:
             if self.active_page:
                 self.pages[self.active_page][key] = value
             else:
