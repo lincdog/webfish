@@ -130,7 +130,7 @@ class DataManager:
         pagename=None,
         is_local=False
     ):
-        self._active_page = None
+        self.active_page = pagename
         self.config = config
         self.client = s3_client
         self.is_local = is_local
@@ -199,31 +199,10 @@ class DataManager:
                 return {n: p[item] for n, p in self.pages.items()}
         else:
             try:
-                result = self.__getattribute__(item)
+                result = self.__dict__[item]
             except KeyError:
                 raise AttributeError(f'Unknown attribute {item}')
             return result
-
-    def __setattr__(self, key, value):
-        if key in type(self)._page_properties:
-            if self.active_page:
-                self.pages[self.active_page][key] = value
-            else:
-                self.__dict__[key] = value
-        else:
-            self.__dict__[key] = value
-
-    @property
-    def active_page(self):
-        return self._active_page
-
-    @active_page.setter
-    def active_page(self, val):
-        if val is not None and val not in self.pagenames:
-            raise ValueError(f'Attempt to set active_page to invalid value {val}'
-                             f'valid names are {self.pagenames}')
-
-        self._active_page = val
 
     def local(
         self,
@@ -301,8 +280,9 @@ class DataManager:
 
         print(f'possible_folders: {possible_folders}')
 
-        self.datasets = []
+        self.pages[self.active_page]['datasets'] = []
         all_datafiles = []
+        all_columns = set()
 
         if not self.source_files:
             return pd.DataFrame()
@@ -385,12 +365,14 @@ class DataManager:
         # one could imagine this table is stored on the cloud and updated every
         # time a dataset is added, then we just need to download it and check
         # our local files.
-        if datafiles:
-            self.datafiles = pd.concat(all_datafiles)
-            self.datafiles['page'] = self.active_page
-            self.datafiles.to_csv(self.local('wf_datafiles.csv'), index=False)
+        if all_datafiles:
+            breakpoint()
+            datafiles_df = pd.concat(all_datafiles)
+            datafiles_df['page'] = self.active_page
+            datafiles_df.to_csv(self.local('wf_datafiles.csv'), index=False)
+            self.pages[self.active_page]['datafiles'] = datafiles_df
         else:
-            self.datafiles = pd.DataFrame()
+            self.pages[self.active_page]['datafiles'] = pd.DataFrame()
 
         if self.is_local:
             json.dump(self.datasets, open('wf_dataset.json', 'w'))
