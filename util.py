@@ -427,6 +427,9 @@ def ls_recursive(root='.', level=1, ignore=[], dirsonly=True, flat=False):
     else:
         result = {}
 
+    if not isinstance(level, int):
+        raise ValueError('level must be an integer')
+
     def _ls_recursive(
         contents=None,
         folder='.',
