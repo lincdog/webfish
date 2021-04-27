@@ -191,7 +191,7 @@ class DataManager:
 
     def __getattr__(self, item):
         if item in type(self)._page_properties:
-            if self.active_page and not self.is_local:
+            if self.active_page:
                 return self.pages[self.active_page].get(item, None)
             else:
                 return {n: p[item] for n, p in self.pages.items()}
