@@ -282,7 +282,6 @@ class DataManager:
 
         self.pages[self.active_page]['datasets'] = []
         all_datafiles = []
-        all_columns = set()
 
         if not self.source_files:
             return pd.DataFrame()
@@ -366,7 +365,6 @@ class DataManager:
         # time a dataset is added, then we just need to download it and check
         # our local files.
         if all_datafiles:
-            breakpoint()
             datafiles_df = pd.concat(all_datafiles)
             datafiles_df['page'] = self.active_page
             datafiles_df.to_csv(self.local('wf_datafiles.csv'), index=False)
@@ -537,15 +535,15 @@ class S3Connect:
     """
 
     def __init__(
-            self,
-            config=None,
-            key_id=None,
-            secret_key=None,
-            endpoint_url=None,
-            region_name=None,
-            wait_for_creds=True,
-            sleep_time=1,
-            wait_timeout=90
+        self,
+        config=None,
+        key_id=None,
+        secret_key=None,
+        endpoint_url=None,
+        region_name=None,
+        wait_for_creds=True,
+        sleep_time=1,
+        wait_timeout=90
     ):
         def try_creds_file(file, wait_for_creds):
             cf = cfparse.ConfigParser()
