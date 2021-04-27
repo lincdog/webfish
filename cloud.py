@@ -251,17 +251,18 @@ class DataManager:
         """
         get_datasets
         ------------
-        Searches the supplied bucket for top-level folders, which should 
+        Searches the supplied bucket for top-level folders, which should
         represent available datasets. Searches each of these folders for position
         folders, and each of these for channel folders.
-        
+
         Returns: dictionary representing the structure of all available experiments
 
         """
 
         if self.is_local:
+            max_nest = max(self.dataset_nest.values())
             possible_folders = ls_recursive(root=self.master_root,
-                                            level=self.dataset_nest,
+                                            level=max_nest,
                                             flat=True)
         else:
             possible_folders = self.client.list_to_n_level_recursive(
@@ -284,13 +285,13 @@ class DataManager:
         for folder in possible_folders:
 
             if progress:
-                n += 1
                 if n % 20 == 0:
                     print(f'get_datasets: finished {n} folders')
+                n += 1
 
             datafiles = []
             dataset = f2k(folder, delimiter).rstrip(delimiter)
-
+            print(f'dataset: {dataset}')
             d_match = self.dataset_re.match(dataset)
             if d_match:
                 dataset_info = d_match.groupdict()
@@ -310,6 +311,7 @@ class DataManager:
                     for f in fs])
                     for dirpath, _, fs in os.walk(self.local(folder, to_master=True))]
 
+                print(f'len(f_all): {len(f_all)}')
                 k_all = [f2k(os.path.relpath(f, folder), delimiter=delimiter)
                          for f in f_all]
 
@@ -341,6 +343,7 @@ class DataManager:
             missing_source = False
 
             for k, p in source_patterns.items():
+                print('before find_matching_files')
                 filenames, fields = find_matching_files(folder, p, paths=f_all)
 
                 n_matches = len(filenames)
@@ -390,7 +393,7 @@ class DataManager:
         """
         request
         --------------
-        
+
         Requests output
         example: dataman.request({
           'dataset': 'linus_data',
@@ -517,7 +520,7 @@ class S3Connect:
     S3Connect
     -----------
     Looks in the config dict for information to create an s3 client
-    for data storage and retrieval. 
+    for data storage and retrieval.
     The location of the credentials file is expected to be
     given in an **environment variable** named in the config `credentials` key.
     If not present, the default location of the AWS CLI credentials file is used.
@@ -530,9 +533,9 @@ class S3Connect:
         ....
 
     The profile name is taken from config `cred_profile_name` key, or 'default'
-    if not present. 
+    if not present.
 
-    Finally, the endpoint URL and region to connect to are supplied in the 
+    Finally, the endpoint URL and region to connect to are supplied in the
     `endpoint_url` and `region_name` keys. If not supplied, boto3 defaults to
     the us-east-1 region of the standard AWS S3 endpoint.
     """
@@ -633,7 +636,7 @@ class S3Connect:
         Takes an s3 client and a bucket name, fetches the bucket,
         and lists top-level folder-like keys in the bucket (keys that have a '/').
 
-        Note: We set a generic MaxKeys parameter for 5000 keys max! 
+        Note: We set a generic MaxKeys parameter for 5000 keys max!
         If this is exceeded the "IsTruncated" field will be True in the output.
 
         Returns: bucket object and alphabetically-sorted list of unique top-level
@@ -798,8 +801,8 @@ class S3Connect:
             # keys found. Of course, a nonexistent key name also does.
             objects = [s3_key]
         elif len(files) > 0:
-            # with recursive=False, files contains the full keys (files) in the 
-            # first level under prefix. With recursive=True, files contains all 
+            # with recursive=False, files contains the full keys (files) in the
+            # first level under prefix. With recursive=True, files contains all
             # keys under prefix at all levels.
             objects = files
         else:

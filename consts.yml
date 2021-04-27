@@ -15,7 +15,7 @@ pages:
     local_store: webfish_data/datavis/
     generator_class: DatavisProcessing
     variables: [ "user", "dataset", "analysis", "position", "channel" ]
-    dataset_root: "{dataset}/"
+    dataset_root: "{user}/{dataset}/{analysis}"
     source_files:
       segmentation: "MMStack_Pos{position}/Segmentation/labeled_img.tif"
       dots_csv:
