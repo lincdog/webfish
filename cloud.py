@@ -142,7 +142,7 @@ class DataManager:
         if self.is_local:
             self.master_root = config['master_root']
 
-        self.datasets = None
+        self.datasets = []
         self.datafiles = None
 
         for name, page in self.pages.items():
@@ -211,7 +211,6 @@ class DataManager:
                 self.__dict__[key] = value
         else:
             self.__dict__[key] = value
-
 
     @property
     def active_page(self):
@@ -366,7 +365,7 @@ class DataManager:
 
                 #source_patterns = self.source_patterns
 
-            missing_source = False
+            missing_source = 0
 
             for k, p in self.source_patterns.items():
                 filenames, fields = find_matching_files(folder, p, paths=f_all)
@@ -375,8 +374,8 @@ class DataManager:
 
                 # if any of the patterns don't match at all, skip this dataset entirely
                 if n_matches == 0:
-                    missing_source = True
-                    break
+                    missing_source += 1
+                    continue
 
                 fields['filename'] = filenames
                 fields['field'] = n_matches * [k]
@@ -390,7 +389,7 @@ class DataManager:
 
             # If we found at least 1 of each source file, append this dataset's
             # info to the global datafile and datasets arrays. Otherwise skip it.
-            if not missing_source:
+            if missing_source < len(self.source_patterns):
                 all_datafiles.extend(datafiles)
                 self.datasets.append(dataset_info)
 
