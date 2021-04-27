@@ -301,11 +301,11 @@ class DataManager:
             else:
                 continue
 
-            # If we specify "null" for source_files, this is indication that
+            # If we do not specify source_files, this is indication that
             # this page does not require any specific files, but just the dataset
             # roots are enough. We will generate an empty datafiles but still the
             # dataset JSON with all possible datasets.
-            if self.source_files is None:
+            if not self.source_files:
                 self.datasets.append(dataset_info)
                 continue
 
@@ -372,7 +372,9 @@ class DataManager:
             self.pages[self.active_page]['datafiles'] = pd.DataFrame()
 
         if self.is_local:
-            json.dump(self.datasets, open(Path(self.sync_folder, 'wf_dataset.json'), 'w'))
+            monitor_dir = Path(self.sync_folder, self.active_page)
+            monitor_dir.mkdir(parents=True, exist_ok=True)
+            json.dump(self.datasets, open(monitor_dir / 'wf_dataset.json'), 'w'))
             #self.client.client.put
 
         return self.datafiles
