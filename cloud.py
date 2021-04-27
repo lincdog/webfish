@@ -312,6 +312,12 @@ class DataManager:
 
                 k_all = [f2k(os.path.relpath(f, folder), delimiter=delimiter)
                          for f in f_all]
+
+                source_patterns = {}
+                # create a unified source_patterns dict by prefixing pattern names
+                # with their parent page using dot notation e.g. datavis.segmentation
+                for pa, ps in self.source_patterns.items():
+                    source_patterns.update({'.'.join([pa, k]): p for k, p in ps.items()})
             else:
                 # we want to make as few requests to AWS as possible, so it is
                 # better to list ALL the objects and filter to find the ones we
@@ -330,9 +336,11 @@ class DataManager:
                 # to local filesystem conventions
                 f_all = [PurePath(k.replace(delimiter, '/')) for k in k_all]
 
+                source_patterns = self.source_patterns
+
             missing_source = False
 
-            for k, p in self.source_patterns.items():
+            for k, p in source_patterns.items():
                 filenames, fields = find_matching_files(folder, p, paths=f_all)
 
                 n_matches = len(filenames)
