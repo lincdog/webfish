@@ -83,6 +83,76 @@ class DatavisProcessing:
         return outfile
 
 
+class Page:
+    """
+    Page
+    -----
+    Data class that represents a page of the web app.
+    """
+
+    def __init__(
+            self,
+            config,
+            name
+    ):
+        self.name = name
+        self.config = config['pages'][name].copy()
+
+        self.bucket_name = config['bucket_name']
+
+        local_store = Path(config.get('local_store', f'webfish_data/'), name)
+        local_store.mkdir(parents=True, exist_ok=True)
+        self.local_store = local_store
+
+        self.sync_file = Path(local_store, config.get('sync_folder'), f'{name}_sync.json')
+
+        self.source_files = self.config.get('source_files', {})
+        self.output_files = self.config.get('output_files', {})
+        self.global_files = self.config.get('global_files', {})
+
+        dr = config.get('dataset_root', '')
+        self.dataset_root = dr
+        # How many levels do we have to fetch to reach the datasets?
+        self.dataset_nest = len(dr.rstrip('/').split('/')) - 1
+
+        dre, glob = fmt2regex(dr)
+        self.dataset_re = dre
+        self.dataset_glob = glob
+
+        self.dataset_fields = list(dre.groupindex.keys())
+        self.file_fields = self.config.get('variables')
+
+        self.file_keys = list(self.config.get('source_files', {}).keys()) + \
+                           list(self.config.get('output_files', {}).keys()) + \
+                           list(self.config.get('global_files', {}).keys())
+
+        self.source_patterns = self.config.get('source_files', {})
+
+        self.output_files = self.config.get('output_files', {})
+
+        self.output_patterns = {}
+        self.output_generators = {}
+
+        # Try to grab the generator class object from this module
+        if 'generator_class' in self.config.keys():
+            self.generator_class = getattr(sys.modules.get(__name__),
+                                           self.config['generator_class'])
+        else:
+            self.generator_class = None
+
+        for f, v in self.output_files.items():
+            self.output_patterns[f] = v['pattern']
+
+            if 'generator' in v.keys():
+                self.output_generators[f] = getattr(
+                    self.generator_class,
+                    v['generator']
+                )
+
+        self.datafiles = None
+        self.datasets = None
+
+
 class DataServer:
     """
     DataServer
@@ -92,7 +162,7 @@ class DataServer:
     Basically the same as DataManager but inverted...
     * Uses same config for source files as DataManager - local_store is different
       and bucket/path for requests vs uploads and dataset listings may be different
-    * get_datasets: lists local structure rather than s3
+    * find_datafiles: lists local structure rather than s3
     * publishes json file listing directory structure
     * listen: checks for request file on s3
     * put or upload or respond: uploads local file structure to specified
@@ -104,10 +174,72 @@ class DataServer:
         config,
         s3_client,
     ):
-        pass
+        self.config = config
+        self.client = s3_client
+
+        self.master_root = config.get('master_root')
+        self.sync_folder = config.get('sync_folder', 'monitoring/')
+        self.analysis_folder = config.get('analysis_folder', 'analyses/')
+
+        self.all_datasets = []
+        dr = config.get('dataset_root', '')
+        self.dataset_root = dr
+        # How many levels do we have to fetch to reach the datasets?
+        self.dataset_nest = len(Path(dr).parts) - 1
+
+        dre, glob = fmt2regex(dr)
+        self.dataset_re = dre
+        self.dataset_glob = glob
+
+        self.dataset_fields = list(dre.groupindex.keys())
+        self.pages = {name: Page(config, name) for name in config.get('pages', {})}
+        self.pagenames = tuple(self.pages.keys())
+
+        self.bucket_name = config.get('bucket_name')
+
+    def get_datasets(
+        self,
+        folders=None
+    ):
+        # if we're in local (server) mode, we exclusively list our
+        # master record of files.
+        possible_folders = ls_recursive(root=self.master_root,
+                                        level=self.dataset_nest,
+                                        flat=True)
+
+        if folders:
+            folders = [Path(f) for f in folders]
+            possible_folders = list(set(folders) & set(possible_folders))
+
+        datasets = []
+        dataset_folders = []
+
+        for f in possible_folders:
+            f = str(f).rstrip('/')
+            d_match = self.dataset_re.match(f)
+
+            if d_match:
+                dataset_info = d_match.groupdict()
+                datasets.append(dataset_info)
+                dataset_folders.append(f)
+
+        self.all_datasets = datasets
+
+        all_datasets_file = Path(self.sync_folder, 'all_datasets.json')
+
+        with open(all_datasets_file, 'w') as adf:
+            json.dump(self.all_datasets, adf)
+
+        self.client.client.upload_file(
+            str(all_datasets_file),
+            Bucket=self.bucket_name,
+            Key=str(all_datasets_file)
+        )
+
+        return dataset_folders, datasets
 
 
-class DataManager:
+class DataClient:
     """
     DataManager
     --------------
@@ -116,91 +248,24 @@ class DataManager:
     class.
     """
 
-    _page_properties = ('bucket_name', 'sync_file', 'local_store', 'variables',
-                        'dataset_root', 'dataset_nest', 'source_files', 'output_files',
-                        'source_patterns', 'output_patterns', 'output_generators',
-                        'global_files', 'dataset_re', 'dataset_glob', 'file_fields',
-                        'datafiles', 'datasets')
-
     def __init__(
         self,
         config=None,
         s3_client=None,
         bucket_name=None,
         pagename=None,
-        is_local=False
     ):
         self.active_page = pagename
         self.config = config
         self.client = s3_client
-        self.is_local = is_local
 
+        self.master_root = config.get('master_root')
         self.sync_folder = config.get('sync_folder', 'monitoring/')
-        self.analysis_folder = config.get('analysis_folder', 'analysis/')
+        self.analysis_folder = config.get('analysis_folder', 'analyses/')
 
         self.pages = config.get('pages', {})
         self.pagenames = tuple(self.pages.keys())
         self.active_page = pagename
-
-        self.master_root = config.get('master_root')
-
-        for name, page in self.pages.items():
-            local_store = Path(page.get('local_store', f'webfish_data/{name}/'))
-            local_store.mkdir(parents=True, exist_ok=True)
-            self.pages[name]['local_store'] = local_store
-
-            self.pages[name]['source_files'] = page.get('source_files', {})
-            self.pages[name]['output_files'] = page.get('output_files', {})
-            self.pages[name]['global_files'] = page.get('global_files', {})
-
-            dr = page.get('dataset_root', '')
-            self.pages[name]['dataset_root'] = dr
-            # How many levels do we have to fetch to reach the datasets?
-            self.pages[name]['dataset_nest'] = len(dr.rstrip('/').split('/')) - 1
-
-            re, glob = fmt2regex(dr)
-            self.pages[name]['dataset_re'] = re
-            self.pages[name]['dataset_glob'] = glob
-
-            self.pages[name]['file_fields'] = list(page.get('source_files', {}).keys()) + \
-                list(page.get('output_files', {}).keys()) + \
-                list(page.get('global_files', {}).keys())
-
-            self.pages[name]['source_patterns'] = page.get('source_files', {})
-
-            output_files = page.get('output_files', {})
-
-            self.pages[name]['output_patterns'] = {}
-            self.pages[name]['output_generators'] = {}
-
-            # Try to grab the generator class object from this module
-            if 'generator_class' in page.keys():
-                generator_class = getattr(sys.modules.get(__name__),
-                                          page['generator_class'])
-            else:
-                generator_class = None
-
-            for f, v in output_files.items():
-                self.pages[name]['output_patterns'][f] = v['pattern']
-
-                if 'generator' in v.keys():
-                    self.pages[name]['output_generators'][f] = getattr(
-                        generator_class,
-                        v['generator']
-                    )
-
-    def __getattr__(self, item):
-        if item in type(self)._page_properties:
-            if self.active_page:
-                return self.pages[self.active_page].get(item, None)
-            else:
-                return {n: p[item] for n, p in self.pages.items()}
-        else:
-            try:
-                result = self.__dict__[item]
-            except KeyError:
-                raise AttributeError(f'Unknown attribute {item}')
-            return result
 
     def local(
         self,
@@ -233,7 +298,74 @@ class DataManager:
         self,
         delimiter='/',
         prefix='',
-        progress=False
+        use_syncfile=False,
+        folders=None
+    ):
+        if self.is_local:
+            # if we're in local (server) mode, we exclusively list our
+            # master record of files.
+            possible_folders = ls_recursive(root=self.master_root,
+                                            level=self.dataset_nest,
+                                            flat=True)
+        else:
+            if use_syncfile:
+                # On s3, the sync files are stored in sync_folder, e.g.:
+                # monitoring/datavis_datasets.json
+                # On the Webapp server, the sync files are stored in each page's
+                # local_store directory e.g.:
+                # webfish_data/datavis/monitoring/datavis_datasets.json
+                sync_location = Path(self.sync_folder, self.sync_file)
+                errors = self.client.download_s3_objects(
+                    self.bucket_name,
+                    str(PurePath(sync_location)),
+                    local_dir=self.local_store
+                )
+
+                if len(errors) != 0:
+                    print(errors)
+
+                sync_datasets = json.load(open(self.local(sync_location), 'r'))
+                self.pages[self.active_page]['datasets'] = sync_datasets
+
+                # sync_datasets gives POSSIBLE available datasets from the HPC
+                # We may also have LOCAL datasets, such as ones we've already
+                # downloaded. We probably want to list our local_store and find
+                # datasets there. Then, we return a list of local_store FOLDERS
+                # corresponding to datasets that we HAVE downloaded
+                return None, sync_datasets
+            else:
+                possible_folders = self.client.list_to_n_level_recursive(
+                    self.bucket_name,
+                    delimiter=delimiter,
+                    prefix=prefix+str(self.analysis_folder),
+                    level=self.dataset_nest
+                )
+
+        if folders:
+            folders = [Path(f) for f in folders]
+            possible_folders = list(set(folders) & set(possible_folders))
+
+        datasets = []
+        dataset_folders = []
+
+        for f in possible_folders:
+            f = str(f).rstrip(delimiter)
+            d_match = self.dataset_re.match(f)
+
+            if d_match:
+                dataset_info = d_match.groupdict()
+                datasets.append(dataset_info)
+                dataset_folders.append(f)
+
+        self.pages[self.active_page]['datasets'] = datasets
+
+        return dataset_folders, datasets
+
+    def find_datafiles(
+        self,
+        delimiter='/',
+        prefix='',
+        progress=False,
     ):
         if self.is_local or not self.active_page:
             results = {}
@@ -241,14 +373,14 @@ class DataManager:
                 print(f'page={page}')
                 self.active_page = page
 
-                results[page] = self._get_datasets(delimiter, prefix, progress)
+                results[page] = self._find_datafiles(delimiter, prefix, progress)
 
             self.active_page = None
             return results
         else:
-            return self._get_datasets(delimiter, prefix, progress)
+            return self._find_datafiles(delimiter, prefix, progress)
 
-    def _get_datasets(
+    def _find_datafiles(
             self,
             delimiter='/',
             prefix='',
@@ -256,7 +388,7 @@ class DataManager:
             folders=None
     ):
         """
-        get_datasets
+        find_datafiles
         ------------
         Searches the supplied bucket for top-level folders, which should
         represent available datasets. Searches each of these folders for position
@@ -266,25 +398,10 @@ class DataManager:
 
         """
 
-        if self.is_local:
-            # max_nest = max(self.dataset_nest.values())
-            possible_folders = ls_recursive(root=self.master_root,
-                                            level=self.dataset_nest,
-                                            flat=True)
-        else:
-            possible_folders = self.client.list_to_n_level_recursive(
-                self.bucket_name,
-                delimiter=delimiter,
-                prefix=prefix+str(self.analysis_folder),
-                level=self.dataset_nest
-            )
+        if not self.is_local:
+            return
 
-        if folders:
-            folders = [Path(f) for f in folders]
-            possible_folders = list(set(folders) & set(possible_folders))
-
-
-        #print(f'possible_folders: {possible_folders}')
+        possible_folders = self.get_datasets(delimiter, prefix, folders)
 
         self.pages[self.active_page]['datasets'] = []
         all_datafiles = []
@@ -292,52 +409,20 @@ class DataManager:
 
         n = 0
 
+        if not self.source_files:
+            return possible_folders
+
         for folder in possible_folders:
 
             if progress:
                 if n % 50 == 0:
-                    print(f'get_datasets: finished {n} folders')
+                    print(f'find_datafiles: finished {n} folders')
                 n += 1
 
             datafiles = []
-            dataset = f2k(folder, delimiter).rstrip(delimiter)
 
-            d_match = self.dataset_re.match(dataset)
-            if d_match:
-                dataset_info = d_match.groupdict()
-            else:
-                continue
-
-            # If we do not specify source_files, this is indication that
-            # this page does not require any specific files, but just the dataset
-            # roots are enough. We will generate an empty datafiles but still the
-            # dataset JSON with all possible datasets.
-            if not self.source_files:
-                datasets.append(dataset_info)
-                continue
-
-            if self.is_local:
-                f_all = None
-                folder_prefix = self.master_root
-            else:
-                # we want to make as few requests to AWS as possible, so it is
-                # better to list ALL the objects and filter to find the ones we
-                # want. I think!
-                # Note that we have set the MaxKeys parameter to 5000, which is hopefully enough.
-                # But in the future we want to use a Paginator in S3Connect to avoid this possibility.
-                k_all, _ = self.client.list_objects(
-                    self.bucket_name,
-                    delimiter=delimiter,
-                    prefix=folder,
-                    recursive=True,
-                    to_path=False
-                )
-                # we want to have two versions: the list of actual keys k_all,
-                # and the PurePath list f for efficient matching and translation
-                # to local filesystem conventions
-                f_all = [PurePath(k.replace(delimiter, '/')) for k in k_all]
-
-                folder_prefix = Path()
+            f_all = None
+            folder_prefix = self.master_root
 
             missing_source = 0
 
@@ -372,6 +457,7 @@ class DataManager:
         # our local files.
         if all_datafiles:
             datafiles_df = pd.concat(all_datafiles)
+            del all_datafiles
             datafiles_df['page'] = self.active_page
             datafiles_df.to_csv(self.local('wf_datafiles.csv'), index=False)
             self.pages[self.active_page]['datafiles'] = datafiles_df
@@ -380,13 +466,29 @@ class DataManager:
 
         if self.is_local:
             self.pages[self.active_page]['datasets'] = datasets.copy()
-            monitor_dir = Path(self.sync_folder, self.active_page)
+            monitor_dir = Path(self.sync_folder)
 
             monitor_dir.mkdir(parents=True, exist_ok=True)
-            json.dump(datasets, open(monitor_dir / 'wf_dataset.json', 'w'))
-            #self.client.client.put
+            json.dump(datasets, open(monitor_dir / self.sync_file, 'w'))
 
         return self.datafiles
+
+    def sync_to_s3(
+        self,
+        page=None
+    ):
+        if not self.is_local:
+            return
+
+        page = page or self.active_page
+
+        #
+        self.client.client.upload_file(
+            str(Path(self.sync_folder, self.sync_file)),
+            Bucket=self.bucket_name,
+            Key=str(PurePath(self.sync_folder, self.sync_file)),
+        )
+
 
     def request(
             self,

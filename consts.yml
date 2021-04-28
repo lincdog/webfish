@@ -8,15 +8,16 @@ region_name: us-west-1
 master_root: /groups/CaiLab/analyses/
 sync_folder: monitoring/
 analysis_folder: analyses/
+dataset_root: "{user}/{dataset}/{analysis}"
+
+bucket_name: hpc-wasabi
+
+local_store: webfish_data/
 
 pages:
   datavis:
-    bucket_name: hpc-wasabi
-    sync_file: "datavis_datasets.json"
-    local_store: webfish_data/datavis/
     generator_class: DatavisProcessing
-    variables: [ "user", "dataset", "analysis", "position", "channel" ]
-    dataset_root: "{user}/{dataset}/{analysis}"
+    variables: [ "position", "channel" ]
     source_files:
       segmentation: "MMStack_Pos{position}/Segmentation/labeled_img.tif"
       dots_csv:
@@ -39,9 +40,5 @@ pages:
         generator: "generate_dots"
 
   dotdetection:
-    bucket_name: hpc-wasabi
-    sync_file: "dotdetection_datasets.json"
-    local_store: webfish_data/dotdetection/
-    dataset_root: "{user}/{dataset}/{analysis}"
     global_files:
       exp_tree: "monitoring/exp_tree.json"
