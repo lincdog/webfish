@@ -262,8 +262,11 @@ class DataServer:
         if not self.all_datasets:
             self.get_datasets()
 
+        page_datasets = []
+
         if not self.pages[page].source_files:
-            return self.all_datasets, pd.DataFrame()
+            page_datasets = self.all_datasets
+            datafile_df = pd.DataFrame()
 
         all_datafiles = []
 
@@ -275,29 +278,28 @@ class DataServer:
             fields['filename'] = filenames
             all_datafiles.append(pd.DataFrame(fields))
 
-        datafile_df = pd.concat(all_datafiles).sort_values(by=self.dataset_fields)
-        del all_datafiles
+        if all_datafiles:
+            datafile_df = pd.concat(all_datafiles).sort_values(by=self.dataset_fields)
+            del all_datafiles
+
+            for group, rows in datafile_df.groupby(self.dataset_fields):
+                dataset = {field: value for field, value in zip(self.dataset_fields, group)}
+
+                dataset['folder'] = self.dataset_root.format(**dataset)
+
+                # FIXME: Technically we should also group by the source file variables, but
+                #   usually all the positions etc WITHIN one analysis ALL have the same
+                #   files present.
+                dataset['source_keys'] = list(rows['source_key'].unique())
+
+                # TODO: Add boolean logic to exclude datasets that do not have the right
+                #   combo of source keys present. Here we are implicitly keeping any
+                #   data set that has ANY one source key because it will form a group with
+                #   one row in this for loop.
+
+                page_datasets.append(dataset)
+
         self.pages[page].datafiles = datafile_df
-
-        page_datasets = []
-
-        for group, rows in datafile_df.groupby(self.dataset_fields):
-            dataset = {field: value for field, value in zip(self.dataset_fields, group)}
-
-            dataset['folder'] = self.dataset_root.format(**dataset)
-
-            # FIXME: Technically we should also group by the source file variables, but
-            #   usually all the positions etc WITHIN one analysis ALL have the same
-            #   files present.
-            dataset['source_keys'] = list(rows['source_key'].unique())
-
-            # TODO: Add boolean logic to exclude datasets that do not have the right
-            #   combo of source keys present. Here we are implicitly keeping any
-            #   data set that has ANY one source key because it will form a group with
-            #   one row in this for loop.
-
-            page_datasets.append(dataset)
-
         self.pages[page].datasets = page_datasets
 
         page_sync_file = str(self.pages[page].sync_file)
