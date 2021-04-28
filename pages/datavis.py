@@ -16,7 +16,7 @@ import cloud
 data_manager = cloud.DataManager(config=config,
                            s3_client=s3_client,
                            pagename='datavis')
-datasets = data_manager.get_datasets()
+datasets = data_manager.find_datafiles()
 
 
 def query_df(df, selected_genes):

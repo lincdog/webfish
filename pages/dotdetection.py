@@ -16,7 +16,7 @@ from app import app, config, s3_client
 import cloud
 
 data_manager = cloud.DataManager(config=config, s3_client=s3_client, pagename='dotdetection')
-data_manager.get_datasets()
+data_manager.find_datafiles()
 
 
 def get_tree():

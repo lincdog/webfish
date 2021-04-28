@@ -185,7 +185,7 @@ class DataServer:
 
         self.analysis_folder = config.get('analysis_folder', 'analyses/')
 
-        self.all_datasets = []
+        self.all_datasets = pd.DataFrame()
         dr = config.get('dataset_root', '')
         self.dataset_root = dr
         # How many levels do we have to fetch to reach the datasets?
@@ -255,7 +255,7 @@ class DataServer:
 
         """
 
-        if not self.all_datasets:
+        if self.all_datasets.empty:
             self.get_datasets()
 
         page_datasets = []
@@ -398,46 +398,6 @@ class DataClient:
 
         return Path(key)
 
-    def get_datasets(
-        self,
-        delimiter='/',
-        prefix='',
-        use_syncfile=False,
-        folders=None
-    ):
-        if use_syncfile:
-            # On s3, the sync files are stored in sync_folder, e.g.:
-            # monitoring/datavis_datasets.json
-            # On the Webapp server, the sync files are stored in each page's
-            # local_store directory e.g.:
-            # webfish_data/datavis/monitoring/datavis_datasets.json
-            sync_location = Path(self.sync_folder, self.sync_file)
-            errors = self.client.download_s3_objects(
-                self.bucket_name,
-                str(PurePath(sync_location)),
-                local_dir=self.local_store
-            )
-
-            if len(errors) != 0:
-                print(errors)
-
-            sync_datasets = json.load(open(self.local(sync_location), 'r'))
-            self.pages[self.active_page]['datasets'] = sync_datasets
-
-            # sync_datasets gives POSSIBLE available datasets from the HPC
-            # We may also have LOCAL datasets, such as ones we've already
-            # downloaded. We probably want to list our local_store and find
-            # datasets there. Then, we return a list of local_store FOLDERS
-            # corresponding to datasets that we HAVE downloaded
-            return None, sync_datasets
-        else:
-            possible_folders = self.client.list_to_n_level_recursive(
-                self.bucket_name,
-                delimiter=delimiter,
-                prefix=prefix+str(self.analysis_folder),
-                level=self.dataset_nest
-            )
-
     def request(
             self,
             request,
@@ -459,16 +419,16 @@ class DataClient:
         if isinstance(fields, str):
             fields = (fields,)
 
-        if self.global_files:
-            if all([field in self.global_files.keys() for field in fields]):
+        if self.page.global_files:
+            if all([field in self.page.global_files.keys() for field in fields]):
                 return {
                     field: self.retrieve_or_download(
-                        self.global_files[field], force_download=force_download)
+                        self.page.global_files[field], force_download=force_download)
                     for field in fields
                 }
 
         if self.datafiles is None:
-            return None
+            return {}
 
         if request:
             # Query the datafiles index
