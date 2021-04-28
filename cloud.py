@@ -243,6 +243,7 @@ class DataManager:
 
                 results[page] = self._get_datasets(delimiter, prefix, progress)
 
+            self.active_page = None
             return results
         else:
             return self._get_datasets(delimiter, prefix, progress)
@@ -274,7 +275,7 @@ class DataManager:
             possible_folders = self.client.list_to_n_level_recursive(
                 self.bucket_name,
                 delimiter=delimiter,
-                prefix=prefix,
+                prefix=prefix+str(self.analysis_folder),
                 level=self.dataset_nest
             )
 
