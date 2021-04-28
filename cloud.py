@@ -104,7 +104,8 @@ class Page:
         local_store.mkdir(parents=True, exist_ok=True)
         self.local_store = local_store
 
-        self.sync_file = Path(local_store, config.get('sync_folder'), f'{name}_sync.json')
+        self.sync_file = Path(config.get('sync_folder'), f'{name}_sync.json')
+        self.file_table = Path(config.get('sync_folder'), f'{name}_files.csv')
 
         self.source_files = self.config.get('source_files', {})
         self.output_files = self.config.get('output_files', {})
@@ -178,7 +179,12 @@ class DataServer:
         self.client = s3_client
 
         self.master_root = config.get('master_root')
+        if not Path(self.master_root).is_dir():
+            raise FileNotFoundError(f'master_root specified as {self.master_root} does not exist')
+
         self.sync_folder = config.get('sync_folder', 'monitoring/')
+        Path(self.sync_folder).mkdir(parents=True, exist_ok=True)
+
         self.analysis_folder = config.get('analysis_folder', 'analyses/')
 
         self.all_datasets = []
@@ -201,8 +207,6 @@ class DataServer:
         self,
         folders=None
     ):
-        # if we're in local (server) mode, we exclusively list our
-        # master record of files.
         possible_folders = ls_recursive(root=self.master_root,
                                         level=self.dataset_nest,
                                         flat=True)
@@ -220,6 +224,7 @@ class DataServer:
 
             if d_match:
                 dataset_info = d_match.groupdict()
+                dataset_info['folder'] = f
                 datasets.append(dataset_info)
                 dataset_folders.append(f)
 
@@ -236,7 +241,80 @@ class DataServer:
             Key=str(all_datasets_file)
         )
 
-        return dataset_folders, datasets
+        return datasets
+
+    def find_datafiles(
+            self,
+            page=None,
+    ):
+        """
+        find_datafiles
+        ------------
+        Searches the supplied bucket for top-level folders, which should
+        represent available datasets. Searches each of these folders for position
+        folders, and each of these for channel folders.
+
+        Returns: dictionary representing the structure of all available experiments
+
+        """
+
+        if not self.datasets:
+            self.get_datasets()
+
+        if not self.pages[page].source_files:
+            return self.datasets
+
+        all_datafiles = []
+
+        for key, pattern in self.pages[page].source_patterns.items():
+            filenames, fields = find_matching_files(Path(self.master_root),
+                                                    Path(self.dataset_root, pattern))
+
+            fields['source_key'] = key
+            fields['filename'] = filenames
+            all_datafiles.append(pd.DataFrame(fields))
+
+        datafile_df = pd.concat(all_datafiles).sort_values(by=self.dataset_fields)
+        del all_datafiles
+        self.pages[page].datafiles = datafile_df
+
+        page_datasets = []
+
+        for group, rows in datafile_df.groupby(self.dataset_fields):
+            dataset = {field: value for field, value in zip(self.dataset_fields, group)}
+            dataset['folder'] = self.dataset_root.format(dataset)
+            # FIXME: Technically we should also group by the source file variables, but
+            #   usually all the positions etc WITHIN one analysis ALL have the same
+            #   files present.
+            dataset['source_keys'] = list(rows['source_key'].unique())
+
+            # TODO: Add boolean logic to exclude datasets that do not have the right
+            #   combo of source keys present. Here we are implicitly keeping any
+            #   data set that has ANY one source key because it will form a group with
+            #   one row in this for loop.
+
+            page_datasets.append(dataset)
+
+        page_sync_file = Path(self.pages[page].sync_file)
+        with open(page_sync_file, 'w') as psf:
+            json.dump(page_datasets, psf)
+
+        self.client.client.upload_file(
+            page_sync_file,
+            Bucket=self.bucket_name,
+            Key=page_sync_file
+        )
+
+        page_file_table = Path(self.pages[page].file_table)
+        datafile_df.to_csv(page_file_table, index=False)
+
+        self.client.client.upload_file(
+            page_file_table,
+            Bucket=self.bucket_name,
+            Key=page_file_table
+        )
+
+        return datafile_df, page_datasets
 
 
 class DataClient:
@@ -301,45 +379,38 @@ class DataClient:
         use_syncfile=False,
         folders=None
     ):
-        if self.is_local:
-            # if we're in local (server) mode, we exclusively list our
-            # master record of files.
-            possible_folders = ls_recursive(root=self.master_root,
-                                            level=self.dataset_nest,
-                                            flat=True)
+        if use_syncfile:
+            # On s3, the sync files are stored in sync_folder, e.g.:
+            # monitoring/datavis_datasets.json
+            # On the Webapp server, the sync files are stored in each page's
+            # local_store directory e.g.:
+            # webfish_data/datavis/monitoring/datavis_datasets.json
+            sync_location = Path(self.sync_folder, self.sync_file)
+            errors = self.client.download_s3_objects(
+                self.bucket_name,
+                str(PurePath(sync_location)),
+                local_dir=self.local_store
+            )
+
+            if len(errors) != 0:
+                print(errors)
+
+            sync_datasets = json.load(open(self.local(sync_location), 'r'))
+            self.pages[self.active_page]['datasets'] = sync_datasets
+
+            # sync_datasets gives POSSIBLE available datasets from the HPC
+            # We may also have LOCAL datasets, such as ones we've already
+            # downloaded. We probably want to list our local_store and find
+            # datasets there. Then, we return a list of local_store FOLDERS
+            # corresponding to datasets that we HAVE downloaded
+            return None, sync_datasets
         else:
-            if use_syncfile:
-                # On s3, the sync files are stored in sync_folder, e.g.:
-                # monitoring/datavis_datasets.json
-                # On the Webapp server, the sync files are stored in each page's
-                # local_store directory e.g.:
-                # webfish_data/datavis/monitoring/datavis_datasets.json
-                sync_location = Path(self.sync_folder, self.sync_file)
-                errors = self.client.download_s3_objects(
-                    self.bucket_name,
-                    str(PurePath(sync_location)),
-                    local_dir=self.local_store
-                )
-
-                if len(errors) != 0:
-                    print(errors)
-
-                sync_datasets = json.load(open(self.local(sync_location), 'r'))
-                self.pages[self.active_page]['datasets'] = sync_datasets
-
-                # sync_datasets gives POSSIBLE available datasets from the HPC
-                # We may also have LOCAL datasets, such as ones we've already
-                # downloaded. We probably want to list our local_store and find
-                # datasets there. Then, we return a list of local_store FOLDERS
-                # corresponding to datasets that we HAVE downloaded
-                return None, sync_datasets
-            else:
-                possible_folders = self.client.list_to_n_level_recursive(
-                    self.bucket_name,
-                    delimiter=delimiter,
-                    prefix=prefix+str(self.analysis_folder),
-                    level=self.dataset_nest
-                )
+            possible_folders = self.client.list_to_n_level_recursive(
+                self.bucket_name,
+                delimiter=delimiter,
+                prefix=prefix+str(self.analysis_folder),
+                level=self.dataset_nest
+            )
 
         if folders:
             folders = [Path(f) for f in folders]
