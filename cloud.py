@@ -283,7 +283,9 @@ class DataServer:
 
         for group, rows in datafile_df.groupby(self.dataset_fields):
             dataset = {field: value for field, value in zip(self.dataset_fields, group)}
-            dataset['folder'] = self.dataset_root.format(dataset)
+
+            dataset['folder'] = self.dataset_root.format(**dataset)
+
             # FIXME: Technically we should also group by the source file variables, but
             #   usually all the positions etc WITHIN one analysis ALL have the same
             #   files present.
