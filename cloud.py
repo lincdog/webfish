@@ -263,7 +263,7 @@ class DataServer:
             self.get_datasets()
 
         if not self.pages[page].source_files:
-            return self.all_datasets
+            return self.all_datasets, pd.DataFrame()
 
         all_datafiles = []
 
@@ -317,7 +317,7 @@ class DataServer:
             Key=page_file_table
         )
 
-        return datafile_df, page_datasets
+        return page_datasets, datafile_df
 
 
 class DataClient:
