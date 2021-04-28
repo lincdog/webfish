@@ -268,8 +268,8 @@ class DataServer:
         all_datafiles = []
 
         for key, pattern in self.pages[page].source_patterns.items():
-            filenames, fields = find_matching_files(Path(self.master_root),
-                                                    Path(self.dataset_root, pattern))
+            filenames, fields = find_matching_files(str(self.master_root),
+                                                    str(PurePath(self.dataset_root, pattern)))
 
             fields['source_key'] = key
             fields['filename'] = filenames
