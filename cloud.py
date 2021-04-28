@@ -100,12 +100,9 @@ class Page:
 
         self.bucket_name = config['bucket_name']
 
-        # TODO: move this to DataClien
-        local_store = Path(config.get('local_store', f'webfish_data/'), name)
-        local_store.mkdir(parents=True, exist_ok=True)
-        self.local_store = local_store
+        self.local_store = Path(config.get('local_store', 'webfish_data/'), name)
 
-        self.sync_file = Path(config.get('sync_folder'), f'{name}_sync.json')
+        self.sync_file = Path(config.get('sync_folder'), f'{name}_sync.csv')
         self.file_table = Path(config.get('sync_folder'), f'{name}_files.csv')
 
         self.source_files = self.config.get('source_files', {})
@@ -229,12 +226,11 @@ class DataServer:
                 datasets.append(dataset_info)
                 dataset_folders.append(f)
 
-        self.all_datasets = datasets
+        self.all_datasets = pd.DataFrame(datasets)
 
-        all_datasets_file = Path(self.sync_folder, 'all_datasets.json')
+        all_datasets_file = Path(self.sync_folder, 'all_datasets.csv')
 
-        with open(all_datasets_file, 'w') as adf:
-            json.dump(self.all_datasets, adf)
+        self.all_datasets.to_csv(all_datasets_file, index=False)
 
         self.client.client.upload_file(
             str(all_datasets_file),
@@ -299,12 +295,13 @@ class DataServer:
 
                 page_datasets.append(dataset)
 
+        page_datasets = pd.DataFrame(page_datasets)
+
         self.pages[page].datafiles = datafile_df
         self.pages[page].datasets = page_datasets
 
         page_sync_file = str(self.pages[page].sync_file)
-        with open(page_sync_file, 'w') as psf:
-            json.dump(page_datasets, psf)
+        page_datasets.to_csv(page_sync_file, index=False)
 
         self.client.client.upload_file(
             page_sync_file,
@@ -326,7 +323,7 @@ class DataServer:
 
 class DataClient:
     """
-    DataManager
+    DataClient
     --------------
     Class that serves files based on config values. Pulls from
     S3 storage if necessary and performs processing using supplied "generator"
@@ -337,25 +334,49 @@ class DataClient:
         self,
         config=None,
         s3_client=None,
-        bucket_name=None,
         pagename=None,
     ):
         self.active_page = pagename
         self.config = config
         self.client = s3_client
 
-        self.master_root = config.get('master_root')
-        self.sync_folder = config.get('sync_folder', 'monitoring/')
-        self.analysis_folder = config.get('analysis_folder', 'analyses/')
+        self.sync_folder = Path(config.get('sync_folder', 'monitoring/'))
+        self.sync_folder.mkdir(parents=True, exist_ok=True)
 
-        self.pages = config.get('pages', {})
-        self.pagenames = tuple(self.pages.keys())
-        self.active_page = pagename
+        self.analysis_folder = config.get('analysis_folder', 'analyses/')
+        self.bucket_name = config['bucket_name']
+
+        self.pagename = pagename
+        self.page = Page(config, pagename)
+        self.local_store = self.page.local_store
+        self.local_store.mkdir(parents=True, exist_ok=True)
+
+        self.file_table = self.page.file_table
+        self.sync_file = self.page.sync_file
+
+        self.datafiles = None
+        self.datasets = None
+
+    def sync_with_s3(
+        self
+    ):
+        error = self.client.download_s3_objects(
+            self.bucket_name,
+            f2k(self.sync_folder),
+            local_dir=self.sync_folder
+        )
+
+        if len(error) > 0:
+            raise FileNotFoundError(
+                f'select_dataset: errors downloading keys:',
+                error)
+
+        self.datasets = pd.read_csv(self.sync_file)
+        self.datafiles = pd.read_csv(self.file_table)
 
     def local(
         self,
         key,
-        to_master=False,
         page=None,
         delimiter='/'
     ):
@@ -372,10 +393,8 @@ class DataClient:
         if page is None:
             page = self.active_page
 
-        if to_master and self.master_root:
-            key = self.master_root / key
-        elif not key.is_relative_to(self.pages[page]['local_store']):
-            key = self.pages[page]['local_store'] / key
+        if not key.is_relative_to(self.local_store):
+            key = self.local_store / key
 
         return Path(key)
 
@@ -418,155 +437,6 @@ class DataClient:
                 prefix=prefix+str(self.analysis_folder),
                 level=self.dataset_nest
             )
-
-        if folders:
-            folders = [Path(f) for f in folders]
-            possible_folders = list(set(folders) & set(possible_folders))
-
-        datasets = []
-        dataset_folders = []
-
-        for f in possible_folders:
-            f = str(f).rstrip(delimiter)
-            d_match = self.dataset_re.match(f)
-
-            if d_match:
-                dataset_info = d_match.groupdict()
-                datasets.append(dataset_info)
-                dataset_folders.append(f)
-
-        self.pages[self.active_page]['datasets'] = datasets
-
-        return dataset_folders, datasets
-
-    def find_datafiles(
-        self,
-        delimiter='/',
-        prefix='',
-        progress=False,
-    ):
-        if self.is_local or not self.active_page:
-            results = {}
-            for page in self.pagenames:
-                print(f'page={page}')
-                self.active_page = page
-
-                results[page] = self._find_datafiles(delimiter, prefix, progress)
-
-            self.active_page = None
-            return results
-        else:
-            return self._find_datafiles(delimiter, prefix, progress)
-
-    def _find_datafiles(
-            self,
-            delimiter='/',
-            prefix='',
-            progress=False,
-            folders=None
-    ):
-        """
-        find_datafiles
-        ------------
-        Searches the supplied bucket for top-level folders, which should
-        represent available datasets. Searches each of these folders for position
-        folders, and each of these for channel folders.
-
-        Returns: dictionary representing the structure of all available experiments
-
-        """
-
-        if not self.is_local:
-            return
-
-        possible_folders = self.get_datasets(delimiter, prefix, folders)
-
-        self.pages[self.active_page]['datasets'] = []
-        all_datafiles = []
-        datasets = []
-
-        n = 0
-
-        if not self.source_files:
-            return possible_folders
-
-        for folder in possible_folders:
-
-            if progress:
-                if n % 50 == 0:
-                    print(f'find_datafiles: finished {n} folders')
-                n += 1
-
-            datafiles = []
-
-            f_all = None
-            folder_prefix = self.master_root
-
-            missing_source = 0
-
-            for k, p in self.source_patterns.items():
-                filenames, fields = find_matching_files(folder_prefix / folder, p, paths=f_all)
-
-                n_matches = len(filenames)
-
-                # if any of the patterns don't match at all, skip this dataset entirely
-                if n_matches == 0:
-                    missing_source += 1
-                    continue
-
-                fields['filename'] = filenames
-                fields['field'] = n_matches * [k]
-
-                fields['analysisid'] = folder
-
-                for dk, v in dataset_info.items():
-                    fields[dk] = n_matches * [v]
-
-                datafiles.append(pd.DataFrame(fields))
-
-            # If we found at least 1 of each source file, append this dataset's
-            # info to the global datafile and datasets arrays. Otherwise skip it.
-            if missing_source < len(self.source_patterns):
-                all_datafiles.extend(datafiles)
-                datasets.append(dataset_info)
-
-        # one could imagine this table is stored on the cloud and updated every
-        # time a dataset is added, then we just need to download it and check
-        # our local files.
-        if all_datafiles:
-            datafiles_df = pd.concat(all_datafiles)
-            del all_datafiles
-            datafiles_df['page'] = self.active_page
-            datafiles_df.to_csv(self.local('wf_datafiles.csv'), index=False)
-            self.pages[self.active_page]['datafiles'] = datafiles_df
-        else:
-            self.pages[self.active_page]['datafiles'] = pd.DataFrame()
-
-        if self.is_local:
-            self.pages[self.active_page]['datasets'] = datasets.copy()
-            monitor_dir = Path(self.sync_folder)
-
-            monitor_dir.mkdir(parents=True, exist_ok=True)
-            json.dump(datasets, open(monitor_dir / self.sync_file, 'w'))
-
-        return self.datafiles
-
-    def sync_to_s3(
-        self,
-        page=None
-    ):
-        if not self.is_local:
-            return
-
-        page = page or self.active_page
-
-        #
-        self.client.client.upload_file(
-            str(Path(self.sync_folder, self.sync_file)),
-            Bucket=self.bucket_name,
-            Key=str(PurePath(self.sync_folder, self.sync_file)),
-        )
-
 
     def request(
             self,
