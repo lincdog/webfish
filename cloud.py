@@ -298,7 +298,7 @@ class DataServer:
 
             page_datasets.append(dataset)
 
-        page_sync_file = Path(self.pages[page].sync_file)
+        page_sync_file = str(self.pages[page].sync_file)
         with open(page_sync_file, 'w') as psf:
             json.dump(page_datasets, psf)
 
@@ -308,7 +308,7 @@ class DataServer:
             Key=page_sync_file
         )
 
-        page_file_table = Path(self.pages[page].file_table)
+        page_file_table = str(self.pages[page].file_table)
         datafile_df.to_csv(page_file_table, index=False)
 
         self.client.client.upload_file(
