@@ -298,6 +298,8 @@ class DataServer:
 
             page_datasets.append(dataset)
 
+        self.pages[page].datasets = page_datasets
+
         page_sync_file = str(self.pages[page].sync_file)
         with open(page_sync_file, 'w') as psf:
             json.dump(page_datasets, psf)
