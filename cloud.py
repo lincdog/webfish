@@ -136,12 +136,13 @@ class DataManager:
         self.is_local = is_local
 
         self.sync_folder = config.get('sync_folder', 'monitoring/')
-        self.pages = config['pages']
+        self.analysis_folder = config.get('analysis_folder', 'analysis/')
+
+        self.pages = config.get('pages', {})
         self.pagenames = tuple(self.pages.keys())
         self.active_page = pagename
 
-        if self.is_local:
-            self.master_root = config['master_root']
+        self.master_root = config.get('master_root')
 
         for name, page in self.pages.items():
             local_store = Path(page.get('local_store', f'webfish_data/{name}/'))
@@ -234,7 +235,7 @@ class DataManager:
         prefix='',
         progress=False
     ):
-        if self.is_local:
+        if self.is_local or not self.active_page:
             results = {}
             for page in self.pagenames:
                 print(f'page={page}')
@@ -250,7 +251,8 @@ class DataManager:
             self,
             delimiter='/',
             prefix='',
-            progress=False
+            progress=False,
+            folders=None
     ):
         """
         get_datasets
@@ -275,6 +277,11 @@ class DataManager:
                 prefix=prefix,
                 level=self.dataset_nest
             )
+
+        if folders:
+            folders = [Path(f) for f in folders]
+            possible_folders = list(set(folders) & set(possible_folders))
+
 
         #print(f'possible_folders: {possible_folders}')
 
@@ -373,7 +380,7 @@ class DataManager:
         if self.is_local:
             self.pages[self.active_page]['datasets'] = datasets.copy()
             monitor_dir = Path(self.sync_folder, self.active_page)
-            print(f'monitor_dir: {monitor_dir}')
+
             monitor_dir.mkdir(parents=True, exist_ok=True)
             json.dump(datasets, open(monitor_dir / 'wf_dataset.json', 'w'))
             #self.client.client.put

@@ -7,10 +7,11 @@ region_name: us-west-1
 
 master_root: /groups/CaiLab/analyses/
 sync_folder: monitoring/
+analysis_folder: analyses/
 
 pages:
   datavis:
-    bucket_name: dashboard-test-plotly
+    bucket_name: hpc-wasabi
     sync_file: "datavis_datasets.json"
     local_store: webfish_data/datavis/
     generator_class: DatavisProcessing
