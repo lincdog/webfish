@@ -100,6 +100,7 @@ class Page:
 
         self.bucket_name = config['bucket_name']
 
+        # TODO: move this to DataClien
         local_store = Path(config.get('local_store', f'webfish_data/'), name)
         local_store.mkdir(parents=True, exist_ok=True)
         self.local_store = local_store
@@ -258,11 +259,11 @@ class DataServer:
 
         """
 
-        if not self.datasets:
+        if not self.all_datasets:
             self.get_datasets()
 
         if not self.pages[page].source_files:
-            return self.datasets
+            return self.all_datasets
 
         all_datafiles = []
 
