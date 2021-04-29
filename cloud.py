@@ -288,7 +288,8 @@ class DataServer:
                 # We are assuming folders is a list up to dataset_root nesting - potential
                 # datasets to look in. This makes a list of glob results looking for
                 # pattern from each supplied folder.
-                [paths.extend(Path(self.master_root, f).glob(pattern)) for f in folders]
+                _, glob = fmt2regex(pattern)
+                [paths.extend(Path(self.master_root, f).glob(glob)) for f in folders]
                 print(paths)
 
             filenames, fields = find_matching_files(str(self.master_root),
