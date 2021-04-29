@@ -279,7 +279,7 @@ class DataServer:
             page_datasets = self.all_datasets
 
         all_datafiles = []
-
+        breakpoint()
         for key, pattern in self.pages[page].source_patterns.items():
 
             paths = None
