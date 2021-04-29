@@ -22,12 +22,16 @@ pages:
       segmentation: "MMStack_Pos{position}/Segmentation/labeled_img.tif"
       dots_csv:
         "MMStack_Pos{position}/Segmentation/Channel_{channel}/gene_locations_assigned_to_cell.csv"
+      dots_csv_unseg:
+        "MMStack_Pos{position}/Decoded/Channel_{channel}/pre_seg_diff_1_minseeds_3_filtered.csv"
       cell_info:
         "MMStack_Pos{position}/Segmentation/Channel_{channel}/cell_info.csv"
       onoff_intensity_plot:
         "MMStack_Pos{position}/False_Positive_Rate_Analysis/Channel_{channel}/On-Off-Barcode-Intensity-Analysis.png"
       onoff_sorted_plot:
         "MMStack_Pos{position}/On_Off_Barcode_Plot/Channel_{channel}/On_Off_Sorted_Barcode_Plot.png"
+      falsepositive_txt:
+        "MMStack_Pos{position}/False_Positive_Rate_Analysis/Channel_{channel}/false_positives_after_segmentation.txt"
 
     output_files:
       mesh:
@@ -36,7 +40,7 @@ pages:
         generator: "generate_mesh"
       dots:
         pattern: "MMStack_Pos{position}/dots_um_with_colors.csv"
-        requires: ["dots_csv"]
+        requires: ["dots_csv | dots_csv_unseg"]
         generator: "generate_dots"
 
   dotdetection:

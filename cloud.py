@@ -219,16 +219,16 @@ class DataServer:
         self,
         folders=None
     ):
-        possible_folders = ls_recursive(root=self.master_root,
-                                        level=self.dataset_nest,
-                                        flat=True)
+        possible_folders = sorted(ls_recursive(
+            root=self.master_root,
+            level=self.dataset_nest,
+            flat=True))
 
         if folders:
             folders = [Path(f) for f in folders]
             possible_folders = list(set(folders) & set(possible_folders))
 
         datasets = []
-        dataset_folders = []
 
         for f in possible_folders:
             f = str(f).rstrip('/')
@@ -238,7 +238,6 @@ class DataServer:
                 dataset_info = d_match.groupdict()
                 dataset_info['folder'] = f
                 datasets.append(dataset_info)
-                dataset_folders.append(f)
 
         self.all_datasets = pd.DataFrame(datasets, dtype=str)
 
