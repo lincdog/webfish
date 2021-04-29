@@ -28,24 +28,29 @@ class DatavisProcessing:
     Namespace class used to get generating functions for datasets
 
     FUNCTION TEMPLATE:
-    infiles: dictionary of field: local_filepath for required inputs
-    outfile: local file name at which to save the result
+    inrows: dictionary of field: local_filepath for required inputs
+    outpattern: pattern from the config file to specify the output filename
+    savedir: local folder to store output
 
     returns: result of the generation. Typically a dataframe or something.
     """
     @staticmethod
     def generate_mesh(
-        infiles,
-        outfile
+        inrows,
+        outpattern,
+        savedir
     ):
         """
         generate_mesh
         ------------
         """
-        if Path(outfile).is_file():
+
+        outfile = Path(savedir, str(outpattern).format_map(inrows.iloc[0].to_dict()))
+
+        if outfile.is_file():
             return outfile
 
-        im = infiles['segmentation'][0] # this should be a length 1 list
+        im = inrows.query('source_key == "segmentation"')['local_filename'].values[0]
         # generate the mesh from the image
         gen_mesh(
             im,
@@ -57,21 +62,22 @@ class DatavisProcessing:
 
     @staticmethod
     def generate_dots(
-        infiles,
-        outfile
+        inrows,
+        outpattern,
+        savedir
     ):
+        outfile = Path(savedir, str(outpattern).format_map(inrows.iloc[0].to_dict()))
+
         # If the processed file already exists just return it
-        if Path(outfile).is_file():
+        if outfile.is_file():
             return outfile
 
         pcds = []
 
-        # FIXME: we are currently just assigning channel numbers by the
-        #   order that infiles['dots_csv'] has them, not actually from their
-        #   file path. We could match the regular expression on the file paths
-        #   to find the channel.
-        for i, csv in enumerate(infiles['dots_csv']):
+        infiles = inrows.query('source_key == "dots_csv"')[['channel', 'local_filename']]
+        for chan, csv in infiles.values:
             pcd_single = pd.read_csv(csv)
+            pcd_single['channel'] = chan
             pcds.append(pcd_single)
 
         pcds_combined = pd.concat(pcds)
@@ -259,10 +265,10 @@ class DataServer:
             self.get_datasets()
 
         page_datasets = []
+        datafile_df = pd.DataFrame(columns=self.dataset_fields + ['folder', 'source_keys'])
 
         if not self.pages[page].source_files:
             page_datasets = self.all_datasets
-            datafile_df = pd.DataFrame()
 
         all_datafiles = []
 
@@ -271,7 +277,7 @@ class DataServer:
                                                     str(PurePath(self.dataset_root, pattern)))
 
             fields['source_key'] = key
-            fields['filename'] = filenames
+            fields['filename'] = [f.relative_to(self.master_root) for f in filenames]
             all_datafiles.append(pd.DataFrame(fields))
 
         if all_datafiles:
@@ -336,6 +342,9 @@ class DataClient:
         s3_client=None,
         pagename=None,
     ):
+        if pagename not in config['pages'].keys():
+            raise ValueError(f'A page name (one of {config["pages"].keys()}) is required.')
+
         self.active_page = pagename
         self.config = config
         self.client = s3_client
@@ -346,13 +355,11 @@ class DataClient:
         self.analysis_folder = config.get('analysis_folder', 'analyses/')
         self.bucket_name = config['bucket_name']
 
+        self.dataset_root = Path(config.get('dataset_root', ''))
+
         self.pagename = pagename
         self.page = Page(config, pagename)
-        self.local_store = self.page.local_store
-        self.local_store.mkdir(parents=True, exist_ok=True)
-
-        self.file_table = self.page.file_table
-        self.sync_file = self.page.sync_file
+        self.page.local_store.mkdir(parents=True, exist_ok=True)
 
         self.datafiles = None
         self.datasets = None
@@ -363,7 +370,7 @@ class DataClient:
         error = self.client.download_s3_objects(
             self.bucket_name,
             f2k(self.sync_folder),
-            local_dir=self.sync_folder
+            local_dir='.'
         )
 
         if len(error) > 0:
@@ -371,8 +378,8 @@ class DataClient:
                 f'select_dataset: errors downloading keys:',
                 error)
 
-        self.datasets = pd.read_csv(self.sync_file)
-        self.datafiles = pd.read_csv(self.file_table)
+        self.datasets = pd.read_csv(self.page.sync_file)
+        self.datafiles = pd.read_csv(self.page.file_table)
 
     def local(
         self,
@@ -393,8 +400,8 @@ class DataClient:
         if page is None:
             page = self.active_page
 
-        if not key.is_relative_to(self.local_store):
-            key = self.local_store / key
+        if not key.is_relative_to(self.page.local_store):
+            key = self.page.local_store / key
 
         return Path(key)
 
@@ -446,25 +453,29 @@ class DataClient:
         results = {}
 
         for field in fields:
-            if field in self.source_files.keys():
-                files = needed.query('field == @field')['filename'].values
+
+            if field in self.page.source_files.keys():
+                files = needed.query('source_key == @field')['filename'].values
                 results[field] = [
                     self.retrieve_or_download(f, force_download=force_download)
                     for f in files
                 ]
-            elif field in self.output_files.keys():
-                required_fields = self.output_files[field].get('requires', [])
-                required_rows = needed.query('field in @required_fields')
 
-                required_files = defaultdict(list)
-                for row in required_rows[['field', 'filename']].values:
-                    required_files[row[0]].append(
-                        self.retrieve_or_download(row[1],
-                                                  force_download=force_download))
+            elif field in self.page.output_files.keys():
 
+                required_fields = self.page.output_files[field].get('requires', [])
+                required_rows = needed.query('source_key in @required_fields').copy()
+                local_filenames = []
+
+                for row in required_rows.itertuples():
+                    local_filenames.append(self.retrieve_or_download(
+                        row.filename,
+                        force_download=force_download))
+
+                required_rows['local_filename'] = local_filenames
                 # call the generating function with args required_files
-                generator = self.output_generators[field]
-                print(f'generators: {self.output_generators}')
+                generator = self.page.output_generators[field]
+
                 # FIXME: what if the output file already exists??? generator
                 #  needs to check if 'outfile' already exists.
                 if generator is not None:
@@ -486,15 +497,13 @@ class DataClient:
                     #   Note in practice we currently only ever uniquely specify
                     #   an outfile, so this error will not affect us at first.
                     results[field] = generator(
-                        infiles=required_files,
-                        outfile=fmts2file(
-                            self.local(self.dataset_root),
-                            self.output_patterns[field],
-                            fields=request))
-
+                        inrows=required_rows,
+                        outpattern=Path(self.dataset_root, self.page.output_patterns[field]),
+                        savedir=Path(self.page.local_store)
+                    )
             else:
                 raise ValueError(f'Request for invalid field {field}, valid'
-                                 f' options are {self.file_fields}')
+                                 f' options are {self.page.file_fields}')
 
         return results
 
@@ -502,24 +511,21 @@ class DataClient:
         self,
         key,
         field=None,
-        delimiter='/',
         force_download=False
     ):
         error = []
 
-        lp = self.local(k2f(key, delimiter=delimiter))
+        lp = self.local(k2f(key))
 
         if force_download or not lp.is_file():
             error = self.client.download_s3_objects(
                 self.bucket_name,
-                f2k(key, delimiter=delimiter),
-                local_dir=self.local_store
+                key,
+                local_dir=self.page.local_store
             )
 
         if len(error) > 0:
-            raise FileNotFoundError(
-                f'select_dataset: errors downloading keys:',
-                error)
+            lp = None
 
         if field is None:
             return lp
