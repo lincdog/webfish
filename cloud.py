@@ -28,11 +28,13 @@ class DatavisProcessing:
     Namespace class used to get generating functions for datasets
 
     FUNCTION TEMPLATE:
-    inrows: dictionary of field: local_filepath for required inputs
-    outpattern: pattern from the config file to specify the output filename
-    savedir: local folder to store output
+     - inrows: Dataframe where each row is a file, includes ALL fields from the file
+        discovery methods - from dataset_root and whatever source_patterns are required
+     - outpattern: pattern from the config file to specify the output filename - this is
+        the dataset_root pattern joined to the output_pattern for this output file.
+     - savedir: local folder to store output
 
-    returns: result of the generation. Typically a dataframe or something.
+    returns: Filename(s)
     """
     @staticmethod
     def generate_mesh(
@@ -44,6 +46,9 @@ class DatavisProcessing:
         generate_mesh
         ------------
         """
+
+        if inrows.empty:
+            return None
 
         outfile = Path(savedir, str(outpattern).format_map(inrows.iloc[0].to_dict()))
 
@@ -66,6 +71,9 @@ class DatavisProcessing:
         outpattern,
         savedir
     ):
+        if inrows.empty:
+            return None
+
         outfile = Path(savedir, str(outpattern).format_map(inrows.iloc[0].to_dict()))
 
         # If the processed file already exists just return it
@@ -232,7 +240,7 @@ class DataServer:
                 datasets.append(dataset_info)
                 dataset_folders.append(f)
 
-        self.all_datasets = pd.DataFrame(datasets)
+        self.all_datasets = pd.DataFrame(datasets, dtype=str)
 
         all_datasets_file = Path(self.sync_folder, 'all_datasets.csv')
 
@@ -265,7 +273,7 @@ class DataServer:
             self.get_datasets()
 
         page_datasets = []
-        datafile_df = pd.DataFrame(columns=self.dataset_fields + ['folder', 'source_keys'])
+        datafile_df = pd.DataFrame(columns=self.dataset_fields + ['folder', 'source_keys'], dtype=str)
 
         if not self.pages[page].source_files:
             page_datasets = self.all_datasets
@@ -281,7 +289,7 @@ class DataServer:
             all_datafiles.append(pd.DataFrame(fields))
 
         if all_datafiles:
-            datafile_df = pd.concat(all_datafiles).sort_values(by=self.dataset_fields)
+            datafile_df = pd.concat(all_datafiles).sort_values(by=self.dataset_fields).astype(str)
             del all_datafiles
 
             for group, rows in datafile_df.groupby(self.dataset_fields):
@@ -301,7 +309,7 @@ class DataServer:
 
                 page_datasets.append(dataset)
 
-        page_datasets = pd.DataFrame(page_datasets)
+        page_datasets = pd.DataFrame(page_datasets, dtype=str)
 
         self.pages[page].datafiles = datafile_df
         self.pages[page].datasets = page_datasets
@@ -342,10 +350,10 @@ class DataClient:
         s3_client=None,
         pagename=None,
     ):
-        if pagename not in config['pages'].keys():
-            raise ValueError(f'A page name (one of {config["pages"].keys()}) is required.')
+        self.pagenames = config['pages'].keys()
+        if pagename not in self.pagenames:
+            raise ValueError(f'A page name (one of {self.pagenames}) is required.')
 
-        self.active_page = pagename
         self.config = config
         self.client = s3_client
 
@@ -356,13 +364,39 @@ class DataClient:
         self.bucket_name = config['bucket_name']
 
         self.dataset_root = Path(config.get('dataset_root', ''))
+        dre, glob = fmt2regex(self.dataset_root)
+        self.dataset_re = dre
+        self.dataset_glob = glob
 
+        self.dataset_fields = list(dre.groupindex.keys())
+
+        self._page = None
+        self._pagename = None
         self.pagename = pagename
-        self.page = Page(config, pagename)
-        self.page.local_store.mkdir(parents=True, exist_ok=True)
 
         self.datafiles = None
         self.datasets = None
+
+    @property
+    def pagename(self):
+        return self._pagename
+
+    @pagename.setter
+    def pagename(self, val):
+        if val not in self.pagenames:
+            raise ValueError(f'A valid page name (one of {self.pagenames}) is required.')
+
+        self._pagename = val
+        self.page = Page(self.config, val)
+
+    @property
+    def page(self):
+        return self._page
+
+    @page.setter
+    def page(self, val):
+        self._page = val
+        self._page.local_store.mkdir(parents=True, exist_ok=True)
 
     def sync_with_s3(
         self
@@ -378,8 +412,8 @@ class DataClient:
                 f'select_dataset: errors downloading keys:',
                 error)
 
-        self.datasets = pd.read_csv(self.page.sync_file)
-        self.datafiles = pd.read_csv(self.page.file_table)
+        self.datasets = pd.read_csv(self.page.sync_file).set_index(self.dataset_fields).astype(str)
+        self.datafiles = pd.read_csv(self.page.file_table).astype(str)
 
     def local(
         self,
@@ -398,7 +432,7 @@ class DataClient:
         key = k2f(key, delimiter)
 
         if page is None:
-            page = self.active_page
+            page = self.pagename
 
         if not key.is_relative_to(self.page.local_store):
             key = self.page.local_store / key
@@ -443,6 +477,8 @@ class DataClient:
                                   for k, v in request.items()
                                   if k in self.datafiles.columns])
 
+            print(request, query, len(self.datafiles))
+
             needed = self.datafiles.query(query)
         else:
             needed = self.datafiles
@@ -464,7 +500,9 @@ class DataClient:
             elif field in self.page.output_files.keys():
 
                 required_fields = self.page.output_files[field].get('requires', [])
+                print(required_fields)
                 required_rows = needed.query('source_key in @required_fields').copy()
+                print(needed)
                 local_filenames = []
 
                 for row in required_rows.itertuples():
@@ -476,8 +514,8 @@ class DataClient:
                 # call the generating function with args required_files
                 generator = self.page.output_generators[field]
 
-                # FIXME: what if the output file already exists??? generator
-                #  needs to check if 'outfile' already exists.
+                print(required_rows)
+
                 if generator is not None:
                     # Set the results for this field as the output of calling
                     # the appropriate generator function with input the dict
@@ -490,12 +528,6 @@ class DataClient:
                     # Alternatively, we could use the commonpath from the needed
                     # files.
 
-                    # FIXME: if all fields in the pattern for this output are not
-                    #   present in the original request (e.g. we got more than one
-                    #   position by just asking for a dataset) then this errors,
-                    #   how to run once for each possible outfile?
-                    #   Note in practice we currently only ever uniquely specify
-                    #   an outfile, so this error will not affect us at first.
                     results[field] = generator(
                         inrows=required_rows,
                         outpattern=Path(self.dataset_root, self.page.output_patterns[field]),

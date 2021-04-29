@@ -324,6 +324,8 @@ def fmt2regex(fmt, delim=os.path.sep):
 
     numkey = 0
 
+    fmt = str(fmt)
+
     if delim:
         parts = fmt.split(delim)
     else:

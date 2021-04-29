@@ -13,10 +13,12 @@ from util import populate_mesh, base64_image, populate_genes, mesh_from_json
 import cloud
 
 
-data_manager = cloud.DataManager(config=config,
-                           s3_client=s3_client,
-                           pagename='datavis')
-datasets = data_manager.find_datafiles()
+data_client = cloud.DataClient(
+    config=config,
+    s3_client=s3_client,
+    pagename='datavis'
+)
+data_client.sync_with_s3()
 
 
 def query_df(df, selected_genes):
@@ -118,11 +120,13 @@ def gen_figure(selected_genes, active):
 @app.callback(
     Output('graph-wrapper', 'children'),
     Input('gene-select', 'value'),
-    State('data-select', 'value'),
     State('pos-select', 'value'),
+    State('analysis-select', 'value'),
+    State('dataset-select', 'value'),
+    State('user-select', 'value'),
     prevent_initial_call=True
 )
-def update_figure(selected_genes, dataset, pos):
+def update_figure(selected_genes, pos, analysis, dataset, user):
     """
     update_figure:
     Callback triggered by by selecting
@@ -130,7 +134,7 @@ def update_figure(selected_genes, dataset, pos):
 
     """
 
-    if not all((dataset, pos)):
+    if not all((user, dataset, analysis, pos)):
         raise PreventUpdate
 
     if not isinstance(selected_genes, list):
@@ -139,12 +143,15 @@ def update_figure(selected_genes, dataset, pos):
     if 'All' in selected_genes:
         selected_genes = ['All']
 
-    print(f'dataset request: {dataset}, pos: {type(pos)}')
-
-    active = data_manager.request({
+    active = data_client.request({
+        'user': user,
         'dataset': dataset,
+        'analysis': analysis,
         'position': pos
     }, fields=('mesh', 'dots'))
+
+    if not active['mesh']:
+        return html.H2('Segmented image not found!')
 
     fig = gen_figure(selected_genes, active)
 
@@ -154,43 +161,69 @@ def update_figure(selected_genes, dataset, pos):
 @app.callback(
     Output('analytics-wrapper', 'children'),
     Input('pos-select', 'value'),
-    State('data-select', 'value'),
+    State('analysis-select', 'value'),
+    State('dataset-select', 'value'),
+    State('user-select', 'value'),
     prevent_initial_call=True
 )
-def populate_analytics(pos, dataset):
+def populate_analytics(pos, analysis, dataset, user):
 
     if not pos:
         raise PreventUpdate
 
-    active = data_manager.request({
+    active = data_client.request({
+        'user': user,
         'dataset': dataset,
+        'analysis': analysis,
         'position': pos
     }, fields=['onoff_intensity_plot', 'onoff_sorted_plot'])
 
-    data1 = base64_image(active['onoff_intensity_plot'][0])
-    data2 = base64_image(active['onoff_sorted_plot'][0])
+    if not active['onoff_intensity_plot']:
+        img1 = html.B('On/off target intensity plot not found!')
+    else:
+        img1 = html.Img(src=base64_image(active['onoff_intensity_plot'][0]),
+                        style={'max-width': '100%'})
 
-    return [html.Img(src=data1, style={'max-width': '100%'}),
+    if not active['onoff_sorted_plot']:
+        img2 = html.B('On/off target sorted barcode plot not found!')
+    else:
+        img2 = html.Img(src=base64_image(active['onoff_sorted_plot'][0]),
+                        style={'max-width': '100%'})
+
+    return [img1,
             html.Hr(),
-            html.Img(src=data2, style={'max-width': '100%'})
-        ]
+            img2]
 
 
 @app.callback(
     Output('gene-wrapper', 'children'),
     Input('pos-select', 'value'),
-    State('data-select', 'value'),
+    State('analysis-select', 'value'),
+    State('dataset-select', 'value'),
+    State('user-select', 'value'),
     prevent_initial_call=True
 )
-def select_pos(pos, dataset):
+def select_pos(pos, analysis, dataset, user):
     if not pos:
         raise PreventUpdate
 
-    active = data_manager.request({
+    active = data_client.request({
+        'user': user,
         'dataset': dataset,
+        'analysis': analysis,
         'position': pos
     }, fields=['dots'])
     # TODO: separate dropdowns for each channel?
+
+    if not active['dots']:
+        return [html.B('Dot file not found!'),
+                dcc.Dropdown(
+                    id='gene-select',
+                    disabled=True,
+                    multi=True,
+                    placeholder='Select gene(s)'
+                )
+                ]
 
     dots = pd.read_csv(active['dots'])
 
@@ -207,64 +240,75 @@ def select_pos(pos, dataset):
 
 
 @app.callback(
-    Output('selectors-wrapper', 'children'),
-    Input('data-select', 'value')
+    Output('pos-div', 'children'),
+    Input('analysis-select', 'value'),
+    State('dataset-select', 'value'),
+    State('user-select', 'value')
 )
-def select_data(folder):
-
-    if not folder:
+def select_analysis(analysis, dataset, user):
+    if not analysis:
         raise PreventUpdate
 
-    print(folder)
-    print(f'dataset == "{folder}"')
-    rel_files = datasets.query(f'dataset == "{folder}"')
-
-    positions = sorted(rel_files['position'].unique())
-    print(rel_files)
+    positions = data_client.datafiles.query(
+        'user==@user and dataset==@dataset and analysis==@analysis')['position'].values
 
     return [
-        'Position select: ',
+        'PositionAnalysis select: ',
         dcc.Dropdown(
             id='pos-select',
             options=[{'label': i, 'value': i} for i in positions],
             value=positions[0],
-            placeholder='Select position',
+            placeholder='Select a position',
             clearable=False,
-            style={'width': '200px',}),
-        'Gene select: ',
-            html.Div([dcc.Loading(dcc.Dropdown(id='gene-select'), id='gene-wrapper')],
-                id='gene-div',
-                style={'width': '200px',})
+            style={'width': '200px'}
+        )
     ]
 
+@app.callback(
+    Output('analysis-select-div', 'children'),
+    Input('dataset-select', 'value'),
+    State('user-select', 'value')
+)
+def select_dataset(dataset, user):
+
+    if not dataset:
+        raise PreventUpdate
+
+    analyses = data_client.datasets.loc[(user, dataset)].index.unique(level=0)
+
+    return [
+        'Analysis select: ',
+        dcc.Dropdown(
+            id='analysis-select',
+            options=[{'label': i, 'value': i} for i in analyses],
+            value=None,
+            placeholder='Select an analysis run',
+            clearable=False,
+            style={'width': '200px'}
+        )
+    ]
 
 @app.callback(
-    Output('wf-store', 'data'),
-    Input('data-select', 'value'),
-    Input('pos-select', 'value'),
-    Input('gene-select', 'value'),
-    State('wf-store', 'data'),
-    prevent_initial_call=True
+    Output('dataset-select-div', 'children'),
+    Input('user-select', 'value')
 )
-def store_manager(folder, pos, selected_genes, store):
-    store = store or {'datavis-dataset': None,
-                      'datavis-position': None,
-                      'datavis-selected-genes': None
-                      }
+def select_user(user):
 
-    print(f'store_manager called with store = {store}')
-    print(f'folder: {folder} pos: {pos} selected_genes: {selected_genes}')
+    if not user:
+        raise PreventUpdate
 
-    if folder != store['datavis-dataset']:
-        store['datavis-dataset'] = folder
+    datasets = data_client.datasets.loc[user].index.unique(level=0)
 
-    if pos != store['datavis-position']:
-        store['datavis-position'] = pos
-
-    if selected_genes != store['datavis-selected-genes']:
-        store['datavis-selected-genes'] = selected_genes
-
-    return store
+    return [
+        'Dataset select: ',
+        dcc.Dropdown(
+            id='dataset-select',
+            options=[{'label': i, 'value': i} for i in datasets],
+            value=None,
+            placeholder='Select dataset',
+            clearable=False,
+            style={'width': '200px',}),
+    ]
 
 ######## Layout ########
 
@@ -274,15 +318,24 @@ layout = dbc.Container(dbc.Row([
         html.Div([
             html.H2('Data selection'),
             html.Hr(),
-            'Dataset select:',
-            dcc.Dropdown(
-                id='data-select',
-                options=[{'label': i, 'value': i} for i in datasets['dataset'].unique()],
-                placeholder='Select a data folder',
-                style={'width': '200px'}
-            ),
-           ], id='selector-div'),
 
+            html.Div([
+                'User select:',
+                dcc.Dropdown(
+                    id='user-select',
+                    options=[{'label': i, 'value': i}
+                             for i in data_client.datasets.index.unique(level=0)],
+                    placeholder='Select a user folder',
+                    style={'width': '200px'}
+                )], id='user-select-div'
+            ),
+
+            html.Div(id='dataset-select-div'),
+            html.Div(id='analysis-select-div')
+
+           ], id='analysis-selectors-div'),
+
+        html.Hr(),
         html.Div([
             html.Div(
                 dcc.Loading(dcc.Dropdown(id='pos-select', disabled=True),

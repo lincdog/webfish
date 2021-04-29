@@ -40,5 +40,5 @@ pages:
         generator: "generate_dots"
 
   dotdetection:
-    #global_files:
-    #  exp_tree: "monitoring/exp_tree.json"
+    global_files:
+      exp_tree: "monitoring/exp_tree.json"

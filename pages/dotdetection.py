@@ -15,12 +15,16 @@ from dash.exceptions import PreventUpdate
 from app import app, config, s3_client
 import cloud
 
-data_manager = cloud.DataManager(config=config, s3_client=s3_client, pagename='dotdetection')
-data_manager.find_datafiles()
+data_client = cloud.DataClient(
+    config=config,
+    s3_client=s3_client,
+    pagename='dotdetection'
+)
+data_client.sync_with_s3()
 
 
 def get_tree():
-    fname = data_manager.request(None, fields='exp_tree', force_download=True)
+    fname = data_client.request(None, fields='exp_tree', force_download=True)
 
     return json.load(open(fname['exp_tree'], 'r'))
 
