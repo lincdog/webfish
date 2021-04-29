@@ -4,6 +4,7 @@ import boto3
 import botocore.exceptions as boto3_exc
 import os
 from time import sleep
+from datetime import datetime
 from pathlib import Path, PurePath
 import configparser as cfparse
 from collections import defaultdict
@@ -12,7 +13,6 @@ import sys
 from util import (
     gen_pcd_df,
     gen_mesh,
-    fmts2file,
     fmt2regex,
     find_matching_files,
     k2f,
@@ -500,9 +500,7 @@ class DataClient:
             elif field in self.page.output_files.keys():
 
                 required_fields = self.page.output_files[field].get('requires', [])
-                print(required_fields)
                 required_rows = needed.query('source_key in @required_fields').copy()
-                print(needed)
                 local_filenames = []
 
                 for row in required_rows.itertuples():
@@ -513,8 +511,6 @@ class DataClient:
                 required_rows['local_filename'] = local_filenames
                 # call the generating function with args required_files
                 generator = self.page.output_generators[field]
-
-                print(required_rows)
 
                 if generator is not None:
                     # Set the results for this field as the output of calling
@@ -545,7 +541,8 @@ class DataClient:
         field=None,
         force_download=False
     ):
-        #breakpoint()
+        now = datetime.now()
+        print(f'RETRIEVEORDOWNLOAD: starting {key}')
         error = []
 
         lp = self.local(k2f(key))
@@ -560,6 +557,8 @@ class DataClient:
 
         if len(error) > 0:
             lp = None
+
+        print(f'RETRIVEORDOWNLOAD: ending {key} after {datetime.now()-now}')
 
         if field is None:
             return lp

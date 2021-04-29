@@ -11,7 +11,7 @@ from dash.exceptions import PreventUpdate
 from app import app, config, s3_client
 from util import populate_mesh, base64_image, populate_genes, mesh_from_json
 import cloud
-
+from datetime import datetime
 
 data_client = cloud.DataClient(
     config=config,
@@ -143,19 +143,27 @@ def update_figure(selected_genes, pos, analysis, dataset, user):
     if 'All' in selected_genes:
         selected_genes = ['All']
 
+    b4 = datetime.now()
+    print('BEFORE REQUEST')
     active = data_client.request({
         'user': user,
         'dataset': dataset,
         'analysis': analysis,
         'position': pos
     }, fields=('mesh', 'dots'))
+    print(f'AFTER REQUEST {datetime.now() - b4}')
+
+    if not active['mesh'] and not active['dots']:
+        return html.H2('Segmented image and dots not found!')
 
     if not active['mesh']:
-        return html.H2('Segmented image not found!')
+        info = dbc.Alert('Note: no segmented cell image found', color='warning')
+    else:
+        info = None
 
     fig = gen_figure(selected_genes, active)
 
-    return dcc.Graph(id='test-graph', figure=fig)
+    return [info, dcc.Graph(id='test-graph', figure=fig)]
 
 
 @app.callback(
@@ -250,10 +258,10 @@ def select_analysis(analysis, dataset, user):
         raise PreventUpdate
 
     positions = data_client.datafiles.query(
-        'user==@user and dataset==@dataset and analysis==@analysis')['position'].values
+        'user==@user and dataset==@dataset and analysis==@analysis')['position'].unique()
 
     return [
-        'PositionAnalysis select: ',
+        'Position select: ',
         dcc.Dropdown(
             id='pos-select',
             options=[{'label': i, 'value': i} for i in positions],
