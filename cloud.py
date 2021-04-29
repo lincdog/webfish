@@ -290,7 +290,7 @@ class DataServer:
                 # pattern from each supplied folder.
                 _, glob = fmt2regex(pattern)
                 [paths.extend(Path(self.master_root, f).glob(glob)) for f in folders]
-                print(paths)
+                print(paths, glob)
 
             filenames, fields = find_matching_files(str(self.master_root),
                                                     str(Path(self.dataset_root, pattern)),
