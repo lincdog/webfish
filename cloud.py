@@ -292,13 +292,15 @@ class DataServer:
                 [paths.extend(Path(self.master_root, f).glob(glob)) for f in folders]
                 print(paths, glob)
 
-            filenames, fields = find_matching_files(str(self.master_root),
-                                                    str(Path(self.dataset_root, pattern)),
-                                                    paths=paths)
+            filenames, fields = find_matching_files(
+                str(self.master_root),
+                str(Path(self.dataset_root, pattern)),
+                paths=paths)
 
-            fields['source_key'] = key
-            fields['filename'] = [f.relative_to(self.master_root) for f in filenames]
-            all_datafiles.append(pd.DataFrame(fields))
+            if filenames:
+                fields['source_key'] = key
+                fields['filename'] = [f.relative_to(self.master_root) for f in filenames]
+                all_datafiles.append(pd.DataFrame(fields))
 
         if all_datafiles:
             datafile_df = pd.concat(all_datafiles).sort_values(by=self.dataset_fields).astype(str)
