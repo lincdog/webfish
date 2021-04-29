@@ -513,6 +513,7 @@ class DataClient:
         field=None,
         force_download=False
     ):
+        #breakpoint()
         error = []
 
         lp = self.local(k2f(key))
@@ -520,7 +521,8 @@ class DataClient:
         if force_download or not lp.is_file():
             error = self.client.download_s3_objects(
                 self.bucket_name,
-                key,
+                str(key),
+                prefix=str(self.analysis_folder),
                 local_dir=self.page.local_store
             )
 
@@ -792,8 +794,9 @@ class S3Connect:
             self,
             bucket_name,
             s3_key,
-            local_dir=None,
+            local_dir='.',
             delimiter='/',
+            prefix='',
             recursive=False
     ):
         """
@@ -804,14 +807,17 @@ class S3Connect:
         * If s3_key is a "folder" (a CommonPrefix), download *only files* within
           it - i.e. not further prefixes (folders), *unless* recursive = True.
         """
+        #breakpoint()
         local_dir = Path(local_dir)
 
         bucket = self.s3.Bucket(bucket_name)
 
+        key_with_prefix = str(PurePath(prefix, s3_key))
+
         files, folders = self.list_objects(
             bucket_name,
             delimiter=delimiter,
-            prefix=s3_key,
+            prefix=key_with_prefix,
             recursive=recursive,
             to_path=False
         )
@@ -819,7 +825,7 @@ class S3Connect:
         if len(files) + len(folders) == 0:
             # using a full key name (i.e. a file) as Prefix results in no
             # keys found. Of course, a nonexistent key name also does.
-            objects = [s3_key]
+            objects = [key_with_prefix]
         elif len(files) > 0:
             # with recursive=False, files contains the full keys (files) in the
             # first level under prefix. With recursive=True, files contains all
@@ -833,7 +839,7 @@ class S3Connect:
 
         for obj in objects:
 
-            f = PurePath(obj.replace(delimiter, '/'))
+            f = PurePath(obj).relative_to(prefix)
 
             if local_dir is None:
                 target = f
