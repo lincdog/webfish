@@ -251,7 +251,7 @@ class DataServer:
             Key=str(all_datasets_file)
         )
 
-        return datasets
+        return self.all_datasets
 
     def find_datafiles(
             self,
@@ -279,7 +279,7 @@ class DataServer:
             page_datasets = self.all_datasets
 
         all_datafiles = []
-        breakpoint()
+
         for key, pattern in self.pages[page].source_patterns.items():
 
             paths = None
