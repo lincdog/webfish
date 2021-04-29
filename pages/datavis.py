@@ -264,7 +264,7 @@ def select_analysis(analysis, dataset, user):
         'Position select: ',
         dcc.Dropdown(
             id='pos-select',
-            options=[{'label': i, 'value': i} for i in positions],
+            options=[{'label': i, 'value': i} for i in sorted(positions)],
             value=positions[0],
             placeholder='Select a position',
             clearable=False,
@@ -288,7 +288,7 @@ def select_dataset(dataset, user):
         'Analysis select: ',
         dcc.Dropdown(
             id='analysis-select',
-            options=[{'label': i, 'value': i} for i in analyses],
+            options=[{'label': i, 'value': i} for i in sorted(analyses)],
             value=None,
             placeholder='Select an analysis run',
             clearable=False,
@@ -311,7 +311,7 @@ def select_user(user):
         'Dataset select: ',
         dcc.Dropdown(
             id='dataset-select',
-            options=[{'label': i, 'value': i} for i in datasets],
+            options=[{'label': i, 'value': i} for i in sorted(datasets)],
             value=None,
             placeholder='Select dataset',
             clearable=False,

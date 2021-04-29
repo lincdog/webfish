@@ -255,7 +255,8 @@ class DataServer:
 
     def find_datafiles(
             self,
-            page=None,
+            page,
+            folders=None
     ):
         """
         find_datafiles
@@ -280,8 +281,19 @@ class DataServer:
         all_datafiles = []
 
         for key, pattern in self.pages[page].source_patterns.items():
+
+            paths = None
+            if folders:
+                paths = []
+                # We are assuming folders is a list up to dataset_root nesting - potential
+                # datasets to look in. This makes a list of glob results looking for
+                # pattern from each supplied folder.
+                [paths.extend(Path(self.master_root, f).glob(pattern)) for f in folders]
+                print(paths)
+
             filenames, fields = find_matching_files(str(self.master_root),
-                                                    str(PurePath(self.dataset_root, pattern)))
+                                                    str(Path(self.dataset_root, pattern)),
+                                                    paths=paths)
 
             fields['source_key'] = key
             fields['filename'] = [f.relative_to(self.master_root) for f in filenames]
