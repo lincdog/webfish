@@ -205,7 +205,7 @@ def populate_analytics(pos, analysis, dataset, user):
         fp_comp = html.Div(
             [
                 dbc.Button(
-                    "Open collapse",
+                    "Toggle collapse",
                     id="collapse-button",
                     color="primary",
                 ),

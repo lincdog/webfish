@@ -335,8 +335,19 @@ class DataServer:
         self.pages[page].datafiles = datafile_df
         self.pages[page].datasets = page_datasets
 
+        self.save_and_sync(page)
+
+        return page_datasets, datafile_df
+
+    def save_and_sync(self, page):
         page_sync_file = str(self.pages[page].sync_file)
-        page_datasets.to_csv(page_sync_file, index=False)
+        try:
+            current_sync = pd.read_csv(page_sync_file)
+            updated_sync = pd.concat([current_sync, self.pages[page].datasets])
+        except FileNotFoundError:
+            updated_sync = self.pages[page].datasets
+
+        updated_sync.to_csv(page_sync_file, index=False)
 
         self.client.client.upload_file(
             page_sync_file,
@@ -345,15 +356,19 @@ class DataServer:
         )
 
         page_file_table = str(self.pages[page].file_table)
-        datafile_df.to_csv(page_file_table, index=False)
+        try:
+            current_files = pd.read_csv(page_file_table)
+            updated_files = pd.concat([current_files, self.pages[page].datafiles])
+        except FileNotFoundError:
+            updated_files = self.pages[page].datafiles
+
+        updated_files.to_csv(page_file_table, index=False)
 
         self.client.client.upload_file(
             page_file_table,
             Bucket=self.bucket_name,
             Key=page_file_table
         )
-
-        return page_datasets, datafile_df
 
 
 class DataClient:
@@ -522,7 +537,7 @@ class DataClient:
 
                 required_fields = process_requires(
                     self.page.output_files[field].get('requires', []))
-                
+
                 required_rows = needed.query('source_key in @required_fields').copy()
                 local_filenames = []
 
