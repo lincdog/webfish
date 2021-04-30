@@ -17,7 +17,8 @@ from util import (
     find_matching_files,
     k2f,
     f2k,
-    ls_recursive
+    ls_recursive,
+    process_requires
 )
 
 
@@ -215,6 +216,13 @@ class DataServer:
 
         self.bucket_name = config.get('bucket_name')
 
+        pats = []
+        for p in config['pages'].values():
+            pats.extend(list(p.get('source_files', {}).values()))
+
+        with open(Path(self.sync_folder, 'source_patterns'), 'w') as sp:
+            sp.write('\n'.join(pats))
+
     def get_datasets(
         self,
         folders=None
@@ -290,7 +298,6 @@ class DataServer:
                 # pattern from each supplied folder.
                 _, glob = fmt2regex(pattern)
                 [paths.extend(Path(self.master_root, f).glob(glob)) for f in folders]
-                print(paths, glob)
 
             filenames, fields = find_matching_files(
                 str(self.master_root),
@@ -513,14 +520,19 @@ class DataClient:
 
             elif field in self.page.output_files.keys():
 
-                required_fields = self.page.output_files[field].get('requires', [])
+                required_fields = process_requires(
+                    self.page.output_files[field].get('requires', []))
+                
                 required_rows = needed.query('source_key in @required_fields').copy()
                 local_filenames = []
 
                 for row in required_rows.itertuples():
-                    local_filenames.append(self.retrieve_or_download(
-                        row.filename,
-                        force_download=force_download))
+                    local_filenames.append(
+                        self.retrieve_or_download(
+                            row.filename,
+                            force_download=force_download
+                        )
+                    )
 
                 required_rows['local_filename'] = local_filenames
                 # call the generating function with args required_files

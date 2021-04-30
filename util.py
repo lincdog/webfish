@@ -479,3 +479,12 @@ def ls_recursive(root='.', level=1, ignore=[], dirsonly=True, flat=False):
         flat=flat
     )
     return result
+
+
+def process_requires(requires):
+    reqs = []
+
+    for entry in requires:
+        reqs.extend([r.strip() for r in entry.split('|')])
+
+    return reqs

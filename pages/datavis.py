@@ -184,7 +184,7 @@ def populate_analytics(pos, analysis, dataset, user):
         'dataset': dataset,
         'analysis': analysis,
         'position': pos
-    }, fields=['onoff_intensity_plot', 'onoff_sorted_plot'])
+    }, fields=['onoff_intensity_plot', 'onoff_sorted_plot', 'falsepositive_txt'])
 
     if not active['onoff_intensity_plot']:
         img1 = html.B('On/off target intensity plot not found!')
@@ -198,9 +198,41 @@ def populate_analytics(pos, analysis, dataset, user):
         img2 = html.Img(src=base64_image(active['onoff_sorted_plot'][0]),
                         style={'max-width': '100%'})
 
-    return [img1,
+    if not active['falsepositive_txt']:
+        fp_comp = html.B('No false positive rate analysis found!')
+    else:
+        fp_txt = html.Pre(open(active['falsepositive_txt'][0], 'r').read())
+        fp_comp = html.Div(
+            [
+                dbc.Button(
+                    "Open collapse",
+                    id="collapse-button",
+                    color="primary",
+                ),
+                dbc.Collapse(
+                    dbc.Card(dbc.CardBody(fp_txt)),
+                    id="collapse",
+                ),
+            ]
+        )
+
+    return [fp_comp,
+            html.Hr(),
+            img1,
             html.Hr(),
             img2]
+
+
+@app.callback(
+    Output("collapse", "is_open"),
+    [Input("collapse-button", "n_clicks")],
+    [State("collapse", "is_open")],
+    prevent_initial_call=True
+)
+def toggle_collapse(n, is_open):
+    if n:
+        return not is_open
+    return is_open
 
 
 @app.callback(
