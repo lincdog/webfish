@@ -13,14 +13,18 @@ from dash.dependencies import Input, Output, State
 from dash.exceptions import PreventUpdate
 
 from app import app, config, s3_client
-from cloud import DataManager
+import cloud
 
-data_manager = DataManager(config=config['dotdetection'], s3_client=s3_client)
-data_manager.get_datasets()
+data_client = cloud.DataClient(
+    config=config,
+    s3_client=s3_client,
+    pagename='dotdetection'
+)
+data_client.sync_with_s3()
 
 
 def get_tree():
-    fname = data_manager.request(None, fields='exp_tree', force_download=True)
+    fname = data_client.request(None, fields='exp_tree', force_download=True)
 
     return json.load(open(fname['exp_tree'], 'r'))
 

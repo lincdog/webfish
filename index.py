@@ -5,7 +5,7 @@ import dash_html_components as html
 from dash.dependencies import Input, Output, State
 
 from app import app, config, s3_client
-from pages import datavis, dotdetection
+from pages import datavis# dotdetection
 
 app.layout = html.Div(children=[
     dcc.Location(id='url', refresh=False),
@@ -27,7 +27,7 @@ def tab_handler(tabval):
     if tabval == 'datavis':
         return datavis.layout
     elif tabval == 'dotdetection':
-        return dotdetection.layout
+        return html.H1('oops')
     else:
         return html.H1('404!!!!')
 

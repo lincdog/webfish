@@ -4,16 +4,21 @@ import boto3
 import botocore.exceptions as boto3_exc
 import os
 from time import sleep
+from datetime import datetime
 from pathlib import Path, PurePath
 import configparser as cfparse
 from collections import defaultdict
+import json
+import sys
 from util import (
     gen_pcd_df,
     gen_mesh,
-    fmts2file,
+    fmt2regex,
     find_matching_files,
     k2f,
-    f2k
+    f2k,
+    ls_recursive,
+    process_requires
 )
 
 
@@ -24,24 +29,34 @@ class DatavisProcessing:
     Namespace class used to get generating functions for datasets
 
     FUNCTION TEMPLATE:
-    infiles: dictionary of field: local_filepath for required inputs
-    outfile: local file name at which to save the result
+     - inrows: Dataframe where each row is a file, includes ALL fields from the file
+        discovery methods - from dataset_root and whatever source_patterns are required
+     - outpattern: pattern from the config file to specify the output filename - this is
+        the dataset_root pattern joined to the output_pattern for this output file.
+     - savedir: local folder to store output
 
-    returns: result of the generation. Typically a dataframe or something.
+    returns: Filename(s)
     """
     @staticmethod
     def generate_mesh(
-        infiles,
-        outfile
+        inrows,
+        outpattern,
+        savedir
     ):
         """
         generate_mesh
         ------------
         """
-        if Path(outfile).is_file():
+
+        if inrows.empty:
+            return None
+
+        outfile = Path(savedir, str(outpattern).format_map(inrows.iloc[0].to_dict()))
+
+        if outfile.is_file():
             return outfile
 
-        im = infiles['segmentation'][0] # this should be a length 1 list
+        im = inrows.query('source_key == "segmentation"')['local_filename'].values[0]
         # generate the mesh from the image
         gen_mesh(
             im,
@@ -53,21 +68,25 @@ class DatavisProcessing:
 
     @staticmethod
     def generate_dots(
-        infiles,
-        outfile
+        inrows,
+        outpattern,
+        savedir
     ):
+        if inrows.empty:
+            return None
+
+        outfile = Path(savedir, str(outpattern).format_map(inrows.iloc[0].to_dict()))
+
         # If the processed file already exists just return it
-        if Path(outfile).is_file():
+        if outfile.is_file():
             return outfile
 
         pcds = []
 
-        # FIXME: we are currently just assigning channel numbers by the
-        #   order that infiles['dots_csv'] has them, not actually from their
-        #   file path. We could match the regular expression on the file paths
-        #   to find the channel.
-        for i, csv in enumerate(infiles['dots_csv']):
+        infiles = inrows.query('source_key == "dots_csv"')[['channel', 'local_filename']]
+        for chan, csv in infiles.values:
             pcd_single = pd.read_csv(csv)
+            pcd_single['channel'] = chan
             pcds.append(pcd_single)
 
         pcds_combined = pd.concat(pcds)
@@ -79,6 +98,75 @@ class DatavisProcessing:
         return outfile
 
 
+class Page:
+    """
+    Page
+    -----
+    Data class that represents a page of the web app.
+    """
+
+    def __init__(
+        self,
+        config,
+        name
+    ):
+        self.name = name
+        self.config = config['pages'][name].copy()
+
+        self.bucket_name = config['bucket_name']
+
+        self.local_store = Path(config.get('local_store', 'webfish_data/'), name)
+
+        self.sync_file = Path(config.get('sync_folder'), f'{name}_sync.csv')
+        self.file_table = Path(config.get('sync_folder'), f'{name}_files.csv')
+
+        self.source_files = self.config.get('source_files', {})
+        self.output_files = self.config.get('output_files', {})
+        self.global_files = self.config.get('global_files', {})
+
+        dr = config.get('dataset_root', '')
+        self.dataset_root = dr
+        # How many levels do we have to fetch to reach the datasets?
+        self.dataset_nest = len(dr.rstrip('/').split('/')) - 1
+
+        dre, glob = fmt2regex(dr)
+        self.dataset_re = dre
+        self.dataset_glob = glob
+
+        self.dataset_fields = list(dre.groupindex.keys())
+        self.file_fields = self.config.get('variables')
+
+        self.file_keys = list(self.config.get('source_files', {}).keys()) + \
+                           list(self.config.get('output_files', {}).keys()) + \
+                           list(self.config.get('global_files', {}).keys())
+
+        self.source_patterns = self.config.get('source_files', {})
+
+        self.output_files = self.config.get('output_files', {})
+
+        self.output_patterns = {}
+        self.output_generators = {}
+
+        # Try to grab the generator class object from this module
+        if 'generator_class' in self.config.keys():
+            self.generator_class = getattr(sys.modules.get(__name__),
+                                           self.config['generator_class'])
+        else:
+            self.generator_class = None
+
+        for f, v in self.output_files.items():
+            self.output_patterns[f] = v['pattern']
+
+            if 'generator' in v.keys():
+                self.output_generators[f] = getattr(
+                    self.generator_class,
+                    v['generator']
+                )
+
+        self.datafiles = None
+        self.datasets = None
+
+
 class DataServer:
     """
     DataServer
@@ -88,7 +176,7 @@ class DataServer:
     Basically the same as DataManager but inverted...
     * Uses same config for source files as DataManager - local_store is different
       and bucket/path for requests vs uploads and dataset listings may be different
-    * get_datasets: lists local structure rather than s3
+    * find_datafiles: lists local structure rather than s3
     * publishes json file listing directory structure
     * listen: checks for request file on s3
     * put or upload or respond: uploads local file structure to specified
@@ -100,12 +188,202 @@ class DataServer:
         config,
         s3_client,
     ):
-        pass
+        self.config = config
+        self.client = s3_client
+
+        self.master_root = config.get('master_root')
+        if not Path(self.master_root).is_dir():
+            raise FileNotFoundError(f'master_root specified as {self.master_root} does not exist')
+
+        self.sync_folder = config.get('sync_folder', 'monitoring/')
+        Path(self.sync_folder).mkdir(parents=True, exist_ok=True)
+
+        self.analysis_folder = config.get('analysis_folder', 'analyses/')
+
+        self.all_datasets = pd.DataFrame()
+        dr = config.get('dataset_root', '')
+        self.dataset_root = dr
+        # How many levels do we have to fetch to reach the datasets?
+        self.dataset_nest = len(Path(dr).parts) - 1
+
+        dre, glob = fmt2regex(dr)
+        self.dataset_re = dre
+        self.dataset_glob = glob
+
+        self.dataset_fields = list(dre.groupindex.keys())
+        self.pages = {name: Page(config, name) for name in config.get('pages', {})}
+        self.pagenames = tuple(self.pages.keys())
+
+        self.bucket_name = config.get('bucket_name')
+
+        pats = []
+        for p in config['pages'].values():
+            pats.extend(list(p.get('source_files', {}).values()))
+
+        with open(Path(self.sync_folder, 'source_patterns'), 'w') as sp:
+            sp.write('\n'.join(pats))
+
+    def get_datasets(
+        self,
+        folders=None
+    ):
+        possible_folders = sorted(ls_recursive(
+            root=self.master_root,
+            level=self.dataset_nest,
+            flat=True))
+
+        if folders:
+            folders = [Path(f) for f in folders]
+            possible_folders = list(set(folders) & set(possible_folders))
+
+        datasets = []
+
+        for f in possible_folders:
+            f = str(f).rstrip('/')
+            d_match = self.dataset_re.match(f)
+
+            if d_match:
+                dataset_info = d_match.groupdict()
+                dataset_info['folder'] = f
+                datasets.append(dataset_info)
+
+        self.all_datasets = pd.DataFrame(datasets, dtype=str)
+
+        all_datasets_file = Path(self.sync_folder, 'all_datasets.csv')
+
+        self.all_datasets.to_csv(all_datasets_file, index=False)
+
+        self.client.client.upload_file(
+            str(all_datasets_file),
+            Bucket=self.bucket_name,
+            Key=str(all_datasets_file)
+        )
+
+        return self.all_datasets
+
+    def find_datafiles(
+            self,
+            page,
+            folders=None
+    ):
+        """
+        find_datafiles
+        ------------
+        Searches the supplied bucket for top-level folders, which should
+        represent available datasets. Searches each of these folders for position
+        folders, and each of these for channel folders.
+
+        Returns: dictionary representing the structure of all available experiments
+
+        """
+
+        if self.all_datasets.empty:
+            self.get_datasets()
+
+        page_datasets = []
+        datafile_df = pd.DataFrame(columns=self.dataset_fields + ['folder', 'source_keys'], dtype=str)
+
+        if not self.pages[page].source_files:
+            page_datasets = self.all_datasets
+
+        all_datafiles = [self.find_source_files(key, pattern, folders)
+            for key, pattern in self.pages[page].source_patterns.items()]
+
+        if all_datafiles:
+            datafile_df = pd.concat(all_datafiles).sort_values(by=self.dataset_fields)
+            del all_datafiles
+
+            # Determine the possible datasets for this page by which ones have data files
+            # available
+            for group, rows in datafile_df.groupby(self.dataset_fields):
+                dataset = {field: value for field, value in zip(self.dataset_fields, group)}
+
+                dataset['folder'] = self.dataset_root.format_map(dataset)
+
+                # FIXME: Technically we should also group by the source file variables, but
+                #   usually all the positions etc WITHIN one analysis ALL have the same
+                #   files present.
+                dataset['source_keys'] = list(rows['source_key'].unique())
+
+                # TODO: Add boolean logic to exclude datasets that do not have the right
+                #   combo of source keys present. Here we are implicitly keeping any
+                #   data set that has ANY one source key because it will form a group with
+                #   one row in this for loop.
+
+                page_datasets.append(dataset)
+
+        page_datasets = pd.DataFrame(page_datasets, dtype=str)
+
+        self.pages[page].datafiles = datafile_df
+        self.pages[page].datasets = page_datasets
+
+        self.save_and_sync(page)
+
+        return page_datasets, datafile_df
+
+    def find_source_files(
+        self,
+        key,
+        pattern,
+        folders
+    ):
+        paths = None
+        if folders:
+            paths = []
+            # We are assuming folders is a list up to dataset_root nesting - potential
+            # datasets to look in. This makes a list of glob results looking for
+            # pattern from each supplied folder.
+            _, glob = fmt2regex(pattern)
+            [paths.extend(Path(self.master_root, f).glob(glob)) for f in folders]
+
+        filenames, fields = find_matching_files(
+            str(self.master_root),
+            str(Path(self.dataset_root, pattern)),
+            paths=paths)
+
+        if filenames:
+            fields['source_key'] = key
+            fields['filename'] = [f.relative_to(self.master_root) for f in filenames]
+            return pd.DataFrame(fields, dtype=str)
+        else:
+            return None
+
+    def save_and_sync(self, page):
+        
+        page_sync_file = str(self.pages[page].sync_file)
+        try:
+            current_sync = pd.read_csv(page_sync_file, dtype=str)
+            updated_sync = pd.concat([current_sync, self.pages[page].datasets])
+        except FileNotFoundError:
+            updated_sync = self.pages[page].datasets
+
+        updated_sync.to_csv(page_sync_file, index=False, dtype=str)
+
+        self.client.client.upload_file(
+            page_sync_file,
+            Bucket=self.bucket_name,
+            Key=page_sync_file
+        )
+
+        page_file_table = str(self.pages[page].file_table)
+        try:
+            current_files = pd.read_csv(page_file_table, dtype=str)
+            updated_files = pd.concat([current_files, self.pages[page].datafiles])
+        except FileNotFoundError:
+            updated_files = self.pages[page].datafiles
+
+        updated_files.to_csv(page_file_table, index=False, dtype=str)
+
+        self.client.client.upload_file(
+            page_file_table,
+            Bucket=self.bucket_name,
+            Key=page_file_table
+        )
 
 
-class DataManager:
+class DataClient:
     """
-    DataManager
+    DataClient
     --------------
     Class that serves files based on config values. Pulls from
     S3 storage if necessary and performs processing using supplied "generator"
@@ -114,49 +392,79 @@ class DataManager:
 
     def __init__(
         self,
-        config,
-        s3_client,
-        generator_class=None,
-        bucket_name=None
+        config=None,
+        s3_client=None,
+        pagename=None,
     ):
+        self.pagenames = config['pages'].keys()
+        if pagename not in self.pagenames:
+            raise ValueError(f'A page name (one of {self.pagenames}) is required.')
+
         self.config = config
         self.client = s3_client
 
-        self.local_store = Path(self.config.get('local_store', 'webfish_data/'))
+        self.sync_folder = Path(config.get('sync_folder', 'monitoring/'))
+        self.sync_folder.mkdir(parents=True, exist_ok=True)
 
-        if not self.local_store.is_dir():
-            self.local_store.mkdir(parents=True)
+        self.analysis_folder = config.get('analysis_folder', 'analyses/')
+        self.bucket_name = config['bucket_name']
 
-        if bucket_name is None:
-            self.bucket_name = self.config['bucket_name']
+        self.dataset_root = Path(config.get('dataset_root', ''))
+        dre, glob = fmt2regex(self.dataset_root)
+        self.dataset_re = dre
+        self.dataset_glob = glob
 
-        self.datasets = None
+        self.dataset_fields = list(dre.groupindex.keys())
+
+        self._page = None
+        self._pagename = None
+        self.pagename = pagename
+
         self.datafiles = None
+        self.datasets = None
 
-        self.dataset_root = config.get('dataset_root', '')
-        # How many levels do we have to fetch to reach the datasets?
-        self.dataset_nest = self.dataset_root.strip('/').split('/').count('/')
-        self.source_files = config.get('source_files')
-        self.output_files = config.get('output_files')
-        self.global_files = config.get('global_files')
-        self.file_fields = []
+    @property
+    def pagename(self):
+        return self._pagename
 
-        if self.source_files:
-            self.source_patterns = {k: p for k, p in self.source_files.items()}
-            self.file_fields.extend(list(self.source_files.keys()))
+    @pagename.setter
+    def pagename(self, val):
+        if val not in self.pagenames:
+            raise ValueError(f'A valid page name (one of {self.pagenames}) is required.')
 
-        if self.output_files:
-            self.output_patterns = {k: p['pattern'] for k, p in self.output_files.items()}
-            self.output_generators = {k: getattr(generator_class, g.get('generator'), None)
-                                      for k, g in self.output_files.items()}
-            self.file_fields.extend(list(self.output_files.keys()))
+        self._pagename = val
+        self.page = Page(self.config, val)
 
-        if self.global_files:
-            self.file_fields.extend(list(self.global_files.keys()))
+    @property
+    def page(self):
+        return self._page
+
+    @page.setter
+    def page(self, val):
+        self._page = val
+        self._page.local_store.mkdir(parents=True, exist_ok=True)
+
+    def sync_with_s3(
+        self
+    ):
+        error = self.client.download_s3_objects(
+            self.bucket_name,
+            f2k(self.sync_folder),
+            local_dir='.'
+        )
+
+        if len(error) > 0:
+            raise FileNotFoundError(
+                f'select_dataset: errors downloading keys:',
+                error)
+
+        self.datasets = pd.read_csv(self.page.sync_file, dtype=str).set_index(self.dataset_fields)
+        self.datafiles = pd.read_csv(self.page.file_table, dtype=str)
 
     def local(
         self,
         key,
+        page=None,
         delimiter='/'
     ):
         """
@@ -169,95 +477,24 @@ class DataManager:
 
         key = k2f(key, delimiter)
 
-        if not key.is_relative_to(self.local_store):
-            key = self.local_store / key
+        if page is None:
+            page = self.pagename
+
+        if not key.is_relative_to(self.page.local_store):
+            key = self.page.local_store / key
 
         return Path(key)
-
-    def get_datasets(
-            self,
-            delimiter='/',
-            prefix=''
-    ):
-        """
-        get_datasets
-        ------------
-        Searches the supplied bucket for top-level folders, which should 
-        represent available datasets. Searches each of these folders for position
-        folders, and each of these for channel folders.
-        
-        Returns: dictionary representing the structure of all available experiments
-        
-        """
-
-        # TODO: In the future, the possible users/datasets/analyses will be
-        #   published by the HPC in a json or similar file and we won't have
-        #   to do this.
-        possible_folders = self.client.list_to_n_level_recursive(
-            self.bucket_name,
-            delimiter=delimiter,
-            prefix=prefix,
-            level=self.dataset_nest
-        )
-
-        print(f'possible_folders: {possible_folders}')
-
-        datafiles = []
-
-        if not self.source_files:
-            return pd.DataFrame(columns=['dataset', 'filename', 'field', 'downloaded'])
-
-        for folder in possible_folders:
-
-            # we want to make as few requests to AWS as possible, so it is
-            # better to list ALL the objects and filter to find the ones we 
-            # want. I think!
-            # Note that we have set the MaxKeys parameter to 5000, which is hopefully enough.
-            # But in the future we want to use a Paginator in S3Connect to avoid this possibility.
-            k_all, _ = self.client.list_objects(
-                self.bucket_name,
-                delimiter=delimiter,
-                prefix=folder,
-                recursive=True,
-                to_path=False
-            )
-            # we want to have two versions: the list of actual keys k_all,
-            # and the PurePath list f for efficient matching and translation
-            # to local filesystem conventions
-            f_all = [PurePath(k.replace(delimiter, '/')) for k in k_all]
-
-            for k, p in self.source_patterns.items():
-                filenames, fields = find_matching_files(folder, p, paths=f_all)
-
-                n_matches = len(filenames)
-
-                fields['dataset'] = n_matches * [folder]
-                fields['filename'] = filenames
-                fields['field'] = n_matches * [k]
-
-                downloaded = [self.local(f).is_file() for f in filenames]
-                fields['downloaded'] = downloaded
-
-                datafiles.append(pd.DataFrame(fields))
-
-        # one could imagine this table is stored on the cloud and updated every
-        # time a dataset is added, then we just need to download it and check
-        # our local files.
-        self.datafiles = pd.concat(datafiles)
-        self.datafiles.to_csv(self.local('wf_datafiles.csv'), index=False)
-
-        return self.datafiles
 
     def request(
             self,
             request,
-            fields=[],
+            fields=(),
             force_download=False
     ):
         """
         request
         --------------
-        
+
         Requests output
         example: dataman.request({
           'dataset': 'linus_data',
@@ -267,24 +504,26 @@ class DataManager:
           Returns: dict of form {field: filename}
         """
         if isinstance(fields, str):
-            fields = [fields]
+            fields = (fields,)
 
-        if self.global_files:
-            if all([field in self.global_files.keys() for field in fields]):
+        if self.page.global_files:
+            if all([field in self.page.global_files.keys() for field in fields]):
                 return {
                     field: self.retrieve_or_download(
-                        self.global_files[field], force_download=force_download)
+                        self.page.global_files[field], force_download=force_download)
                     for field in fields
                 }
 
         if self.datafiles is None:
-            return None
+            return {}
 
         if request:
             # Query the datafiles index
             query = ' and '.join([f'{k} == "{v}"'
                                   for k, v in request.items()
                                   if k in self.datafiles.columns])
+
+            print(request, query, len(self.datafiles))
 
             needed = self.datafiles.query(query)
         else:
@@ -293,57 +532,56 @@ class DataManager:
         if not fields:
             return needed
 
-        results = {}
+        results = {field: self._request(field, needed, force_download)
+                   for field in fields}
 
-        for field in fields:
-            if field in self.source_files.keys():
-                files = needed.query('field == @field')['filename'].values
-                results[field] = [
-                    self.retrieve_or_download(f, force_download=force_download)
-                    for f in files
-                ]
-            elif field in self.output_files.keys():
-                required_fields = self.output_files[field].get('requires', [])
-                required_rows = needed.query('field in @required_fields')
+        return results
 
-                required_files = defaultdict(list)
-                for row in required_rows[['field', 'filename']].values:
-                    required_files[row[0]].append(
-                        self.retrieve_or_download(row[1],
-                                                  force_download=force_download))
+    def _request(
+        self,
+        field,
+        needed,
+        force_download
+    ):
+        results = []
 
-                # call the generating function with args required_files
-                generator = self.output_generators[field]
-                # FIXME: what if the output file already exists??? generator
-                #  needs to check if 'outfile' already exists.
-                if generator is not None:
-                    # Set the results for this field as the output of calling
-                    # the appropriate generator function with input the dict
-                    # of local required files, and output the **populated format
-                    # string** supplied from config. Assumes that the request dict
-                    # is sufficient to populate this, INCLUDING the dataset root.
-                    # In other words, request should contain ALL the fields used
-                    # to specify a key or file completely: union of those in
-                    # config['dataset_root'] and in the output patterns.
-                    # Alternatively, we could use the commonpath from the needed
-                    # files.
+        if field in self.page.source_files.keys():
+            files = needed.query('source_key == @field')['filename'].values
+            results = [
+                self.retrieve_or_download(f, force_download=force_download)
+                for f in files
+            ]
 
-                    # FIXME: if all fields in the pattern for this output are not
-                    #   present in the original request (e.g. we got more than one
-                    #   position by just asking for a dataset) then this errors,
-                    #   how to run once for each possible outfile?
-                    #   Note in practice we currently only ever uniquely specify
-                    #   an outfile, so this error will not affect us at first.
-                    results[field] = generator(
-                        infiles=required_files,
-                        outfile=fmts2file(
-                            self.local(self.dataset_root),
-                            self.output_patterns[field],
-                            fields=request))
+        elif field in self.page.output_files.keys():
+            required_fields = process_requires(
+                self.page.output_files[field].get('requires', []))
 
-            else:
-                raise ValueError(f'Request for invalid field {field}, valid'
-                                 f' options are {self.file_fields}')
+            required_rows = needed.query('source_key in @required_fields').copy()
+            local_filenames = []
+
+            # fetch as many required files as we can
+            for row in required_rows.itertuples():
+                local_filenames.append(
+                    self.retrieve_or_download(
+                        row.filename,
+                        force_download=force_download
+                    )
+                )
+
+            # add the local filenames to the dataframe
+            required_rows['local_filename'] = local_filenames
+
+            generator = self.page.output_generators[field]
+
+            if generator is not None:
+                results = generator(
+                    inrows=required_rows,
+                    outpattern=Path(self.dataset_root, self.page.output_patterns[field]),
+                    savedir=Path(self.page.local_store)
+                )
+        else:
+            raise ValueError(
+                f'request for invalid field {field}, valid are {self.page.file_fields}')
 
         return results
 
@@ -351,24 +589,26 @@ class DataManager:
         self,
         key,
         field=None,
-        delimiter='/',
         force_download=False
     ):
+        now = datetime.now()
+        print(f'RETRIEVEORDOWNLOAD: starting {key}')
         error = []
 
-        lp = self.local(k2f(key, delimiter=delimiter))
+        lp = self.local(k2f(key))
 
         if force_download or not lp.is_file():
             error = self.client.download_s3_objects(
                 self.bucket_name,
-                f2k(key, delimiter=delimiter),
-                local_dir=self.local_store
+                str(key),
+                prefix=str(self.analysis_folder),
+                local_dir=self.page.local_store
             )
 
         if len(error) > 0:
-            raise FileNotFoundError(
-                f'select_dataset: errors downloading keys:',
-                error)
+            lp = None
+
+        print(f'RETRIVEORDOWNLOAD: ending {key} after {datetime.now()-now}')
 
         if field is None:
             return lp
@@ -383,7 +623,7 @@ class S3Connect:
     S3Connect
     -----------
     Looks in the config dict for information to create an s3 client
-    for data storage and retrieval. 
+    for data storage and retrieval.
     The location of the credentials file is expected to be
     given in an **environment variable** named in the config `credentials` key.
     If not present, the default location of the AWS CLI credentials file is used.
@@ -396,23 +636,23 @@ class S3Connect:
         ....
 
     The profile name is taken from config `cred_profile_name` key, or 'default'
-    if not present. 
+    if not present.
 
-    Finally, the endpoint URL and region to connect to are supplied in the 
+    Finally, the endpoint URL and region to connect to are supplied in the
     `endpoint_url` and `region_name` keys. If not supplied, boto3 defaults to
     the us-east-1 region of the standard AWS S3 endpoint.
     """
 
     def __init__(
-            self,
-            config=None,
-            key_id=None,
-            secret_key=None,
-            endpoint_url=None,
-            region_name=None,
-            wait_for_creds=True,
-            sleep_time=1,
-            wait_timeout=90
+        self,
+        config=None,
+        key_id=None,
+        secret_key=None,
+        endpoint_url=None,
+        region_name=None,
+        wait_for_creds=True,
+        sleep_time=1,
+        wait_timeout=90
     ):
         def try_creds_file(file, wait_for_creds):
             cf = cfparse.ConfigParser()
@@ -499,13 +739,15 @@ class S3Connect:
         Takes an s3 client and a bucket name, fetches the bucket,
         and lists top-level folder-like keys in the bucket (keys that have a '/').
 
-        Note: We set a generic MaxKeys parameter for 5000 keys max! 
+        Note: We set a generic MaxKeys parameter for 5000 keys max!
         If this is exceeded the "IsTruncated" field will be True in the output.
 
         Returns: bucket object and alphabetically-sorted list of unique top-level
         folders from the bucket. If to_path is True, we return lists of pathlib.PurePath
         objects, replacing delimiter with the standard '/'.
         """
+
+        prefix = str(prefix)
 
         if prefix != '' and not prefix.endswith(delimiter):
             prefix = prefix + delimiter
@@ -633,8 +875,9 @@ class S3Connect:
             self,
             bucket_name,
             s3_key,
-            local_dir=None,
+            local_dir='.',
             delimiter='/',
+            prefix='',
             recursive=False
     ):
         """
@@ -645,14 +888,17 @@ class S3Connect:
         * If s3_key is a "folder" (a CommonPrefix), download *only files* within
           it - i.e. not further prefixes (folders), *unless* recursive = True.
         """
+        #breakpoint()
         local_dir = Path(local_dir)
 
         bucket = self.s3.Bucket(bucket_name)
 
+        key_with_prefix = str(PurePath(prefix, s3_key))
+
         files, folders = self.list_objects(
             bucket_name,
             delimiter=delimiter,
-            prefix=s3_key,
+            prefix=key_with_prefix,
             recursive=recursive,
             to_path=False
         )
@@ -660,10 +906,10 @@ class S3Connect:
         if len(files) + len(folders) == 0:
             # using a full key name (i.e. a file) as Prefix results in no
             # keys found. Of course, a nonexistent key name also does.
-            objects = [s3_key]
+            objects = [key_with_prefix]
         elif len(files) > 0:
-            # with recursive=False, files contains the full keys (files) in the 
-            # first level under prefix. With recursive=True, files contains all 
+            # with recursive=False, files contains the full keys (files) in the
+            # first level under prefix. With recursive=True, files contains all
             # keys under prefix at all levels.
             objects = files
         else:
@@ -674,7 +920,7 @@ class S3Connect:
 
         for obj in objects:
 
-            f = PurePath(obj.replace(delimiter, '/'))
+            f = PurePath(obj).relative_to(prefix)
 
             if local_dir is None:
                 target = f

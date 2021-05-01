@@ -132,6 +132,7 @@ def gen_pcd_df(
         csv,
         px_size=(0.5, 0.11, 0.11),
         cmap='tab20',
+        genecol='gene',
         outfile=None
 ):
     """
@@ -153,7 +154,7 @@ def gen_pcd_df(
     else:
         raise TypeError
 
-    dots['geneInd'] = dots['gene'].factorize()[0] % 20
+    dots['geneInd'] = dots[genecol].factorize()[0] % 20
 
     def cmap2hex(cmap):
         return '#{:02X}{:02X}{:02X}'.format(cmap[0], cmap[1], cmap[2])
@@ -305,7 +306,7 @@ def base64_image(filename, with_header=True):
     return prefix + data
 
 
-def fmt2regex(fmt):
+def fmt2regex(fmt, delim=os.path.sep):
     """
     fmt2regex:
     convert a curly-brace format string with named fields
@@ -318,36 +319,49 @@ def fmt2regex(fmt):
     """
     sf = string.Formatter()
 
-    regex = ['^']
+    regex = []
     globstr = []
     keys = set()
 
     numkey = 0
 
-    for a in sf.parse(fmt):
-        r = re.escape(a[0])
+    fmt = str(fmt)
 
-        globstr.append(a[0])
+    if delim:
+        parts = fmt.split(delim)
+    else:
+        delim = ''
+        parts = [fmt]
 
-        if a[1] is not None:
-            k = re.escape(a[1])
+    re_delim = re.escape(delim)
 
-            if len(k) == 0:
-                k = f'k{numkey}'
-                numkey += 1
+    for part in parts:
+        for a in sf.parse(part):
+            r = re.escape(a[0])
 
-            if k in keys:
-                r = r + f'(?P={k})'
-            else:
-                r = r + f'(?P<{k}>.+)'
+            newglob = a[0]
+            if a[1]:
+                newglob = newglob + '*'
+            globstr.append(newglob)
 
-            keys.add(k)
+            if a[1] is not None:
+                k = re.escape(a[1])
 
+                if len(k) == 0:
+                    k = f'k{numkey}'
+                    numkey += 1
 
-        regex.append(r)
+                if k in keys:
+                    r = r + f'(?P={k})'
+                else:
+                    r = r + f'(?P<{k}>[^{re_delim}]+)'
 
-    reg = re.compile(''.join(regex))
-    globstr = '*'.join(globstr)
+                keys.add(k)
+
+            regex.append(r)
+
+    reg = re.compile('^'+re_delim.join(regex))
+    globstr = delim.join(globstr)
 
     return reg, globstr
 
@@ -373,6 +387,8 @@ def find_matching_files(base, fmt, paths=None):
 
     if paths is None:
         paths = Path(base).glob(globstr)
+    else:
+        paths = [Path(p) for p in paths]
 
     for f in paths:
         m = reg.match(str(f.relative_to(base)))
@@ -406,3 +422,70 @@ def f2k(
     delimiter='/'
 ):
     return str(f).replace(os.sep, delimiter)
+
+
+def ls_recursive(root='.', level=1, ignore=[], dirsonly=True, flat=False):
+    if flat:
+        result = []
+    else:
+        result = {}
+
+    if not isinstance(level, int):
+        raise ValueError('level must be an integer')
+
+    def _ls_recursive(
+        contents=None,
+        folder='.',
+        root='',
+        maxlevel=level,
+        curlevel=0,
+        dirsonly=dirsonly,
+        flat=flat
+    ):
+        if curlevel == maxlevel:
+            if flat:
+                contents.extend([f.relative_to(root) for f in Path(folder).iterdir()
+                        if f.is_dir() or not dirsonly])
+                return contents
+            else:
+                return [f.name for f in Path(folder).iterdir()
+                        if f.is_dir() or not dirsonly]
+
+        args = dict(
+            contents=contents,
+            root=root,
+            maxlevel=level,
+            curlevel=curlevel+1,
+            dirsonly=dirsonly,
+            flat=flat
+        )
+
+        subfolders =[f for f in Path(folder).iterdir() if (
+            f.is_dir() and not any([f.match(p) for p in ignore]))]
+
+        if flat:
+            [_ls_recursive(folder=f, **args) for f in subfolders]
+        else:
+            contents = {f.name: _ls_recursive(folder=f, **args) for f in subfolders}
+
+        return contents
+
+    result = _ls_recursive(
+        result,
+        folder=root,
+        root=root,
+        maxlevel=level,
+        curlevel=0,
+        dirsonly=dirsonly,
+        flat=flat
+    )
+    return result
+
+
+def process_requires(requires):
+    reqs = []
+
+    for entry in requires:
+        reqs.extend([r.strip() for r in entry.split('|')])
+
+    return reqs
