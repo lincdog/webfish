@@ -286,37 +286,19 @@ class DataServer:
         if not self.pages[page].source_files:
             page_datasets = self.all_datasets
 
-        all_datafiles = []
-
-        for key, pattern in self.pages[page].source_patterns.items():
-
-            paths = None
-            if folders:
-                paths = []
-                # We are assuming folders is a list up to dataset_root nesting - potential
-                # datasets to look in. This makes a list of glob results looking for
-                # pattern from each supplied folder.
-                _, glob = fmt2regex(pattern)
-                [paths.extend(Path(self.master_root, f).glob(glob)) for f in folders]
-
-            filenames, fields = find_matching_files(
-                str(self.master_root),
-                str(Path(self.dataset_root, pattern)),
-                paths=paths)
-
-            if filenames:
-                fields['source_key'] = key
-                fields['filename'] = [f.relative_to(self.master_root) for f in filenames]
-                all_datafiles.append(pd.DataFrame(fields, dtype=str))
+        all_datafiles = [self.find_source_files(key, pattern, folders)
+            for key, pattern in self.pages[page].source_patterns.items()]
 
         if all_datafiles:
-            datafile_df = pd.concat(all_datafiles).sort_values(by=self.dataset_fields).astype(str)
+            datafile_df = pd.concat(all_datafiles).sort_values(by=self.dataset_fields)
             del all_datafiles
 
+            # Determine the possible datasets for this page by which ones have data files
+            # available
             for group, rows in datafile_df.groupby(self.dataset_fields):
                 dataset = {field: value for field, value in zip(self.dataset_fields, group)}
 
-                dataset['folder'] = self.dataset_root.format(**dataset)
+                dataset['folder'] = self.dataset_root.format_map(dataset)
 
                 # FIXME: Technically we should also group by the source file variables, but
                 #   usually all the positions etc WITHIN one analysis ALL have the same
@@ -339,7 +321,35 @@ class DataServer:
 
         return page_datasets, datafile_df
 
+    def find_source_files(
+        self,
+        key,
+        pattern,
+        folders
+    ):
+        paths = None
+        if folders:
+            paths = []
+            # We are assuming folders is a list up to dataset_root nesting - potential
+            # datasets to look in. This makes a list of glob results looking for
+            # pattern from each supplied folder.
+            _, glob = fmt2regex(pattern)
+            [paths.extend(Path(self.master_root, f).glob(glob)) for f in folders]
+
+        filenames, fields = find_matching_files(
+            str(self.master_root),
+            str(Path(self.dataset_root, pattern)),
+            paths=paths)
+
+        if filenames:
+            fields['source_key'] = key
+            fields['filename'] = [f.relative_to(self.master_root) for f in filenames]
+            return pd.DataFrame(fields, dtype=str)
+        else:
+            return None
+
     def save_and_sync(self, page):
+        
         page_sync_file = str(self.pages[page].sync_file)
         try:
             current_sync = pd.read_csv(page_sync_file, dtype=str)
@@ -522,57 +532,56 @@ class DataClient:
         if not fields:
             return needed
 
-        results = {}
+        results = {field: self._request(field, needed, force_download)
+                   for field in fields}
 
-        for field in fields:
+        return results
 
-            if field in self.page.source_files.keys():
-                files = needed.query('source_key == @field')['filename'].values
-                results[field] = [
-                    self.retrieve_or_download(f, force_download=force_download)
-                    for f in files
-                ]
+    def _request(
+        self,
+        field,
+        needed,
+        force_download
+    ):
+        results = []
 
-            elif field in self.page.output_files.keys():
+        if field in self.page.source_files.keys():
+            files = needed.query('source_key == @field')['filename'].values
+            results = [
+                self.retrieve_or_download(f, force_download=force_download)
+                for f in files
+            ]
 
-                required_fields = process_requires(
-                    self.page.output_files[field].get('requires', []))
+        elif field in self.page.output_files.keys():
+            required_fields = process_requires(
+                self.page.output_files[field].get('requires', []))
 
-                required_rows = needed.query('source_key in @required_fields').copy()
-                local_filenames = []
+            required_rows = needed.query('source_key in @required_fields').copy()
+            local_filenames = []
 
-                for row in required_rows.itertuples():
-                    local_filenames.append(
-                        self.retrieve_or_download(
-                            row.filename,
-                            force_download=force_download
-                        )
+            # fetch as many required files as we can
+            for row in required_rows.itertuples():
+                local_filenames.append(
+                    self.retrieve_or_download(
+                        row.filename,
+                        force_download=force_download
                     )
+                )
 
-                required_rows['local_filename'] = local_filenames
-                # call the generating function with args required_files
-                generator = self.page.output_generators[field]
+            # add the local filenames to the dataframe
+            required_rows['local_filename'] = local_filenames
 
-                if generator is not None:
-                    # Set the results for this field as the output of calling
-                    # the appropriate generator function with input the dict
-                    # of local required files, and output the **populated format
-                    # string** supplied from config. Assumes that the request dict
-                    # is sufficient to populate this, INCLUDING the dataset root.
-                    # In other words, request should contain ALL the fields used
-                    # to specify a key or file completely: union of those in
-                    # config['dataset_root'] and in the output patterns.
-                    # Alternatively, we could use the commonpath from the needed
-                    # files.
+            generator = self.page.output_generators[field]
 
-                    results[field] = generator(
-                        inrows=required_rows,
-                        outpattern=Path(self.dataset_root, self.page.output_patterns[field]),
-                        savedir=Path(self.page.local_store)
-                    )
-            else:
-                raise ValueError(f'Request for invalid field {field}, valid'
-                                 f' options are {self.page.file_fields}')
+            if generator is not None:
+                results = generator(
+                    inrows=required_rows,
+                    outpattern=Path(self.dataset_root, self.page.output_patterns[field]),
+                    savedir=Path(self.page.local_store)
+                )
+        else:
+            raise ValueError(
+                f'request for invalid field {field}, valid are {self.page.file_fields}')
 
         return results
 
