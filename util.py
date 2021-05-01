@@ -132,6 +132,7 @@ def gen_pcd_df(
         csv,
         px_size=(0.5, 0.11, 0.11),
         cmap='tab20',
+        genecol='gene',
         outfile=None
 ):
     """
@@ -153,7 +154,7 @@ def gen_pcd_df(
     else:
         raise TypeError
 
-    dots['geneInd'] = dots['gene'].factorize()[0] % 20
+    dots['geneInd'] = dots[genecol].factorize()[0] % 20
 
     def cmap2hex(cmap):
         return '#{:02X}{:02X}{:02X}'.format(cmap[0], cmap[1], cmap[2])

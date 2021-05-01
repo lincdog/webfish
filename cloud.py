@@ -106,9 +106,9 @@ class Page:
     """
 
     def __init__(
-            self,
-            config,
-            name
+        self,
+        config,
+        name
     ):
         self.name = name
         self.config = config['pages'][name].copy()
@@ -307,7 +307,7 @@ class DataServer:
             if filenames:
                 fields['source_key'] = key
                 fields['filename'] = [f.relative_to(self.master_root) for f in filenames]
-                all_datafiles.append(pd.DataFrame(fields))
+                all_datafiles.append(pd.DataFrame(fields, dtype=str))
 
         if all_datafiles:
             datafile_df = pd.concat(all_datafiles).sort_values(by=self.dataset_fields).astype(str)
