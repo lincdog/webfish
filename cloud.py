@@ -342,12 +342,12 @@ class DataServer:
     def save_and_sync(self, page):
         page_sync_file = str(self.pages[page].sync_file)
         try:
-            current_sync = pd.read_csv(page_sync_file)
+            current_sync = pd.read_csv(page_sync_file, dtype=str)
             updated_sync = pd.concat([current_sync, self.pages[page].datasets])
         except FileNotFoundError:
             updated_sync = self.pages[page].datasets
 
-        updated_sync.to_csv(page_sync_file, index=False)
+        updated_sync.to_csv(page_sync_file, index=False, dtype=str)
 
         self.client.client.upload_file(
             page_sync_file,
@@ -357,12 +357,12 @@ class DataServer:
 
         page_file_table = str(self.pages[page].file_table)
         try:
-            current_files = pd.read_csv(page_file_table)
+            current_files = pd.read_csv(page_file_table, dtype=str)
             updated_files = pd.concat([current_files, self.pages[page].datafiles])
         except FileNotFoundError:
             updated_files = self.pages[page].datafiles
 
-        updated_files.to_csv(page_file_table, index=False)
+        updated_files.to_csv(page_file_table, index=False, dtype=str)
 
         self.client.client.upload_file(
             page_file_table,
@@ -448,8 +448,8 @@ class DataClient:
                 f'select_dataset: errors downloading keys:',
                 error)
 
-        self.datasets = pd.read_csv(self.page.sync_file).set_index(self.dataset_fields).astype(str)
-        self.datafiles = pd.read_csv(self.page.file_table).astype(str)
+        self.datasets = pd.read_csv(self.page.sync_file, dtype=str).set_index(self.dataset_fields)
+        self.datafiles = pd.read_csv(self.page.file_table, dtype=str)
 
     def local(
         self,
