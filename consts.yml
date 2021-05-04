@@ -6,7 +6,7 @@ endpoint_url: "https://s3.us-west-1.wasabisys.com"
 region_name: us-west-1
 
 master_root: /groups/CaiLab/analyses/
-raw_root: /groups/CaiLab/personal/
+raw_master_root: /groups/CaiLab/personal/
 sync_folder: monitoring/
 analysis_folder: analyses/
 dataset_root: "{user}/{dataset}/{analysis}"
@@ -47,6 +47,7 @@ pages:
 
   dotdetection:
     variables: [ "hyb", "position" ]
+    preupload_class: DotDetectionPreupload
     global_files:
       exp_tree: "monitoring/exp_tree.json"
     source_files:

@@ -1,7 +1,9 @@
 from importlib import reload
 
 import yaml
-
+import sys
+sys.path.append('..')
+import lib.cloud as cloud
 
 def qtest(pagename='datavis'):
     global cloud

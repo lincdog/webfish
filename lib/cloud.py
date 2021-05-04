@@ -19,7 +19,8 @@ from lib.util import (
     f2k,
     ls_recursive,
     process_requires,
-    source_keys_conv
+    source_keys_conv,
+    process_file_entries
 )
 
 
@@ -85,6 +86,9 @@ class DatavisProcessing:
 
         pcds = []
 
+        genecol = 'gene'
+        query = ''
+
         if 'dots_csv' in inrows['source_key'].values:
             query = 'source_key == "dots_csv"'
             genecol = 'gene'
@@ -106,6 +110,10 @@ class DatavisProcessing:
         del pcds_combined
 
         return outfile
+
+
+class DotDetectionPreupload:
+    pass
 
 
 class Page:
@@ -130,48 +138,91 @@ class Page:
         self.sync_file = Path(config.get('sync_folder'), f'{name}_sync.csv')
         self.file_table = Path(config.get('sync_folder'), f'{name}_files.csv')
 
-        self.source_files = self.config.get('source_files', {})
-        self.output_files = self.config.get('output_files', {})
-        self.global_files = self.config.get('global_files', {})
-
         dr = config.get('dataset_root', '')
         self.dataset_root = dr
         # How many levels do we have to fetch to reach the datasets?
         self.dataset_nest = len(dr.rstrip('/').split('/')) - 1
 
-        dre, glob = fmt2regex(dr)
+        dre, drglob = fmt2regex(dr)
         self.dataset_re = dre
-        self.dataset_glob = glob
+        self.dataset_glob = drglob
+
+        rr = config.get('raw_dataset_root', '')
+        self.raw_dataset_root = rr
+        self.raw_nest = len(rr.rstrip('/').split('/')) - 1
+
+        rre, rrglob = fmt2regex(rr)
+        self.raw_re = rre
+        self.raw_glob = rrglob
 
         self.dataset_fields = list(dre.groupindex.keys())
+        self.raw_fields = list(rre.groupindex.keys())
+
         self.file_fields = self.config.get('variables')
 
-        self.file_keys = list(self.config.get('source_files', {}).keys()) + \
-                           list(self.config.get('output_files', {}).keys()) + \
-                           list(self.config.get('global_files', {}).keys())
+        self.source_files = process_file_entries(
+            self.config.get('source_files', {}))
 
-        self.source_patterns = self.config.get('source_files', {})
+        self.output_files = process_file_entries(
+            self.config.get('output_files', {}))
 
-        self.output_files = self.config.get('output_files', {})
+        self.global_files = process_file_entries(
+            self.config.get('global_files', {}))
 
-        self.output_patterns = {}
-        self.output_generators = {}
+        self.raw_files = process_file_entries(
+            self.config.get('raw_files', {}))
+
+        self.file_keys = list(self.source_files.keys()) + \
+            list(self.output_files.keys()) + \
+            list(self.global_files.keys()) + \
+            list(self.raw_files.keys())
 
         # Try to grab the generator class object from this module
+        self.generator_class = None
         if 'generator_class' in self.config.keys():
             self.generator_class = getattr(sys.modules.get(__name__),
                                            self.config['generator_class'])
-        else:
-            self.generator_class = None
+        # Same for the preupload function class
+        self.preupload_class = None
+        if 'preupload_class' in self.config.keys():
+            self.preupload_class = getattr(sys.modules.get(__name__),
+                                           self.config['preupload_class'])
 
-        for f, v in self.output_files.items():
-            self.output_patterns[f] = v['pattern']
+        # Make convenience dicts for the different fields of each file type
+        # source files and preupload functions
+        self.source_patterns = {}
+        self.source_preuploads = {}
+        for k, v in self.source_files.items():
+            self.source_patterns[k] = v['pattern']
 
-            if 'generator' in v.keys():
-                self.output_generators[f] = getattr(
-                    self.generator_class,
-                    v['generator']
-                )
+            if v['preupload']:
+                preupload = getattr(self.preupload_class, v['preupload'])
+            else:
+                preupload = None
+            self.source_preuploads[k] = preupload
+
+        # Output files and generators
+        self.output_patterns = {}
+        self.output_generators = {}
+        for k, v in self.output_files.items():
+            self.output_patterns[k] = v['pattern']
+
+            if v['generator']:
+                generator = getattr(self.generator_class, v['generator'])
+            else:
+                generator = None
+            self.output_generators[k] = generator
+
+        self.raw_patterns = {}
+        self.raw_preuploads = {}
+        for k, v in self.raw_files.items():
+            self.raw_patterns[k] = v['pattern']
+
+            if v['preupload']:
+                preupload = getattr(self.preupload_class, v['preupload'])
+            else:
+                preupload = None
+            self.raw_preuploads[k] = preupload
 
         self.datafiles = None
         self.datasets = None
@@ -421,16 +472,23 @@ class DataClient:
         self.analysis_folder = config.get('analysis_folder', 'analyses/')
         self.bucket_name = config['bucket_name']
 
-        self.dataset_root = Path(config.get('dataset_root', ''))
-        dre, glob = fmt2regex(self.dataset_root)
-        self.dataset_re = dre
-        self.dataset_glob = glob
-
-        self.dataset_fields = list(dre.groupindex.keys())
-
         self._page = None
         self._pagename = None
+
+        # See properties below: setting self.pagename triggers a property
+        # setter that validates the name and then calls the page property
+        # setter, passing a Page object.
         self.pagename = pagename
+
+        self.dataset_root = self.page.dataset_root
+        self.dataset_re = self.page.dataset_re
+        self.dataset_glob = self.page.dataset_glob
+        self.dataset_fields = self.page.dataset_fields
+
+        self.raw_dataset_root = self.page.raw_dataset_root
+        self.raw_re = self.page.raw_re
+        self.raw_glob = self.page.raw_glob
+        self.raw_fields = self.page.raw_fields
 
         self.datafiles = None
         self.datasets = None
@@ -459,11 +517,17 @@ class DataClient:
     def sync_with_s3(
         self
     ):
+        """
+        sync_with_s3
+        -----------
+        Download the entire contents of the sync_folder from S3 and read in
+        the dataset and datafile listing for this page. This tells us what
+        datasets are available and what files and fields are available within
+        each dataset.
+        """
         error = self.client.download_s3_objects(
             self.bucket_name,
-            f2k(self.sync_folder),
-            local_dir='..'
-        )
+            f2k(self.sync_folder))
 
         if len(error) > 0:
             raise FileNotFoundError(
@@ -559,7 +623,8 @@ class DataClient:
     ):
         results = []
 
-        if field in self.page.source_files.keys():
+        if (field in self.page.source_files.keys()
+                or field in self.page.raw_files.keys()):
             files = needed.query('source_key == @field')['filename'].values
             results = [
                 self.retrieve_or_download(f, force_download=force_download)

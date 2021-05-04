@@ -497,3 +497,25 @@ def process_requires(requires):
 def source_keys_conv(sks):
     # convert a string rep of a list to an actual list
     return [k.strip("' ") for k in sks.strip('[]').split(',')]
+
+
+def process_file_entries(entries):
+    result = {}
+
+    for key, value in entries.items():
+        info = dict.fromkeys([
+            'pattern',
+            'requires',
+            'generator',
+            'preupload'], None)
+
+        if isinstance(value, str):
+            info['pattern'] = value
+        elif isinstance(value, dict):
+            info.update(value)
+        else:
+            raise TypeError('Each file in config must be either a string or a dict')
+
+        result[key] = info
+
+    return result
