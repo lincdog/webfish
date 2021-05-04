@@ -18,7 +18,8 @@ from util import (
     k2f,
     f2k,
     ls_recursive,
-    process_requires
+    process_requires,
+    source_keys_conv
 )
 
 
@@ -75,6 +76,7 @@ class DatavisProcessing:
         if inrows.empty:
             return None
 
+        inrows = inrows.astype(str)
         outfile = Path(savedir, str(outpattern).format_map(inrows.iloc[0].to_dict()))
 
         # If the processed file already exists just return it
@@ -83,7 +85,15 @@ class DatavisProcessing:
 
         pcds = []
 
-        infiles = inrows.query('source_key == "dots_csv"')[['channel', 'local_filename']]
+        if 'dots_csv' in inrows['source_key'].values:
+            query = 'source_key == "dots_csv"'
+            genecol = 'gene'
+        elif 'dots_csv_unseg' in inrows['source_key'].values:
+            query = 'source_key == "dots_csv_unseg"'
+            genecol = 'geneID'
+
+        infiles = inrows.query(query)[['channel', 'local_filename']]
+
         for chan, csv in infiles.values:
             pcd_single = pd.read_csv(csv)
             pcd_single['channel'] = chan
@@ -92,7 +102,7 @@ class DatavisProcessing:
         pcds_combined = pd.concat(pcds)
         del pcds
 
-        gen_pcd_df(pcds_combined, outfile=outfile)
+        gen_pcd_df(pcds_combined, genecol=genecol, outfile=outfile)
         del pcds_combined
 
         return outfile
@@ -247,7 +257,7 @@ class DataServer:
                 dataset_info['folder'] = f
                 datasets.append(dataset_info)
 
-        self.all_datasets = pd.DataFrame(datasets, dtype=str)
+        self.all_datasets = pd.DataFrame(datasets)
 
         all_datasets_file = Path(self.sync_folder, 'all_datasets.csv')
 
@@ -273,15 +283,14 @@ class DataServer:
         represent available datasets. Searches each of these folders for position
         folders, and each of these for channel folders.
 
-        Returns: dictionary representing the structure of all available experiments
-
         """
 
         if self.all_datasets.empty:
             self.get_datasets()
 
         page_datasets = []
-        datafile_df = pd.DataFrame(columns=self.dataset_fields + ['folder', 'source_keys'], dtype=str)
+        datafile_df = pd.DataFrame(columns=self.dataset_fields +
+                                   ['folder', 'source_key'])
 
         if not self.pages[page].source_files:
             page_datasets = self.all_datasets
@@ -296,7 +305,8 @@ class DataServer:
             # Determine the possible datasets for this page by which ones have data files
             # available
             for group, rows in datafile_df.groupby(self.dataset_fields):
-                dataset = {field: value for field, value in zip(self.dataset_fields, group)}
+                dataset = {field: value for field, value
+                           in zip(self.dataset_fields, group)}
 
                 dataset['folder'] = self.dataset_root.format_map(dataset)
 
@@ -312,7 +322,7 @@ class DataServer:
 
                 page_datasets.append(dataset)
 
-        page_datasets = pd.DataFrame(page_datasets, dtype=str)
+        page_datasets = pd.DataFrame(page_datasets)
 
         self.pages[page].datafiles = datafile_df
         self.pages[page].datasets = page_datasets
@@ -458,7 +468,9 @@ class DataClient:
                 f'select_dataset: errors downloading keys:',
                 error)
 
-        self.datasets = pd.read_csv(self.page.sync_file, dtype=str).set_index(self.dataset_fields)
+        self.datasets = pd.read_csv(
+            self.page.sync_file,
+            converters={'source_keys': source_keys_conv}).set_index(self.dataset_fields)
         self.datafiles = pd.read_csv(self.page.file_table, dtype=str)
 
     def local(

@@ -169,6 +169,9 @@ def gen_pcd_df(
     # convert to real units
     dots[['z', 'y', 'x']] *= np.array(px_size)
 
+    if genecol != 'gene':
+        dots = dots.rename(columns={genecol: 'gene'})
+
     if outfile is not None:
         dots.to_csv(outfile, index=False)
 
@@ -489,3 +492,8 @@ def process_requires(requires):
         reqs.extend([r.strip() for r in entry.split('|')])
 
     return reqs
+
+
+def source_keys_conv(sks):
+    # convert a string rep of a list to an actual list
+    return [k.strip("' ") for k in sks.strip('[]').split(',')]
