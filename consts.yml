@@ -10,7 +10,7 @@ raw_root: /groups/CaiLab/personal/
 sync_folder: monitoring/
 analysis_folder: analyses/
 dataset_root: "{user}/{dataset}/{analysis}"
-raw_dataset_root: "{user}/{dataset}/"
+raw_dataset_root: "{user}/raw/{dataset}/"
 
 bucket_name: hpc-wasabi
 
@@ -49,5 +49,9 @@ pages:
     variables: [ "hyb", "position" ]
     global_files:
       exp_tree: "monitoring/exp_tree.json"
+    source_files:
+      dot_locations: "MMStack_Pos{position}/Dot_Locations/locations.csv"
+      avg_brightness: "MMStack_Pos{position}/Dot_Locations/Average_Brightness_Analysis.csv"
+      biggest_jump: "MMStack_Pos{position}/Dot_Locations/Biggest_Jump_Histograms/HybCycle_{hyb}_Jump.png"
     raw_files:
       hyb_fov: "HybCycle_{hyb}/MMStack_Pos{position}.ome.tif"

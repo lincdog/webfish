@@ -2,7 +2,7 @@ import os
 import sys
 import yaml
 import time
-import atexit
+import signal
 import pandas as pd
 from pathlib import Path, PurePath
 from argparse import ArgumentParser
@@ -11,6 +11,8 @@ os.chdir('/home/lombelet/cron/webfish')
 sys.path.extend([os.getcwd()])
 from lib import cloud
 from lib.util import ls_recursive
+
+# TODO: Much of this functionality would better be integrated into cloud.DataClient itself
 
 
 def process_args():
@@ -71,11 +73,25 @@ def dataset_compare(dm):
     return list(diff)
 
 
-def atexit_write_pending(df, path):
-    if not df.empty:
-        df.to_csv(path, index=False)
+def sigint_write_pending(signo, frame):
+    pending_csv = frame.f_globals.get('pending_csv', None)
+    df = frame.f_globals.get('remaining_files', None)
+
+    if pending_csv and df:
+        try:
+            df.to_csv(pending_csv, index=False)
+            print('Keyboard interrupt received, saving pending uploads and exiting.')
+            sys.exit(0)
+        except IOError:
+            print('Keyboard interrupt received, failed to save pending uploads.')
+            sys.exit(1)
+    else:
+        print('Keyboard interrupt received, unable to locate pending uploads')
+        sys.exit(1)
 
 
+# TODO: Before uploading file, allow hook for server-side generator class
+#   that will process the files before uploading them - e.g. compression, etc
 def datafile_search(dm, diff, dryrun, deep=False):
     if deep or dryrun:
         diff = None  # setting the folders arg of find_datafiles to none looks in ALL folders
@@ -102,8 +118,7 @@ def datafile_search(dm, diff, dryrun, deep=False):
 
         remaining_files = new_files.copy()
 
-        atexit.register(atexit_write_pending, remaining_files,
-                        Path(dm.sync_folder, f'{page}_pending.csv'))
+        signal.signal(signal.SIGINT, sigint_write_pending)
 
         if not args.dryrun:
             for row in new_files.itertuples():
@@ -152,8 +167,6 @@ if __name__ == '__main__':
     deep = sorted(old_patterns) != sorted(new_patterns)
 
     new_files = datafile_search(dm, new_folders, dryrun=args.dryrun, deep=deep)
-
-    atexit.unregister(atexit_write_pending)
 
     with open(Path(dm.sync_folder, 'TIMESTAMP'), 'w') as ts:
         ts.write(str(time.time()))

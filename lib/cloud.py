@@ -10,7 +10,7 @@ import configparser as cfparse
 from collections import defaultdict
 import json
 import sys
-from util import (
+from lib.util import (
     gen_pcd_df,
     gen_mesh,
     fmt2regex,
@@ -272,9 +272,10 @@ class DataServer:
         return self.all_datasets
 
     def find_datafiles(
-            self,
-            page,
-            folders=None
+        self,
+        page,
+        folders=None,
+        sync=True
     ):
         """
         find_datafiles
@@ -327,7 +328,8 @@ class DataServer:
         self.pages[page].datafiles = datafile_df
         self.pages[page].datasets = page_datasets
 
-        self.save_and_sync(page)
+        if sync:
+            self.save_and_sync(page)
 
         return page_datasets, datafile_df
 
