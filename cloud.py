@@ -367,7 +367,7 @@ class DataServer:
         except FileNotFoundError:
             updated_sync = self.pages[page].datasets
 
-        updated_sync.to_csv(page_sync_file, index=False, dtype=str)
+        updated_sync.to_csv(page_sync_file, index=False)
 
         self.client.client.upload_file(
             page_sync_file,
@@ -382,7 +382,7 @@ class DataServer:
         except FileNotFoundError:
             updated_files = self.pages[page].datafiles
 
-        updated_files.to_csv(page_file_table, index=False, dtype=str)
+        updated_files.to_csv(page_file_table, index=False)
 
         self.client.client.upload_file(
             page_file_table,
