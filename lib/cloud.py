@@ -141,7 +141,7 @@ class Page:
         dr = config.get('dataset_root', '')
         self.dataset_root = dr
         # How many levels do we have to fetch to reach the datasets?
-        self.dataset_nest = len(dr.rstrip('/').split('/')) - 1
+        self.dataset_nest = len(Path(dr).parts) - 1
 
         dre, drglob = fmt2regex(dr)
         self.dataset_re = dre
@@ -149,7 +149,7 @@ class Page:
 
         rr = config.get('raw_dataset_root', '')
         self.raw_dataset_root = rr
-        self.raw_nest = len(rr.rstrip('/').split('/')) - 1
+        self.raw_nest = len(Path(rr).parts) - 1
 
         rre, rrglob = fmt2regex(rr)
         self.raw_re = rre
@@ -177,6 +177,11 @@ class Page:
             list(self.global_files.keys()) + \
             list(self.raw_files.keys())
 
+        if len(np.unique(self.file_keys)) != len(self.file_keys):
+            raise ValueError('File keys must be unique across all '
+                             'file classes (source, raw, output, global'
+                             ' in one Page object.')
+
         # Try to grab the generator class object from this module
         self.generator_class = None
         if 'generator_class' in self.config.keys():
@@ -201,6 +206,23 @@ class Page:
                 preupload = None
             self.source_preuploads[k] = preupload
 
+        # Raw files and preupload functions
+        self.raw_patterns = {}
+        self.raw_preuploads = {}
+        for k, v in self.raw_files.items():
+            self.raw_patterns[k] = v['pattern']
+
+            if v['preupload']:
+                preupload = getattr(self.preupload_class, v['preupload'])
+            else:
+                preupload = None
+            self.raw_preuploads[k] = preupload
+
+        # Make combined source+raw dicts, because when searching for files
+        # to upload we want to go through both of these
+        self.input_patterns = self.source_patterns | self.raw_patterns
+        self.input_preuploads = self.source_preuploads | self.raw_preuploads
+
         # Output files and generators
         self.output_patterns = {}
         self.output_generators = {}
@@ -212,17 +234,6 @@ class Page:
             else:
                 generator = None
             self.output_generators[k] = generator
-
-        self.raw_patterns = {}
-        self.raw_preuploads = {}
-        for k, v in self.raw_files.items():
-            self.raw_patterns[k] = v['pattern']
-
-            if v['preupload']:
-                preupload = getattr(self.preupload_class, v['preupload'])
-            else:
-                preupload = None
-            self.raw_preuploads[k] = preupload
 
         self.datafiles = None
         self.datasets = None
@@ -254,73 +265,118 @@ class DataServer:
 
         self.master_root = config.get('master_root')
         if not Path(self.master_root).is_dir():
-            raise FileNotFoundError(f'master_root specified as {self.master_root} does not exist')
+            raise FileNotFoundError(f'master_root specified as '
+                                    f'{self.master_root} does not exist')
+
+        self.raw_master_root = config.get('raw_master_root')
+        if not Path(self.master_root).is_dir():
+            raise FileNotFoundError(f'raw_master_root specified as '
+                                    f'{self.raw_master_root} does not exist')
 
         self.sync_folder = config.get('sync_folder', 'monitoring/')
         Path(self.sync_folder).mkdir(parents=True, exist_ok=True)
 
         self.analysis_folder = config.get('analysis_folder', 'analyses/')
+        self.raw_folder = config.get('raw_folder', 'raw/')
 
         self.all_datasets = pd.DataFrame()
+        self.all_raw_datasets = pd.DataFrame()
+
         dr = config.get('dataset_root', '')
         self.dataset_root = dr
         # How many levels do we have to fetch to reach the datasets?
         self.dataset_nest = len(Path(dr).parts) - 1
 
-        dre, glob = fmt2regex(dr)
+        dre, drglob = fmt2regex(dr)
         self.dataset_re = dre
-        self.dataset_glob = glob
+        self.dataset_glob = drglob
 
         self.dataset_fields = list(dre.groupindex.keys())
+
+        rr = config.get('raw_dataset_root', '')
+        self.raw_dataset_root = rr
+        self.raw_nest = len(Path(rr).parts) - 1
+
+        rre, rrglob = fmt2regex(rr)
+        self.raw_re = rre
+        self.raw_glob = rrglob
+
+        self.raw_fields = list(rre.groupindex.keys())
+
+        self.all_fields = self.dataset_fields + self.raw_fields
+
         self.pages = {name: Page(config, name) for name in config.get('pages', {})}
         self.pagenames = tuple(self.pages.keys())
 
         self.bucket_name = config.get('bucket_name')
 
         pats = []
-        for p in config['pages'].values():
-            pats.extend(list(p.get('source_files', {}).values()))
+        for p in self.pages.values():
+            pats.extend(list(p.input_patterns.values()))
 
-        with open(Path(self.sync_folder, 'source_patterns'), 'w') as sp:
+        with open(Path(self.sync_folder, 'input_patterns'), 'w') as sp:
             sp.write('\n'.join(pats))
 
-    def get_datasets(
+    def get_source_datasets(
         self,
-        folders=None
+        folders=None,
+        sync=True
     ):
-        possible_folders = sorted(ls_recursive(
-            root=self.master_root,
-            level=self.dataset_nest,
-            flat=True))
+        possible_folders, fields = find_matching_files(self.master_root,
+                                                       self.dataset_root)
+        fields['folder'] = possible_folders
+
+        all_datasets = pd.DataFrame(fields)
 
         if folders:
             folders = [Path(f) for f in folders]
-            possible_folders = list(set(folders) & set(possible_folders))
+            all_datasets = all_datasets.query('folder in @folders').copy()
 
-        datasets = []
-
-        for f in possible_folders:
-            f = str(f).rstrip('/')
-            d_match = self.dataset_re.match(f)
-
-            if d_match:
-                dataset_info = d_match.groupdict()
-                dataset_info['folder'] = f
-                datasets.append(dataset_info)
-
-        self.all_datasets = pd.DataFrame(datasets)
+        self.all_datasets = all_datasets
 
         all_datasets_file = Path(self.sync_folder, 'all_datasets.csv')
 
         self.all_datasets.to_csv(all_datasets_file, index=False)
 
-        self.client.client.upload_file(
-            str(all_datasets_file),
-            Bucket=self.bucket_name,
-            Key=str(all_datasets_file)
-        )
+        if sync:
+            self.client.client.upload_file(
+                str(all_datasets_file),
+                Bucket=self.bucket_name,
+                Key=str(all_datasets_file)
+            )
 
-        return self.all_datasets
+            return self.all_datasets
+
+    def get_raw_datasets(
+            self,
+            folders=None,
+            sync=True
+    ):
+        possible_folders, fields = find_matching_files(
+            self.raw_master_root,
+            self.raw_dataset_root)
+        fields['folder'] = possible_folders
+
+        all_raw_datasets = pd.DataFrame(fields)
+
+        if folders:
+            folders = [Path(f) for f in folders]
+            all_raw_datasets = all_raw_datasets.query('folder in @folders').copy()
+
+        self.all_raw_datasets = all_raw_datasets
+
+        all_raw_datasets_file = Path(self.sync_folder, 'all_raw_datasets.csv')
+
+        self.all_raw_datasets.to_csv(all_raw_datasets_file, index=False)
+
+        if sync:
+            self.client.client.upload_file(
+                str(all_raw_datasets_file),
+                Bucket=self.bucket_name,
+                Key=str(all_raw_datasets_file)
+            )
+
+            return self.all_raw_datasets
 
     def find_datafiles(
         self,
@@ -348,7 +404,7 @@ class DataServer:
             page_datasets = self.all_datasets
 
         all_datafiles = [self.find_source_files(key, pattern, folders)
-            for key, pattern in self.pages[page].source_patterns.items()]
+            for key, pattern in self.pages[page].input_patterns.items()]
 
         if all_datafiles:
             datafile_df = pd.concat(all_datafiles).sort_values(by=self.dataset_fields)
@@ -388,7 +444,7 @@ class DataServer:
         self,
         key,
         pattern,
-        folders
+        folders,
     ):
         paths = None
         if folders:
@@ -407,6 +463,33 @@ class DataServer:
         if filenames:
             fields['source_key'] = key
             fields['filename'] = [f.relative_to(self.master_root) for f in filenames]
+            return pd.DataFrame(fields, dtype=str)
+        else:
+            return None
+
+    def find_raw_files(
+        self,
+        key,
+        pattern,
+        folders,
+    ):
+        paths = None
+        if folders:
+            paths = []
+            # We are assuming folders is a list up to dataset_root nesting - potential
+            # datasets to look in. This makes a list of glob results looking for
+            # pattern from each supplied folder.
+            _, glob = fmt2regex(pattern)
+            [paths.extend(Path(self.raw_master_root, f).glob(glob)) for f in folders]
+
+        filenames, fields = find_matching_files(
+            str(self.raw_master_root),
+            str(Path(self.raw_dataset_root, pattern)),
+            paths=paths)
+
+        if filenames:
+            fields['source_key'] = key
+            fields['filename'] = [f.relative_to(self.raw_master_root) for f in filenames]
             return pd.DataFrame(fields, dtype=str)
         else:
             return None
@@ -621,6 +704,8 @@ class DataClient:
         needed,
         force_download
     ):
+        # TODO: make this recursive, so that outputs that rely
+        #   on other outputs can be generated.
         results = []
 
         if (field in self.page.source_files.keys()

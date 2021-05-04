@@ -32,7 +32,7 @@ def process_args():
 def init_server():
     config = yaml.load(open('../consts.yml'), Loader=yaml.Loader)
     try:
-        old_patterns = open(Path(config['sync_folder'], 'source_patterns')).read()
+        old_patterns = open(Path(config['sync_folder'], 'input_patterns')).read()
     except FileNotFoundError:
         old_patterns = ''
 
@@ -155,14 +155,14 @@ if __name__ == '__main__':
     if args.fresh:
         deep = True
         for f in Path(dm.sync_folder).iterdir():
-            if not f.name == 'source_patterns':
+            if not f.name == 'input_patterns':
                 f.unlink()
 
     new_folders = stat_compare(dm)
 
     new_patterns = []
     for p in dm.pages.values():
-        new_patterns.extend(list(p.source_patterns.values()))
+        new_patterns.extend(list(p.input_patterns.values()))
 
     deep = sorted(old_patterns) != sorted(new_patterns)
 
