@@ -6,9 +6,11 @@ endpoint_url: "https://s3.us-west-1.wasabisys.com"
 region_name: us-west-1
 
 master_root: /groups/CaiLab/analyses/
+raw_root: /groups/CaiLab/personal/
 sync_folder: monitoring/
 analysis_folder: analyses/
 dataset_root: "{user}/{dataset}/{analysis}"
+raw_dataset_root: "{user}/{dataset}/"
 
 bucket_name: hpc-wasabi
 
@@ -44,5 +46,8 @@ pages:
         generator: "generate_dots"
 
   dotdetection:
+    variables: [ "hyb", "position" ]
     global_files:
       exp_tree: "monitoring/exp_tree.json"
+    raw_files:
+      hyb_fov: "HybCycle_{hyb}/MMStack_Pos{position}.ome.tif"

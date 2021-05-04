@@ -9,8 +9,8 @@ from argparse import ArgumentParser
 
 os.chdir('/home/lombelet/cron/webfish')
 sys.path.extend([os.getcwd()])
-import cloud
-from util import ls_recursive
+from lib import cloud
+from lib.util import ls_recursive
 
 
 def process_args():
@@ -28,7 +28,7 @@ def process_args():
 
 
 def init_server():
-    config = yaml.load(open('consts.yml'), Loader=yaml.Loader)
+    config = yaml.load(open('../consts.yml'), Loader=yaml.Loader)
     try:
         old_patterns = open(Path(config['sync_folder'], 'source_patterns')).read()
     except FileNotFoundError:

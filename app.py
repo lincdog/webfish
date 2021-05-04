@@ -2,7 +2,7 @@ import dash
 # from flask_caching import Cache
 import dash_bootstrap_components as dbc
 import yaml
-from cloud import S3Connect
+from lib.cloud import S3Connect
 
 ####### Globals #######
 

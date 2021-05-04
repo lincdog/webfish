@@ -460,7 +460,7 @@ class DataClient:
         error = self.client.download_s3_objects(
             self.bucket_name,
             f2k(self.sync_folder),
-            local_dir='.'
+            local_dir='..'
         )
 
         if len(error) > 0:

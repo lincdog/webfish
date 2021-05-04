@@ -2,7 +2,8 @@
 .idea
 **/.ipynb_checkpoints
 *.jupyterlab-workspace
-ec2
+lib/ec2
 env.yaml
 **/__pycache__
+monitoring
 webfish_data

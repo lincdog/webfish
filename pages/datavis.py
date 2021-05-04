@@ -1,5 +1,4 @@
 import pandas as pd
-import numpy as np
 import plotly.graph_objects as go
 
 import dash_core_components as dcc
@@ -9,8 +8,8 @@ from dash.dependencies import Input, Output, State
 from dash.exceptions import PreventUpdate
 
 from app import app, config, s3_client
-from util import populate_mesh, base64_image, populate_genes, mesh_from_json
-import cloud
+from lib.util import populate_mesh, base64_image, populate_genes, mesh_from_json
+from lib import cloud
 from datetime import datetime
 
 data_client = cloud.DataClient(

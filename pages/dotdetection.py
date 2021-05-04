@@ -1,9 +1,4 @@
-import os
 import json
-import yaml
-import pandas as pd
-import numpy as np
-import plotly.graph_objects as go
 
 import dash_core_components as dcc
 import dash_html_components as html
@@ -13,7 +8,7 @@ from dash.dependencies import Input, Output, State
 from dash.exceptions import PreventUpdate
 
 from app import app, config, s3_client
-import cloud
+from lib import cloud
 
 data_client = cloud.DataClient(
     config=config,
