@@ -1,164 +1,159 @@
-from time import sleep
 import os
-os.chdir('/home/lombelet/cron/webfish')
-
 import sys
-sys.path.extend([os.getcwd()])
-
 import yaml
 import cloud
-from util import ls_recursive
+import time
+import atexit
 import pandas as pd
 from pathlib import Path, PurePath
-import time
 from argparse import ArgumentParser
-import atexit
+
+os.chdir('/home/lombelet/cron/webfish')
+sys.path.extend([os.getcwd()])
+from util import ls_recursive
 
 
 def process_args():
-  parser = ArgumentParser(description='HPC-side script to sync Cai Lab datasets to S3 storage')
+    parser = ArgumentParser(description='HPC-side script to sync Cai Lab datasets to S3 storage')
 
-  parser.add_argument('--dryrun', action='store_true',
-                      help='Only update monitoring information, do not upload to s3.')
+    parser.add_argument('--dryrun', action='store_true',
+                        help='Only update monitoring information, do not upload to s3.')
 
-  parser.add_argument('--fresh', action='store_true',
-                      help='Erase all stored monitoring files and regenerate them. Note: if --dryrun'
-                      ' is not specified, will begin uploading ALL datafiles.')
+    parser.add_argument('--fresh', action='store_true',
+                        help='Erase all stored monitoring files and regenerate them. '
+                             'Note: if --dryrun is not specified, will begin '
+                             'uploading ALL datafiles.')
 
-  return parser.parse_args()
+    return parser.parse_args()
 
 
 def init_server():
-  config = yaml.load(open('consts.yml'), Loader=yaml.Loader)
-  try:
-    old_patterns = open(Path(config['sync_folder'], 'source_patterns')).read()
-  except FileNotFoundError:
-    old_patterns = ''
+    config = yaml.load(open('consts.yml'), Loader=yaml.Loader)
+    try:
+        old_patterns = open(Path(config['sync_folder'], 'source_patterns')).read()
+    except FileNotFoundError:
+        old_patterns = ''
 
-  old_patterns = old_patterns.split()
+    old_patterns = old_patterns.split()
 
-  s3c = cloud.S3Connect(config=config)
+    s3c = cloud.S3Connect(config=config)
 
-  dm = cloud.DataServer(config=config, s3_client=s3c)
+    dm = cloud.DataServer(config=config, s3_client=s3c)
 
-  return dm, old_patterns
+    return dm, old_patterns
 
 
 def stat_compare(dm):
-  try:
-    listmtime = float(open(Path(dm.sync_folder, 'TIMESTAMP'), 'r').read().strip())
+    try:
+        listmtime = float(open(Path(dm.sync_folder, 'TIMESTAMP'), 'r').read().strip())
 
-  except FileNotFoundError:
-    listmtime = 0
+    except FileNotFoundError:
+        listmtime = 0
 
-  dirlist = ls_recursive(root=dm.master_root, level=dm.dataset_nest, flat=True)
+    dirlist = ls_recursive(root=dm.master_root, level=dm.dataset_nest, flat=True)
 
-  modified = []
+    modified = []
 
-  for d in dirlist:
-    if os.stat(Path(dm.master_root, d)).st_mtime > listmtime:
-      modified.append(Path(dm.master_root, d))
+    for d in dirlist:
+        if os.stat(Path(dm.master_root, d)).st_mtime > listmtime:
+            modified.append(Path(dm.master_root, d))
 
-  return modified
+    return modified
 
 
 def dataset_compare(dm):
-  old_datasets = pd.read_csv(Path(dm.sync_folder, 'all_datasets.csv'), dtype=str)
+    old_datasets = pd.read_csv(Path(dm.sync_folder, 'all_datasets.csv'), dtype=str)
 
-  new_datasets = dm.get_datasets()
+    new_datasets = dm.get_datasets()
 
-  diff = set(old_datasets['folder']) ^ set(new_datasets['folder'])
+    diff = set(old_datasets['folder']) ^ set(new_datasets['folder'])
 
-  return list(diff)
+    return list(diff)
 
 
 def atexit_write_pending(df, path):
-  if not df.empty:
-    df.to_csv(path, index=False)
+    if not df.empty:
+        df.to_csv(path, index=False)
 
 
 def datafile_search(dm, diff, dryrun, deep=False):
+    if deep or dryrun:
+        diff = None  # setting the folders arg of find_datafiles to none looks in ALL folders
+    elif not diff:
+        return pd.DataFrame()  # if we get an empty list, return an empty DF
 
-  if deep or dryrun:
-    diff = None # setting the folders arg of find_datafiles to none looks in ALL folders
-  elif not diff:
-      return pd.DataFrame() # if we get an empty list, return an empty DF
+    for page in dm.pagenames:
+        _, new_files = dm.find_datafiles(page=page, folders=diff)
 
-  for page in dm.pagenames:
-    _, new_files = dm.find_datafiles(page=page, folders=diff)
+        pending_csv = Path(dm.sync_folder, f'{page}_pending.csv')
 
-    pending_csv = Path(dm.sync_folder, f'{page}_pending.csv')
+        if pending_csv.exists():
+            pending_files = pd.read_csv(pending_csv)
+        else:
+            pending_files = pd.DataFrame()
 
-    if pending_csv.exists():
-      pending_files = pd.read_csv(pending_csv)
-    else:
-      pending_files = pd.DataFrame()
+        new_files = pd.concat([new_files, pending_files])
+        new_files.drop_duplicates(subset='filename', inplace=True, ignore_index=True)
 
-    new_files = pd.concat([new_files, pending_files])
-    new_files.drop_duplicates(subset='filename', inplace=True, ignore_index=True)
+        if new_files.empty:
+            continue
 
-    if new_files.empty:
-      continue
+        i = 0
 
-    i = 0
+        remaining_files = new_files.copy()
 
-    remaining_files = new_files.copy()
+        atexit.register(atexit_write_pending, remaining_files,
+                        Path(dm.sync_folder, f'{page}_pending.csv'))
 
-    atexit.register(atexit_write_pending, remaining_files,
-                    Path(dm.sync_folder, f'{page}_pending.csv'))
+        if not args.dryrun:
+            for row in new_files.itertuples():
+                if i % 50 == 0:
+                    print(f'done with {i} files, {len(new_files) - i} to go')
+                i += 1
 
-    if not args.dryrun:
-      for row in new_files.itertuples():
-        if i % 50 == 0:
-          print(f'done with {i} files, {len(new_files)-i} to go')
-        i += 1
+                key_prefix = PurePath(dm.analysis_folder)
+                keyname = key_prefix / Path(row.filename)
 
-        key_prefix = PurePath(dm.analysis_folder)
-        keyname = key_prefix / Path(row.filename)
+                try:
+                    dm.client.client.upload_file(
+                        str(Path(dm.master_root, row.filename)),
+                        Bucket=dm.bucket_name,
+                        Key=str(keyname)
+                    )
 
-        try:
-          dm.client.client.upload_file(
-            str(Path(dm.master_root, row.filename)),
-            Bucket=dm.bucket_name,
-            Key=str(keyname)
-          )
+                    remaining_files.drop(index=row.Index, inplace=True)
 
-          remaining_files.drop(index=row.Index, inplace=True)
+                except Exception as ex:
+                    print(f'problem uploading file {row.filename}: {ex}')
 
-        except Exception as ex:
-          print(f'problem uploading file {row.filename}: {ex}')
+            if not remaining_files.empty:
+                remaining_files.to_csv(pending_csv, index=False)
 
-      if not remaining_files.empty:
-        remaining_files.to_csv(pending_csv, index=False)
+    return new_files
 
-  return new_files
 
 if __name__ == '__main__':
-  args = process_args()
+    args = process_args()
 
-  dm, old_patterns = init_server()
+    dm, old_patterns = init_server()
 
-  if args.fresh:
-    deep = True
-    for f in Path(dm.sync_folder).iterdir():
-      if not f.name == 'source_patterns':
-        f.unlink()
+    if args.fresh:
+        deep = True
+        for f in Path(dm.sync_folder).iterdir():
+            if not f.name == 'source_patterns':
+                f.unlink()
 
-  new_folders = stat_compare(dm)
+    new_folders = stat_compare(dm)
 
-  new_patterns = []
-  for p in dm.pages.values():
-    new_patterns.extend(list(p.source_patterns.values()))
+    new_patterns = []
+    for p in dm.pages.values():
+        new_patterns.extend(list(p.source_patterns.values()))
 
-  if sorted(old_patterns) != sorted(new_patterns):
-    deep = True
-  else:
-    deep = False
+    deep = sorted(old_patterns) != sorted(new_patterns)
 
-  new_files = datafile_search(dm, new_folders, dryrun=args.dryrun, deep=deep)
+    new_files = datafile_search(dm, new_folders, dryrun=args.dryrun, deep=deep)
 
-  atexit.unregister(atexit_write_pending)
+    atexit.unregister(atexit_write_pending)
 
-  with open(Path(dm.sync_folder, 'TIMESTAMP'), 'w') as ts:
-    ts.write(str(time.time()))
-
+    with open(Path(dm.sync_folder, 'TIMESTAMP'), 'w') as ts:
+        ts.write(str(time.time()))
