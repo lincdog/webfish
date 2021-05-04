@@ -1,7 +1,6 @@
 import os
 import sys
 import yaml
-import cloud
 import time
 import atexit
 import pandas as pd
@@ -10,6 +9,7 @@ from argparse import ArgumentParser
 
 os.chdir('/home/lombelet/cron/webfish')
 sys.path.extend([os.getcwd()])
+import cloud
 from util import ls_recursive
 
 
