@@ -339,13 +339,16 @@ def fmt2regex(fmt, delim=os.path.sep):
     re_delim = re.escape(delim)
 
     for part in parts:
+        part_regex = ''
+        part_glob = ''
+
         for a in sf.parse(part):
             r = re.escape(a[0])
 
             newglob = a[0]
             if a[1]:
                 newglob = newglob + '*'
-            globstr.append(newglob)
+            part_glob += newglob
 
             if a[1] is not None:
                 k = re.escape(a[1])
@@ -361,7 +364,10 @@ def fmt2regex(fmt, delim=os.path.sep):
 
                 keys.add(k)
 
-            regex.append(r)
+                part_regex += r
+
+            globstr.append(part_glob)
+            regex.append(part_regex)
 
     reg = re.compile('^'+re_delim.join(regex))
     globstr = delim.join(globstr)

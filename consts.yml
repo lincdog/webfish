@@ -58,4 +58,6 @@ pages:
       avg_brightness: "MMStack_Pos{position}/Dot_Locations/Average_Brightness_Analysis.csv"
       biggest_jump: "MMStack_Pos{position}/Dot_Locations/Biggest_Jump_Histograms/HybCycle_{hyb}_Jump.png"
     raw_files:
-      hyb_fov: "HybCycle_{hyb}/MMStack_Pos{position}.ome.tif"
+      hyb_fov:
+        pattern: "HybCycle_{hyb}/MMStack_Pos{position}.ome.tif"
+        preupload: "compress_raw_im"

@@ -526,6 +526,53 @@ class DataServer:
             Key=page_file_table
         )
 
+    def upload_to_s3(
+        self,
+        pagename,
+        request,
+        fields
+    ):
+        """
+        upload_to_s3
+        ------------
+        Uploads a group of requested fields and keys to s3,
+        performing preprocessing if specified in the config.
+
+        Analogous to DataClient.request().
+        """
+
+        # FIXME: either use pure filenames from the dataset to avoid
+        #   asking whether raw or source (we have page.input_preupload and
+        #   input_patterns which are combined), or make 2 functions for uploads?
+        assert False, 'FIXME'
+
+        if isinstance(fields, str):
+            fields = (fields,)
+
+        if isinstance(request, str) or isinstance(request, Path):
+            pass # directly upload it
+
+        page = self.pages[pagename]
+
+        if isinstance(request, dict):
+            # Query the datafiles index
+            query_source = ' and '.join([f'{k} == "{v}"'
+                                  for k, v in request.items()
+                                  if k in page.source_datafiles.columns])
+            query_raw = ' and '.join([f'{k} == "{v}"'
+                                         for k, v in request.items()
+                                         if k in page.raw_datafiles.columns])
+
+            needed = self.datafiles.query(query)
+        else:
+            needed = self.datafiles
+
+        if not fields:
+            return needed
+
+        results = {field: self._request(field, needed)
+                   for field in fields}
+
 
 class DataClient:
     """
