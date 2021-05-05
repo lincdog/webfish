@@ -113,7 +113,13 @@ class DatavisProcessing:
 
 
 class DotDetectionPreupload:
-    pass
+    @staticmethod
+    def compress_raw_im(
+        inrow,
+        outpattern,
+        savedir
+    ):
+        pass
 
 
 class Page:
