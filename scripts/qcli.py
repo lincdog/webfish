@@ -20,7 +20,7 @@ def qserver():
     global cloud
     cloud = reload(cloud)
 
-    config = yaml.load(open('../consts.yml'), Loader=yaml.Loader)
+    config = yaml.load(open('./consts.yml'), Loader=yaml.Loader)
     s3c = cloud.S3Connect(config=config)
     server = cloud.DataServer(config=config, s3_client=s3c)
 
