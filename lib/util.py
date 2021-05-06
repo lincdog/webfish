@@ -12,6 +12,18 @@ import base64
 from matplotlib.pyplot import get_cmap
 
 
+def compress_8bit(
+    imgfilename,
+    compression='DEFLATE',
+    outfile=None
+):
+    with tif.imread(imgfilename) as im:
+        with tif.TiffWriter(outfile) as imw:
+            imw.write(im, compression=compression)
+
+    return outfile
+
+
 def gen_mesh(
         imgfilename,
         px_size=(0.5, 0.11, 0.11),
@@ -364,7 +376,7 @@ def fmt2regex(fmt, delim=os.path.sep):
 
                 keys.add(k)
 
-                part_regex += r
+            part_regex += r
 
             globstr.append(part_glob)
             regex.append(part_regex)

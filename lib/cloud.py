@@ -20,7 +20,8 @@ from lib.util import (
     ls_recursive,
     process_requires,
     source_keys_conv,
-    process_file_entries
+    process_file_entries,
+    compress_8bit
 )
 
 
@@ -113,13 +114,24 @@ class DatavisProcessing:
 
 
 class DotDetectionPreupload:
+
     @staticmethod
     def compress_raw_im(
         inrow,
         outpattern,
         savedir
     ):
-        pass
+        if not inrow:
+            return None
+
+        info = inrow.query('source_key == "hyb_fov"').to_dict()
+
+        im = info['local_filename']
+        outfile = Path(savedir, outpattern.format_map(info))
+
+        compress_8bit(im, 'DEFLATE', outfile)
+
+        return outfile
 
 
 class Page:
@@ -285,6 +297,8 @@ class DataServer:
         self.analysis_folder = config.get('analysis_folder', 'analyses/')
         self.raw_folder = config.get('raw_folder', 'raw/')
 
+        self.local_store = config.get('local_store', 'webfish_data/')
+
         self.all_datasets = pd.DataFrame()
         self.all_raw_datasets = pd.DataFrame()
 
@@ -328,8 +342,9 @@ class DataServer:
         folders=None,
         sync=True
     ):
-        possible_folders, fields = find_matching_files(self.master_root,
-                                                       self.dataset_root)
+        possible_folders, fields = find_matching_files(
+            self.master_root,
+            self.dataset_root)
         fields['folder'] = possible_folders
 
         all_datasets = pd.DataFrame(fields)
@@ -351,13 +366,14 @@ class DataServer:
                 Key=str(all_datasets_file)
             )
 
-            return self.all_datasets
+        return self.all_datasets
 
     def get_raw_datasets(
             self,
             folders=None,
             sync=True
     ):
+
         possible_folders, fields = find_matching_files(
             self.raw_master_root,
             self.raw_dataset_root)
@@ -382,12 +398,13 @@ class DataServer:
                 Key=str(all_raw_datasets_file)
             )
 
-            return self.all_raw_datasets
+        return self.all_raw_datasets
 
-    def find_datafiles(
+    def find_page_files(
         self,
         page,
-        folders=None,
+        source_folders=None,
+        raw_folders=None,
         sync=True
     ):
         """
@@ -400,51 +417,83 @@ class DataServer:
         """
 
         if self.all_datasets.empty:
-            self.get_datasets()
+            self.get_source_datasets()
+            self.get_raw_datasets()
 
-        page_datasets = []
-        datafile_df = pd.DataFrame(columns=self.dataset_fields +
+        source_datasets = []
+        raw_datasets = []
+
+        sourcefile_df = pd.DataFrame(columns=self.dataset_fields +
                                    ['folder', 'source_key'])
 
-        if not self.pages[page].source_files:
+        rawfile_df = pd.DataFrame(columns=self.raw_fields +
+                                  ['folder', 'source_key'])
+
+        # If this page doesn't require any files, just show all datasets
+        if not self.pages[page].input_patterns:
             page_datasets = self.all_datasets
 
-        all_datafiles = [self.find_source_files(key, pattern, folders)
-            for key, pattern in self.pages[page].input_patterns.items()]
+        all_sourcefiles = [self.find_source_files(key, pattern, source_folders)
+                           for key, pattern in self.pages[page].source_patterns.items()]
 
-        if all_datafiles:
-            datafile_df = pd.concat(all_datafiles).sort_values(by=self.dataset_fields)
-            del all_datafiles
+        all_rawfiles = [self.find_raw_files(key, pattern, raw_folders)
+                        for key, pattern in self.pages[page].raw_patterns.items()]
 
-            # Determine the possible datasets for this page by which ones have data files
-            # available
-            for group, rows in datafile_df.groupby(self.dataset_fields):
-                dataset = {field: value for field, value
-                           in zip(self.dataset_fields, group)}
+        if all_sourcefiles:
+            sourcefile_df = pd.concat(all_sourcefiles).sort_values(by=self.dataset_fields)
+            del all_sourcefiles
+            source_datasets = self.filter_datasets(
+                sourcefile_df,
+                self.dataset_fields,
+                self.dataset_root
+            )
 
-                dataset['folder'] = self.dataset_root.format_map(dataset)
+        if all_rawfiles:
+            rawfile_df = pd.concat(all_rawfiles).sort_values(by=self.raw_fields)
+            del all_sourcefiles
+            raw_datasets = self.filter_datasets(
+                rawfile_df,
+                self.raw_fields,
+                self.raw_dataset_root
+            )
 
-                # FIXME: Technically we should also group by the source file variables, but
-                #   usually all the positions etc WITHIN one analysis ALL have the same
-                #   files present.
-                dataset['source_keys'] = list(rows['source_key'].unique())
-
-                # TODO: Add boolean logic to exclude datasets that do not have the right
-                #   combo of source keys present. Here we are implicitly keeping any
-                #   data set that has ANY one source key because it will form a group with
-                #   one row in this for loop.
-
-                page_datasets.append(dataset)
-
-        page_datasets = pd.DataFrame(page_datasets)
-
-        self.pages[page].datafiles = datafile_df
-        self.pages[page].datasets = page_datasets
+        self.pages[page].datafiles = pd.concat([sourcefile_df, rawfile_df])
+        self.pages[page].datasets = pd.concat([source_datasets, raw_datasets])
 
         if sync:
             self.save_and_sync(page)
 
-        return page_datasets, datafile_df
+        return self.pages[page].datafiles, self.pages[page].datasets
+
+    @staticmethod
+    def filter_datasets(
+        datafile_df,
+        fields,
+        dataset_root
+    ):
+        page_datasets = []
+
+        for group, rows in datafile_df.groupby(fields):
+            dataset = {field: value for field, value
+                       in zip(fields, group)}
+
+            dataset['folder'] = dataset_root.format_map(dataset)
+
+            # FIXME: Technically we should also group by the source file variables, but
+            #   usually all the positions etc WITHIN one analysis ALL have the same
+            #   files present.
+            dataset['source_keys'] = list(rows['source_key'].unique())
+
+            # TODO: Add boolean logic to exclude datasets that do not have the right
+            #   combo of source keys present. Here we are implicitly keeping any
+            #   data set that has ANY one source key because it will form a group with
+            #   one row in this for loop.
+
+            page_datasets.append(dataset)
+
+        results = pd.DataFrame(page_datasets)
+
+        return results
 
     def find_source_files(
         self,
@@ -531,6 +580,26 @@ class DataServer:
             Bucket=self.bucket_name,
             Key=page_file_table
         )
+
+    def run_preuploads(
+        self,
+        pagename,
+        file_df,
+        nthreads=6
+    ):
+        page = self.pages[pagename]
+        if not page.preupload_class:
+            return None
+
+        if not page.input_preuploads:
+            return None
+
+        preupload_root = Path(self.local_store)
+
+        keys_with_preuploads = list(page.input_preuploads.keys())
+        rel_files = file_df.query('source_key in @keys_with_preuploads')
+
+
 
     def upload_to_s3(
         self,
