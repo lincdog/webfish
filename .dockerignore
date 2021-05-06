@@ -7,3 +7,4 @@ env.yaml
 **/__pycache__
 monitoring
 webfish_data
+!webfish_data/dotdetection/nrezaee/*

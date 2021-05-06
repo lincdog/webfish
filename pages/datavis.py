@@ -162,7 +162,7 @@ def update_figure(selected_genes, pos, analysis, dataset, user):
 
     fig = gen_figure(selected_genes, active)
 
-    return [info, dcc.Graph(id='test-graph', figure=fig)]
+    return [info, dcc.Graph(id='dv-test-graph', figure=fig)]
 
 
 @app.callback(
@@ -257,7 +257,7 @@ def select_pos(pos, analysis, dataset, user):
     if not active['dots']:
         return [html.B('Dot file not found!'),
                 dcc.Dropdown(
-                    id='gene-select',
+                    id='dv-gene-select',
                     disabled=True,
                     multi=True,
                     placeholder='Select gene(s)'
@@ -270,7 +270,7 @@ def select_pos(pos, analysis, dataset, user):
 
     return [
         dcc.Dropdown(
-            id='gene-select',
+            id='dv-gene-select',
             options=[{'label': i, 'value': i} for i in all_genes],
             multi=True,
             placeholder='Select gene(s)'
@@ -294,7 +294,7 @@ def select_analysis(analysis, dataset, user):
     return [
         'Position select: ',
         dcc.Dropdown(
-            id='pos-select',
+            id='dv-dv-pos-select',
             options=[{'label': i, 'value': i} for i in sorted(positions)],
             value=positions[0],
             placeholder='Select a position',
@@ -318,7 +318,7 @@ def select_dataset(dataset, user):
     return [
         'Analysis select: ',
         dcc.Dropdown(
-            id='analysis-select',
+            id='dv-dv-analysis-select',
             options=[{'label': i, 'value': i} for i in sorted(analyses)],
             value=None,
             placeholder='Select an analysis run',
@@ -341,7 +341,7 @@ def select_user(user):
     return [
         'Dataset select: ',
         dcc.Dropdown(
-            id='dataset-select',
+            id='dv-dv-dataset-select',
             options=[{'label': i, 'value': i} for i in sorted(datasets)],
             value=None,
             placeholder='Select dataset',
@@ -361,30 +361,30 @@ layout = dbc.Container(dbc.Row([
             html.Div([
                 'User select:',
                 dcc.Dropdown(
-                    id='user-select',
+                    id='dv-dv-user-select',
                     options=[{'label': i, 'value': i}
                              for i in data_client.datasets.index.unique(level=0)],
                     placeholder='Select a user folder',
                     style={'width': '200px'}
-                )], id='user-select-div'
+                )], id='dv-dv-user-select-div'
             ),
 
-            html.Div(id='dataset-select-div'),
-            html.Div(id='analysis-select-div')
+            html.Div(id='dv-dv-dataset-select-div'),
+            html.Div(id='dv-dv-analysis-select-div')
 
-           ], id='analysis-selectors-div'),
+           ], id='dv-dv-analysis-selectors-div'),
 
         html.Hr(),
         html.Div([
             html.Div(
-                dcc.Loading(dcc.Dropdown(id='pos-select', disabled=True),
-                    id='pos-wrapper'),
-                id='pos-div'),
+                dcc.Loading(dcc.Dropdown(id='dv-dv-pos-select', disabled=True),
+                    id='dv-dv-pos-wrapper'),
+                id='dv-dv-pos-div'),
             html.Div(
-                dcc.Loading(dcc.Dropdown(id='gene-select', disabled=True),
-                    id='gene-wrapper'),
-                id='gene-div')
-            ], id='selectors-wrapper', style={'width': '200px', 'margin': '20px'}),
+                dcc.Loading(dcc.Dropdown(id='dv-dv-gene-select', disabled=True),
+                    id='dv-dv-gene-wrapper'),
+                id='dv-dv-gene-div')
+            ], id='dv-dv-selectors-wrapper', style={'width': '200px', 'margin': '20px'}),
         html.Hr(),
 
         html.Div([
@@ -392,7 +392,7 @@ layout = dbc.Container(dbc.Row([
             html.Hr(),
             dcc.Loading([
 
-            ], id='analytics-wrapper')
+            ], id='dv-dv-analytics-wrapper')
         ])
 
     ], width=4, style={'border-right': '1px solid gray'}),
@@ -401,8 +401,8 @@ layout = dbc.Container(dbc.Row([
         html.Div([
             dcc.Loading(
                 dcc.Graph(
-                    id='test-graph',
-                ), id='graph-wrapper'
+                    id='dv-dv-test-graph',
+                ), id='dv-dv-graph-wrapper'
             )
         ])
     ], width="auto")
