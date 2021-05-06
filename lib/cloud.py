@@ -9,6 +9,7 @@ from pathlib import Path, PurePath
 import configparser as cfparse
 from collections import defaultdict
 import json
+from concurrent.futures import ThreadPoolExecutor
 import sys
 from lib.util import (
     gen_pcd_df,
@@ -420,8 +421,8 @@ class DataServer:
             self.get_source_datasets()
             self.get_raw_datasets()
 
-        source_datasets = []
-        raw_datasets = []
+        source_datasets = pd.DataFrame()
+        raw_datasets = pd.DataFrame()
 
         sourcefile_df = pd.DataFrame(columns=self.dataset_fields +
                                    ['folder', 'source_key'])
@@ -450,7 +451,7 @@ class DataServer:
 
         if all_rawfiles:
             rawfile_df = pd.concat(all_rawfiles).sort_values(by=self.raw_fields)
-            del all_sourcefiles
+            del all_rawfiles
             raw_datasets = self.filter_datasets(
                 rawfile_df,
                 self.raw_fields,
@@ -591,13 +592,31 @@ class DataServer:
         if not page.preupload_class:
             return None
 
-        if not page.input_preuploads:
+        if not any(page.input_preuploads.values()):
             return None
 
-        preupload_root = Path(self.local_store)
-
-        keys_with_preuploads = list(page.input_preuploads.keys())
+        keys_with_preuploads = {k for k, v in page.input_preuploads.items() if v}
         rel_files = file_df.query('source_key in @keys_with_preuploads')
+
+        output_df = file_df.copy()
+
+        for key, filerows in rel_files.groupby('source_key'):
+            preupload_func = page.input_preuploads[key]
+            out_format = '__'.join([preupload_func.__name__, page.input_patterns[key]])
+
+            with ThreadPoolExecutor(max_workers=nthreads) as exe:
+                futures = {row['filename']: exe.submit(preupload_func, row, out_format, page.local_store)
+                           for row in filerows}
+                done = 0
+                while done < len(futures):
+                    for fname, future in futures.items():
+                        if future.done():
+                            res = future.result(1)
+                            # update the filename
+                            output_df.loc[output_df['filename'] == fname, 'filename'] = res
+                            done += 1
+
+        return output_df
 
 
 
