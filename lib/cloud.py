@@ -554,7 +554,7 @@ class DataServer:
         try:
             current_sync = pd.read_csv(page_sync_file, dtype=str)
             updated_sync = pd.concat([current_sync, self.pages[page].datasets])
-            updated_sync.drop_duplicates(subset=['filename'], inplace=True, ignore_index=True)
+            updated_sync.drop_duplicates(subset=['folder'], keep='last', inplace=True, ignore_index=True)
         except FileNotFoundError:
             updated_sync = self.pages[page].datasets
 
