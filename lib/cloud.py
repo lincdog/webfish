@@ -653,10 +653,11 @@ class DataServer:
                 futures = {}
 
                 for row in filerows.to_dict(orient='records'):
-                    parent_dir = Path(savedir, out_format.format_map(row)).parent
+                    new_fname = out_format.format_map(row)
+                    parent_dir = Path(new_fname).parent
                     parent_dir.mkdir(parents=True, exist_ok=True)
 
-                    futures[row['filename']] = exe.submit(
+                    futures[(row['filename'], new_fname)] = exe.submit(
                         preupload_func, row, out_format, savedir)
 
                 done = 0
@@ -665,14 +666,15 @@ class DataServer:
                     if done % 50 == 0:
                         print(f'Done with {done} files out of {len(futures)}')
 
-                    for fname, future in futures.items():
+                    for (old_fname, new_fname), future in futures.items():
                         if future.done():
-                            new_fname, err = future.result(1)
+                            _, err = future.result(1)
 
                             if err:
-                                errors[key].append((new_fname, err))
+                                errors[key].append((old_fname, err))
                             # update the filename
-                            output_df.loc[output_df['filename'] == fname, 'filename'] = new_fname
+                            output_df.loc[
+                                output_df['filename'] == old_fname, 'filename'] = new_fname
                             done += 1
 
         return output_df, errors
