@@ -242,6 +242,7 @@ class Page:
         # to upload we want to go through both of these
         self.input_patterns = self.source_patterns | self.raw_patterns
         self.input_preuploads = self.source_preuploads | self.raw_preuploads
+        self.has_preupload = [k for k, v in self.input_preuploads.items() if v]
 
         # Output files and generators
         self.output_patterns = {}
@@ -594,18 +595,18 @@ class DataServer:
     ):
         page = self.pages[pagename]
         if not page.preupload_class:
-            return None
+            return page.datafiles
 
-        if not any(page.input_preuploads.values()):
-            return None
+        if not page.has_preupload:
+            return page.datafiles
 
         if file_df is None:
             file_df = page.datafiles
 
         if file_df.empty:
-            return None
+            return page.datafiles
 
-        keys_with_preuploads = {k for k, v in page.input_preuploads.items() if v}
+        keys_with_preuploads = page.has_preupload
         rel_files = file_df.query('source_key in @keys_with_preuploads')
         abs_fnames = [str(Path(self.raw_master_root, f))
                       for f in rel_files['filename'].values]
@@ -615,6 +616,7 @@ class DataServer:
 
         for key, filerows in rel_files.groupby('source_key'):
             preupload_func = page.input_preuploads[key]
+
             out_format = Path(self.raw_dataset_root, page.input_patterns[key])
             out_format = str(out_format.with_name(
                 '__'.join([preupload_func.__name__, out_format.name])))
@@ -623,12 +625,12 @@ class DataServer:
                 futures = {}
 
                 for row in filerows.to_dict(orient='records'):
-                    out_dir = Path(self.preupload_root, pagename,
-                                   out_format.format_map(row)).parent
-                    out_dir.mkdir(parents=True, exist_ok=True)
+                    savedir = Path(self.preupload_root, pagename)
+                    parent_dir = Path(savedir, out_format.format_map(row)).parent
+                    parent_dir.mkdir(parents=True, exist_ok=True)
 
                     futures[row['filename']] = exe.submit(
-                        preupload_func, row, out_format, self.preupload_root)
+                        preupload_func, row, out_format, savedir)
 
                 done = 0
                 while done < len(futures):
@@ -645,13 +647,11 @@ class DataServer:
 
         return output_df
 
-
-
     def upload_to_s3(
         self,
         pagename,
-        request,
-        fields
+        run_preuploads=True,
+        progress=0
     ):
         """
         upload_to_s3
@@ -662,38 +662,45 @@ class DataServer:
         Analogous to DataClient.request().
         """
 
-        # FIXME: either use pure filenames from the dataset to avoid
-        #   asking whether raw or source (we have page.input_preupload and
-        #   input_patterns which are combined), or make 2 functions for uploads?
-        assert False, 'FIXME'
-
-        if isinstance(fields, str):
-            fields = (fields,)
-
-        if isinstance(request, str) or isinstance(request, Path):
-            pass # directly upload it
+        if run_preuploads:
+            self.pages[pagename].datafiles = self.run_preuploads(pagename, nthreads=10)
+            # save and upload the modified filenames, if any
+            self.save_and_sync(pagename)
 
         page = self.pages[pagename]
 
-        if isinstance(request, dict):
-            # Query the datafiles index
-            query_source = ' and '.join([f'{k} == "{v}"'
-                                  for k, v in request.items()
-                                  if k in page.source_datafiles.columns])
-            query_raw = ' and '.join([f'{k} == "{v}"'
-                                         for k, v in request.items()
-                                         if k in page.raw_datafiles.columns])
+        p = 0
+        total = len(page.datafiles)
 
-            needed = self.datafiles.query(query)
-        else:
-            needed = self.datafiles
+        for row in page.datafiles.itertuples():
+            if progress and p % progress == 0:
+                print(f'upload_to_s3: {p} files done out of {total}')
+            p += 1
 
-        if not fields:
-            return needed
+            if row.source_key in page.source_files.keys():
+                root = self.master_root
+                key_prefix = self.analysis_folder
+            elif row.source_key in page.raw_files.keys():
+                root = self.raw_master_root
+                key_prefix = self.raw_folder
 
-        results = {field: self._request(field, needed)
-                   for field in fields}
+            if row.source_key in page.has_preupload:
+                root = self.preupload_root
 
+            keyname = Path(key_prefix, row.filename)
+            filename = Path(root, row.filename)
+
+            try:
+                self.client.client.upload_file(
+                    str(filename),
+                    Bucket=self.bucket_name,
+                    Key=str(keyname)
+                )
+
+                #remaining_files.drop(index=row.Index, inplace=True)
+
+            except Exception as ex:
+                print(f'problem uploading file {row.filename}: {ex}')
 
 class DataClient:
     """

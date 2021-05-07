@@ -47,7 +47,8 @@ def init_server():
 
 def stat_compare(dm):
     try:
-        listmtime = float(open(Path(dm.sync_folder, 'TIMESTAMP'), 'r').read().strip())
+        listmtime = float(open(Path(dm.sync_folder,
+                                    'TIMESTAMP'), 'r').read().strip())
 
     except FileNotFoundError:
         listmtime = 0
