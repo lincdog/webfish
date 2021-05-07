@@ -128,6 +128,9 @@ class DotDetectionPreupload:
         im = inrow['filename']
         outfile = Path(savedir, outpattern.format_map(inrow))
 
+        if outfile.is_file():
+            return outfile.relative_to(savedir)
+
         print(im, outfile, savedir)
 
         compress_8bit(im, 'DEFLATE', outfile)
