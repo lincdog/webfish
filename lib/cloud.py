@@ -605,8 +605,6 @@ class DataServer:
         if file_df.empty:
             return None
 
-        breakpoint()
-
         keys_with_preuploads = {k for k, v in page.input_preuploads.items() if v}
         rel_files = file_df.query('source_key in @keys_with_preuploads')
         abs_fnames = [str(Path(self.raw_master_root, f))
