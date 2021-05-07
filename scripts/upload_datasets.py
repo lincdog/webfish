@@ -115,7 +115,7 @@ def datafile_search(dm, diffs, mtime, dryrun=False, deep=False):
         pending_csv = Path(dm.sync_folder, f'{page}_pending.csv')
         pending_files = pd.DataFrame()
         if pending_csv.exists():
-            pending_files = pd.read_csv(pending_csv)
+            pending_files = pd.read_csv(pending_csv, dtype=str)
 
         if diffs == ([], []) and pending_files.empty:
             continue
