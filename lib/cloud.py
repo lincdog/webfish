@@ -616,8 +616,8 @@ class DataServer:
         for key, filerows in rel_files.groupby('source_key'):
             preupload_func = page.input_preuploads[key]
             out_format = Path(self.raw_dataset_root, page.input_patterns[key])
-            out_format = out_format.with_name(
-                '__'.join([preupload_func.__name__, out_format.name]))
+            out_format = str(out_format.with_name(
+                '__'.join([preupload_func.__name__, out_format.name])))
 
             with ThreadPoolExecutor(max_workers=nthreads) as exe:
                 futures = {}
