@@ -10,7 +10,10 @@ from argparse import ArgumentParser
 os.chdir('/home/lombelet/cron/webfish')
 sys.path.extend([os.getcwd()])
 from lib import cloud
-from lib.util import ls_recursive
+from lib.util import ls_recursive, find_matching_files
+
+TIMESTAMP = 'TIMESTAMP'
+PATTERNS = 'input_patterns'
 
 # TODO: Much of this functionality would better be integrated into cloud.DataClient itself
 
@@ -32,7 +35,7 @@ def process_args():
 def init_server():
     config = yaml.load(open('../consts.yml'), Loader=yaml.Loader)
     try:
-        old_patterns = open(Path(config['sync_folder'], 'input_patterns')).read()
+        old_patterns = open(Path(config['sync_folder'], PATTERNS)).read()
     except FileNotFoundError:
         old_patterns = ''
 
@@ -47,21 +50,26 @@ def init_server():
 
 def stat_compare(dm):
     try:
-        listmtime = float(open(Path(dm.sync_folder,
-                                    'TIMESTAMP'), 'r').read().strip())
-
+        listmtime = float(open(
+            Path(dm.sync_folder, TIMESTAMP), 'r').read().strip())
     except FileNotFoundError:
         listmtime = 0
 
-    dirlist = ls_recursive(root=dm.master_root, level=dm.dataset_nest, flat=True)
+    source_dirlist, _ = find_matching_files(dm.master_root, dm.dataset_root)
+    raw_dirlist, _ = find_matching_files(dm.raw_master_root, dm.raw_dataset_root)
 
-    modified = []
+    source_modified = []
+    raw_modified = []
 
-    for d in dirlist:
+    for d in source_dirlist:
         if os.stat(Path(dm.master_root, d)).st_mtime > listmtime:
-            modified.append(Path(dm.master_root, d))
+            source_modified.append(Path(dm.master_root, d))
 
-    return modified
+    for d in raw_dirlist:
+        if os.stat(Path(dm.raw_master_root, d)).st_mtime > listmtime:
+            raw_modified.append(Path(dm.raw_master_root, d))
+
+    return source_modified, raw_modified
 
 
 def dataset_compare(dm):
@@ -91,16 +99,21 @@ def sigint_write_pending(signo, frame):
         sys.exit(1)
 
 
-# TODO: Before uploading file, allow hook for server-side generator class
-#   that will process the files before uploading them - e.g. compression, etc
-def datafile_search(dm, diff, dryrun, deep=False):
+def datafile_search(dm, diffs, dryrun, deep=False):
+
     if deep or dryrun:
-        diff = None  # setting the folders arg of find_datafiles to none looks in ALL folders
-    elif not diff:
+        # setting the folders arg of find_datafiles to none looks in ALL folders
+        diffs = (None, None)
+    elif not any(diffs):
         return pd.DataFrame()  # if we get an empty list, return an empty DF
 
     for page in dm.pagenames:
-        _, new_files = dm.find_datafiles(page=page, folders=diff)
+        new_files, new_datasets = dm.find_page_files(
+            page=page,
+            source_folders=diffs[0],
+            raw_folders=diffs[1],
+            sync=True
+        )
 
         pending_csv = Path(dm.sync_folder, f'{page}_pending.csv')
 
@@ -117,30 +130,10 @@ def datafile_search(dm, diff, dryrun, deep=False):
 
         i = 0
 
-        remaining_files = new_files.copy()
-
         signal.signal(signal.SIGINT, sigint_write_pending)
 
         if not args.dryrun:
-            for row in new_files.itertuples():
-                if i % 50 == 0:
-                    print(f'done with {i} files, {len(new_files) - i} to go')
-                i += 1
-
-                key_prefix = PurePath(dm.analysis_folder)
-                keyname = key_prefix / Path(row.filename)
-
-                try:
-                    dm.client.client.upload_file(
-                        str(Path(dm.master_root, row.filename)),
-                        Bucket=dm.bucket_name,
-                        Key=str(keyname)
-                    )
-
-                    remaining_files.drop(index=row.Index, inplace=True)
-
-                except Exception as ex:
-                    print(f'problem uploading file {row.filename}: {ex}')
+            remaining_files = dm.upload_to_s3(page, new_files)
 
             if not remaining_files.empty:
                 remaining_files.to_csv(pending_csv, index=False)
@@ -148,9 +141,7 @@ def datafile_search(dm, diff, dryrun, deep=False):
     return new_files
 
 
-if __name__ == '__main__':
-    args = process_args()
-
+def main(args):
     dm, old_patterns = init_server()
 
     if args.fresh:
@@ -171,3 +162,7 @@ if __name__ == '__main__':
 
     with open(Path(dm.sync_folder, 'TIMESTAMP'), 'w') as ts:
         ts.write(str(time.time()))
+
+if __name__ == '__main__':
+    args = process_args()
+    main(args)

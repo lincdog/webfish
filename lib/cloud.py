@@ -417,11 +417,9 @@ class DataServer:
         sync=True
     ):
         """
-        find_datafiles
+        find_page_files
         ------------
-        Searches the supplied bucket for top-level folders, which should
-        represent available datasets. Searches each of these folders for position
-        folders, and each of these for channel folders.
+        Searches for all files required by a specified page.
 
         """
 
@@ -518,6 +516,8 @@ class DataServer:
             # pattern from each supplied folder.
             _, glob = fmt2regex(pattern)
             [paths.extend(Path(self.master_root, f).glob(glob)) for f in folders]
+        elif folders == []:
+            return pd.DataFrame()
 
         filenames, fields = find_matching_files(
             str(self.master_root),
@@ -529,7 +529,7 @@ class DataServer:
             fields['filename'] = [f.relative_to(self.master_root) for f in filenames]
             return pd.DataFrame(fields, dtype=str)
         else:
-            return None
+            return pd.DataFrame()
 
     def find_raw_files(
         self,
@@ -545,6 +545,8 @@ class DataServer:
             # pattern from each supplied folder.
             _, glob = fmt2regex(pattern)
             [paths.extend(Path(self.raw_master_root, f).glob(glob)) for f in folders]
+        elif folders == []:
+            return pd.DataFrame()
 
         filenames, fields = find_matching_files(
             str(self.raw_master_root),
@@ -556,7 +558,7 @@ class DataServer:
             fields['filename'] = [f.relative_to(self.raw_master_root) for f in filenames]
             return pd.DataFrame(fields, dtype=str)
         else:
-            return None
+            return pd.DataFrame()
 
     def save_and_sync(self, page):
         
@@ -599,17 +601,17 @@ class DataServer:
         nthreads=6
     ):
         page = self.pages[pagename]
-        if not page.preupload_class:
-            return page.datafiles
-
-        if not page.has_preupload:
-            return page.datafiles
-
         if file_df is None:
             file_df = page.datafiles
 
+        if not page.preupload_class:
+            return file_df, []
+
+        if not page.has_preupload:
+            return file_df, []
+
         if file_df.empty:
-            return page.datafiles
+            return page.datafiles, []
 
         keys_with_preuploads = page.has_preupload
         rel_files = file_df.query('source_key in @keys_with_preuploads')
@@ -660,6 +662,7 @@ class DataServer:
     def upload_to_s3(
         self,
         pagename,
+        file_df=None,
         run_preuploads=True,
         progress=0
     ):
@@ -672,9 +675,17 @@ class DataServer:
         Analogous to DataClient.request().
         """
 
+        if not file_df:
+            file_df = self.pages[pagename].datafiles
+
         if run_preuploads:
-            self.pages[pagename].datafiles = self.run_preuploads(pagename, nthreads=10)
+            preuploaded_files, errors = self.run_preuploads(
+                pagename, file_df=file_df, nthreads=10)
             # save and upload the modified filenames, if any
+            file_df = preuploaded_files
+            self.pages[pagename].datafiles = pd.concat([self.pages[pagename].datafiles, file_df])
+            self.pages[pagename].datafiles.drop_duplicates(
+                subset=['filename'], inplace=True, ignore_index=True)
             self.save_and_sync(pagename)
 
         page = self.pages[pagename]
@@ -682,7 +693,9 @@ class DataServer:
         p = 0
         total = len(page.datafiles)
 
-        for row in page.datafiles.itertuples():
+        remaining_files = file_df.copy()
+
+        for row in file_df.itertuples():
             if progress and p % progress == 0:
                 print(f'upload_to_s3: {p} files done out of {total}')
             p += 1
@@ -707,10 +720,13 @@ class DataServer:
                     Key=str(keyname)
                 )
 
-                #remaining_files.drop(index=row.Index, inplace=True)
+                remaining_files.drop(index=row.Index, inplace=True)
 
             except Exception as ex:
                 print(f'problem uploading file {row.filename}: {ex}')
+
+        return remaining_files
+
 
 class DataClient:
     """
