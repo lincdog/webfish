@@ -727,7 +727,7 @@ class DataServer:
                 key_prefix = self.raw_folder
 
             if row.source_key in page.has_preupload:
-                root = self.preupload_root
+                root = Path(self.preupload_root, pagename)
 
             keyname = Path(key_prefix, row.filename)
             filename = Path(root, row.filename)
