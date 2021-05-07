@@ -1,5 +1,7 @@
 import os
 import sys
+WF_HOME = '/home/lombelet/cron/webfish_sandbox/webfish'
+sys.path.append(WF_HOME)
 import yaml
 import time
 import signal
@@ -174,5 +176,6 @@ def main(args):
 
 
 if __name__ == '__main__':
+    os.chdir(WF_HOME)
     args = process_args()
     main(args)
