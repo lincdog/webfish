@@ -175,7 +175,13 @@ def main(args):
     )
 
     now = time.time()
-    print(f'Uploaded {len(new_files)} files, finishing at {now}')
+
+    if args.dryrun:
+        verb = 'Found'
+    else:
+        verb = 'Uploaded'
+
+    print(f'{verb} {len(new_files)} files, finishing at {now}')
 
     with open(Path(dm.sync_folder, TIMESTAMP), 'w') as ts:
         ts.write(str(now))

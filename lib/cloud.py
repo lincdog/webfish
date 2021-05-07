@@ -23,7 +23,8 @@ from lib.util import (
     source_keys_conv,
     process_file_entries,
     compress_8bit,
-    notempty
+    notempty,
+    empty_or_false
 )
 
 
@@ -683,7 +684,7 @@ class DataServer:
         Analogous to DataClient.request().
         """
 
-        if not file_df:
+        if empty_or_false(file_df):
             file_df = self.pages[pagename].datafiles
 
         if run_preuploads:
