@@ -131,14 +131,14 @@ class DotDetectionPreupload:
         print(f'compress_raw_im: outfile = {outfile}')
 
         if outfile.is_file():
-            return outfile.relative_to(savedir)
+            return outfile.relative_to(savedir), False
 
         try:
             compress_8bit(im, 'DEFLATE', outfile)
         except Exception as e:
-            return im
+            return im, e
 
-        return Path(outfile).relative_to(savedir)
+        return Path(outfile).relative_to(savedir), False
 
 
 class Page:
@@ -620,7 +620,11 @@ class DataServer:
         output_df = file_df.copy()
         savedir = Path(self.preupload_root, pagename)
 
+        errors = {}
+
         for key, filerows in rel_files.groupby('source_key'):
+            errors[key] = []
+
             preupload_func = page.input_preuploads[key]
 
             out_format = Path(self.raw_dataset_root, page.input_patterns[key])
@@ -644,12 +648,14 @@ class DataServer:
 
                     for fname, future in futures.items():
                         if future.done():
-                            res = future.result(1)
+                            new_fname, err = future.result(1)
+                            if err:
+                                errors[key].append((new_fname, err))
                             # update the filename
-                            output_df.loc[output_df['filename'] == fname, 'filename'] = res
+                            output_df.loc[output_df['filename'] == fname, 'filename'] = new_fname
                             done += 1
 
-        return output_df
+        return output_df, errors
 
     def upload_to_s3(
         self,
