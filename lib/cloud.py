@@ -634,7 +634,7 @@ class DataServer:
 
                 done = 0
                 while done < len(futures):
-
+                    sleep(1)
                     if done % 50 == 0:
                         print(f'Done with {done} files out of {len(futures)}')
 
