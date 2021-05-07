@@ -689,6 +689,7 @@ class DataServer:
 
         Analogous to DataClient.request().
         """
+        breakpoint()
 
         if empty_or_false(file_df):
             file_df = self.pages[pagename].datafiles
