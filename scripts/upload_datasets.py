@@ -109,10 +109,17 @@ def datafile_search(dm, diffs, mtime, dryrun=False, deep=False):
     if deep or dryrun:
         # setting the folders arg of find_datafiles to none looks in ALL folders
         diffs = (None, None)
-    elif not any(diffs):
-        return pd.DataFrame()  # if we get an empty list, return an empty DF
 
     for page in dm.pagenames:
+
+        pending_csv = Path(dm.sync_folder, f'{page}_pending.csv')
+        pending_files = pd.DataFrame()
+        if pending_csv.exists():
+            pending_files = pd.read_csv(pending_csv)
+
+        if diffs == ([], []) and pending_files.empty:
+            continue
+
         new_files, new_datasets = dm.find_page_files(
             page=page,
             source_folders=diffs[0],
@@ -120,13 +127,6 @@ def datafile_search(dm, diffs, mtime, dryrun=False, deep=False):
             since=mtime,
             sync=True
         )
-
-        pending_csv = Path(dm.sync_folder, f'{page}_pending.csv')
-
-        if pending_csv.exists():
-            pending_files = pd.read_csv(pending_csv)
-        else:
-            pending_files = pd.DataFrame()
 
         new_files = pd.concat([new_files, pending_files])
         new_files.drop_duplicates(subset='filename', inplace=True, ignore_index=True)
