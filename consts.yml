@@ -13,7 +13,7 @@ analysis_folder: analyses/
 raw_folder: raw/
 
 dataset_root: "{user}/{dataset}/{analysis}"
-raw_dataset_root: "{user}/raw/{dataset}/"
+raw_dataset_root: "{user}/raw/{dataset}"
 
 bucket_name: hpc-wasabi
 

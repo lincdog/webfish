@@ -342,7 +342,7 @@ def fmt2regex(fmt, delim=os.path.sep):
 
     numkey = 0
 
-    fmt = str(fmt)
+    fmt = str(fmt).rstrip(delim)
 
     if delim:
         parts = fmt.split(delim)
