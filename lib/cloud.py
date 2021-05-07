@@ -133,7 +133,10 @@ class DotDetectionPreupload:
         if outfile.is_file():
             return outfile.relative_to(savedir)
 
-        compress_8bit(im, 'DEFLATE', outfile)
+        try:
+            compress_8bit(im, 'DEFLATE', outfile)
+        except Exception as e:
+            return im
 
         return Path(outfile).relative_to(savedir)
 
@@ -636,7 +639,6 @@ class DataServer:
 
                 done = 0
                 while done < len(futures):
-                    sleep(1)
                     if done % 50 == 0:
                         print(f'Done with {done} files out of {len(futures)}')
 
