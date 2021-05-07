@@ -595,7 +595,12 @@ class DataServer:
         if not any(page.input_preuploads.values()):
             return None
 
-        file_df = file_df or page.datafiles
+        if isinstance(file_df, pd.DataFrame):
+            if file_df.empty:
+                file_df = page.datafiles
+        else:
+            file_df = file_df or page.datafiles
+
         if not file_df:
             return None
 
