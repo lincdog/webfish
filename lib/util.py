@@ -1,6 +1,7 @@
 import tifffile as tif
 import skimage.measure as skim
 import skimage.transform as skit
+import skimage.util as skiu
 import numpy as np
 import pandas as pd
 import json
@@ -20,7 +21,7 @@ def compress_8bit(
 
     im = tif.imread(imgfilename)
     with tif.TiffWriter(outfile) as imw:
-        imw.write(im, compression=compression)
+        imw.write(skiu.img_as_ubyte(im), compression=compression)
 
     return outfile
 
