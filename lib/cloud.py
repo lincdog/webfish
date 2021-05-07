@@ -625,9 +625,8 @@ class DataServer:
                 futures = {}
 
                 for row in filerows.to_dict(orient='records'):
-                    # row.filename = self.raw_master_root + row.filename
-                    # out_format = self.raw_dataset_root + out_format
-                    out_dir = Path(self.preupload_root, out_format.format_map(row)).parent
+                    out_dir = Path(self.preupload_root, pagename,
+                                   out_format.format_map(row)).parent
                     out_dir.mkdir(parents=True, exist_ok=True)
 
                     futures[row['filename']] = exe.submit(
