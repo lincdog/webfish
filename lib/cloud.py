@@ -624,9 +624,6 @@ class DataServer:
 
         keys_with_preuploads = page.has_preupload
         rel_files = file_df.query('source_key in @keys_with_preuploads')
-        abs_fnames = [str(Path(self.raw_master_root, f))
-                      for f in rel_files['filename'].values]
-        rel_files['filename'] = abs_fnames
 
         output_df = file_df.copy()
         savedir = Path(self.preupload_root, pagename)
@@ -635,10 +632,19 @@ class DataServer:
 
         for key, filerows in rel_files.groupby('source_key'):
             errors[key] = []
+            if key in self.pages[page].source_patterns.keys():
+                abs_root = self.master_root
+                data_root = self.dataset_root
+            elif key in self.pages[page].raw_patterns.keys():
+                abs_root = self.raw_master_root
+                data_root = self.raw_master_root
+
+            # prepend proper absolute root
+            filerows['filename'] = [str(Path(abs_root, f)) for f in filerows['filename']]
 
             preupload_func = page.input_preuploads[key]
 
-            out_format = Path(self.raw_dataset_root, page.input_patterns[key])
+            out_format = Path(data_root, page.input_patterns[key])
             out_format = str(out_format.with_name(
                 '__'.join([preupload_func.__name__, out_format.name])))
 
