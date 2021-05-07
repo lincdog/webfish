@@ -9,7 +9,13 @@ import pandas as pd
 from pathlib import Path, PurePath
 from argparse import ArgumentParser
 from lib import cloud
-from lib.util import ls_recursive, find_matching_files
+from lib.util import (
+    ls_recursive,
+    find_matching_files,
+    empty_or_false,
+    notempty
+)
+
 
 TIMESTAMP = 'TIMESTAMP'
 PATTERNS = 'input_patterns'
@@ -128,12 +134,10 @@ def datafile_search(dm, diffs, mtime, dryrun=False, deep=False):
         if new_files.empty:
             continue
 
-        i = 0
-
         signal.signal(signal.SIGINT, sigint_write_pending)
 
         if not args.dryrun:
-            remaining_files = dm.upload_to_s3(page, new_files)
+            remaining_files = dm.upload_to_s3(page, new_files, progress=100)
 
             if not remaining_files.empty:
                 remaining_files.to_csv(pending_csv, index=False)
@@ -145,6 +149,8 @@ def datafile_search(dm, diffs, mtime, dryrun=False, deep=False):
 
 def main(args):
     dm, old_patterns = init_server()
+
+    breakpoint()
 
     if args.fresh:
         deep = True

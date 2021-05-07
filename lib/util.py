@@ -540,3 +540,14 @@ def process_file_entries(entries):
         result[key] = info
 
     return result
+
+
+def empty_or_false(thing):
+    if isinstance(thing, pd.DataFrame):
+        return thing.empty
+
+    return not thing
+
+
+def notempty(dfs):
+    return [not empty_or_false(df) for df in dfs]

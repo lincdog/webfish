@@ -22,7 +22,8 @@ from lib.util import (
     process_requires,
     source_keys_conv,
     process_file_entries,
-    compress_8bit
+    compress_8bit,
+    notempty
 )
 
 
@@ -447,7 +448,7 @@ class DataServer:
         all_rawfiles = [self.find_raw_files(key, pattern, raw_folders, since)
                         for key, pattern in self.pages[page].raw_patterns.items()]
 
-        if all_sourcefiles:
+        if any(notempty(all_sourcefiles)):
             sourcefile_df = pd.concat(all_sourcefiles).sort_values(by=self.dataset_fields)
             del all_sourcefiles
             source_datasets = self.filter_datasets(
@@ -456,7 +457,7 @@ class DataServer:
                 self.dataset_root
             )
 
-        if all_rawfiles:
+        if any(notempty(all_rawfiles)):
             rawfile_df = pd.concat(all_rawfiles).sort_values(by=self.raw_fields)
             del all_rawfiles
             raw_datasets = self.filter_datasets(
