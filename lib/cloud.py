@@ -598,7 +598,7 @@ class DataServer:
             return None
 
         if file_df is None:
-            file_df = page.datafiles or pd.DataFrame()
+            file_df = page.datafiles
 
         if file_df.empty:
             return None
