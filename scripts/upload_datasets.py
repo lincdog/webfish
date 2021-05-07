@@ -6,9 +6,6 @@ import signal
 import pandas as pd
 from pathlib import Path, PurePath
 from argparse import ArgumentParser
-
-os.chdir('/home/lombelet/cron/webfish')
-sys.path.extend([os.getcwd()])
 from lib import cloud
 from lib.util import ls_recursive, find_matching_files
 
@@ -33,7 +30,7 @@ def process_args():
 
 
 def init_server():
-    config = yaml.load(open('../consts.yml'), Loader=yaml.Loader)
+    config = yaml.load(open('./consts.yml'), Loader=yaml.Loader)
     try:
         old_patterns = open(Path(config['sync_folder'], PATTERNS)).read()
     except FileNotFoundError:

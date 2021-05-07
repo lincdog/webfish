@@ -507,6 +507,7 @@ class DataServer:
         key,
         pattern,
         folders,
+        since
     ):
         paths = None
         if folders:
@@ -522,7 +523,9 @@ class DataServer:
         filenames, fields = find_matching_files(
             str(self.master_root),
             str(Path(self.dataset_root, pattern)),
-            paths=paths)
+            paths=paths,
+            modified_since=since
+        )
 
         if filenames:
             fields['source_key'] = key
@@ -536,6 +539,7 @@ class DataServer:
         key,
         pattern,
         folders,
+        since=0
     ):
         paths = None
         if folders:
@@ -551,7 +555,9 @@ class DataServer:
         filenames, fields = find_matching_files(
             str(self.raw_master_root),
             str(Path(self.raw_dataset_root, pattern)),
-            paths=paths)
+            paths=paths,
+            modified_since=since
+        )
 
         if filenames:
             fields['source_key'] = key

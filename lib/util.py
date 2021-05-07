@@ -389,7 +389,7 @@ def fmt2regex(fmt, delim=os.path.sep):
     return reg, globstr
 
 
-def find_matching_files(base, fmt, paths=None):
+def find_matching_files(base, fmt, paths=None, modified_since=0):
     """
     findAllMatchingFiles: Starting within a base directory,
     find all files that match format `fmt` with named fields.
@@ -417,13 +417,14 @@ def find_matching_files(base, fmt, paths=None):
         m = reg.match(str(f.relative_to(base)))
 
         if m:
-            files.append(f)
+            if os.stat(f).st_mtime > modified_since:
+                files.append(f)
 
-            for k, v in m.groupdict().items():
-                if k not in keys.keys():
-                    keys[k] = []
+                for k, v in m.groupdict().items():
+                    if k not in keys.keys():
+                        keys[k] = []
 
-                keys[k].append(v)
+                    keys[k].append(v)
 
     return files, keys
 
