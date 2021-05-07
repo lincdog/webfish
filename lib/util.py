@@ -17,7 +17,7 @@ def compress_8bit(
     compression='DEFLATE',
     outfile=None
 ):
-    print(f'compress_8bit: {imgfilename}, {outfile}')
+    print(f'compress_8bit: {imgfilename}, {outfile}, {os.getcwd()}')
     im = tif.imread(imgfilename)
     with tif.TiffWriter(outfile) as imw:
         imw.write(im, compression=compression)
