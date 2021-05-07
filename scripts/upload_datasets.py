@@ -66,7 +66,7 @@ def stat_compare(dm):
         if os.stat(Path(dm.raw_master_root, d)).st_mtime > listmtime:
             raw_modified.append(Path(dm.raw_master_root, d))
 
-    return source_modified, raw_modified
+    return source_modified, raw_modified, listmtime
 
 
 def dataset_compare(dm):
@@ -96,7 +96,7 @@ def sigint_write_pending(signo, frame):
         sys.exit(1)
 
 
-def datafile_search(dm, diffs, dryrun, deep=False):
+def datafile_search(dm, diffs, mtime, dryrun=False, deep=False):
 
     if deep or dryrun:
         # setting the folders arg of find_datafiles to none looks in ALL folders
@@ -109,6 +109,7 @@ def datafile_search(dm, diffs, dryrun, deep=False):
             page=page,
             source_folders=diffs[0],
             raw_folders=diffs[1],
+            since=mtime,
             sync=True
         )
 
@@ -134,6 +135,8 @@ def datafile_search(dm, diffs, dryrun, deep=False):
 
             if not remaining_files.empty:
                 remaining_files.to_csv(pending_csv, index=False)
+        else:
+            new_files.to_csv(Path(dm.sync_folder, f'{page}_dryrun.csv'))
 
     return new_files
 
@@ -144,10 +147,10 @@ def main(args):
     if args.fresh:
         deep = True
         for f in Path(dm.sync_folder).iterdir():
-            if not f.name == 'input_patterns':
+            if not f.name == PATTERNS:
                 f.unlink()
 
-    new_folders = stat_compare(dm)
+    source_diffs, raw_diffs, mtime = stat_compare(dm)
 
     new_patterns = []
     for p in dm.pages.values():
@@ -155,10 +158,20 @@ def main(args):
 
     deep = sorted(old_patterns) != sorted(new_patterns)
 
-    new_files = datafile_search(dm, new_folders, dryrun=args.dryrun, deep=deep)
+    new_files = datafile_search(
+        dm,
+        (source_diffs, raw_diffs),
+        mtime,
+        dryrun=args.dryrun,
+        deep=deep
+    )
 
-    with open(Path(dm.sync_folder, 'TIMESTAMP'), 'w') as ts:
-        ts.write(str(time.time()))
+    now = time.time()
+    print(f'Uploaded {len(new_files)} files, finishing at {now}')
+
+    with open(Path(dm.sync_folder, TIMESTAMP), 'w') as ts:
+        ts.write(str(now))
+
 
 if __name__ == '__main__':
     args = process_args()

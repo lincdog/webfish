@@ -414,6 +414,7 @@ class DataServer:
         page,
         source_folders=None,
         raw_folders=None,
+        since=0,
         sync=True
     ):
         """
@@ -440,10 +441,10 @@ class DataServer:
         if not self.pages[page].input_patterns:
             page_datasets = self.all_datasets
 
-        all_sourcefiles = [self.find_source_files(key, pattern, source_folders)
+        all_sourcefiles = [self.find_source_files(key, pattern, source_folders, since)
                            for key, pattern in self.pages[page].source_patterns.items()]
 
-        all_rawfiles = [self.find_raw_files(key, pattern, raw_folders)
+        all_rawfiles = [self.find_raw_files(key, pattern, raw_folders, since)
                         for key, pattern in self.pages[page].raw_patterns.items()]
 
         if all_sourcefiles:
