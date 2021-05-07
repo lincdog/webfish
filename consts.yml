@@ -17,6 +17,7 @@ raw_dataset_root: "{user}/raw/{dataset}/"
 
 bucket_name: hpc-wasabi
 
+preupload_root: /groups/CaiLab/personal/lincoln/webfish_preupload/
 local_store: webfish_data/
 
 pages:

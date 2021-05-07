@@ -300,6 +300,7 @@ class DataServer:
         self.raw_folder = config.get('raw_folder', 'raw/')
 
         self.local_store = config.get('local_store', 'webfish_data/')
+        self.preupload_root = config.get('preupload_root')
 
         self.all_datasets = pd.DataFrame()
         self.all_raw_datasets = pd.DataFrame()
@@ -626,11 +627,11 @@ class DataServer:
                 for row in filerows.to_dict(orient='records'):
                     # row.filename = self.raw_master_root + row.filename
                     # out_format = self.raw_dataset_root + out_format
-                    out_dir = Path(page.local_store, out_format.format_map(row)).parent
+                    out_dir = Path(self.preupload_root, out_format.format_map(row)).parent
                     out_dir.mkdir(parents=True, exist_ok=True)
 
                     futures[row['filename']] = exe.submit(
-                        preupload_func, row, out_format, page.local_store)
+                        preupload_func, row, out_format, self.preupload_root)
 
                 done = 0
                 while done < len(futures):
