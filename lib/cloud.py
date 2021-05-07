@@ -125,14 +125,12 @@ class DotDetectionPreupload:
         if not inrow:
             return None
 
-        info = inrow.query('source_key == "hyb_fov"').to_dict()
-
-        im = info['local_filename']
-        outfile = Path(savedir, outpattern.format_map(info))
+        im = inrow.filename
+        outfile = Path(savedir, outpattern.format_map(inrow))
 
         compress_8bit(im, 'DEFLATE', outfile)
 
-        return outfile
+        return Path(outfile).relative_to(savedir)
 
 
 class Page:
@@ -556,6 +554,7 @@ class DataServer:
         try:
             current_sync = pd.read_csv(page_sync_file, dtype=str)
             updated_sync = pd.concat([current_sync, self.pages[page].datasets])
+            updated_sync.drop_duplicates(subset=['filename'], inplace=True, ignore_index=True)
         except FileNotFoundError:
             updated_sync = self.pages[page].datasets
 
@@ -571,6 +570,7 @@ class DataServer:
         try:
             current_files = pd.read_csv(page_file_table, dtype=str)
             updated_files = pd.concat([current_files, self.pages[page].datafiles])
+            updated_files.drop_duplicates(subset=['filename'], inplace=True, ignore_index=True)
         except FileNotFoundError:
             updated_files = self.pages[page].datafiles
 
@@ -585,7 +585,7 @@ class DataServer:
     def run_preuploads(
         self,
         pagename,
-        file_df,
+        file_df=None,
         nthreads=6
     ):
         page = self.pages[pagename]
@@ -595,18 +595,33 @@ class DataServer:
         if not any(page.input_preuploads.values()):
             return None
 
+        file_df = file_df or page.datafiles
+        if not file_df:
+            return None
+
+        breakpoint()
+
         keys_with_preuploads = {k for k, v in page.input_preuploads.items() if v}
         rel_files = file_df.query('source_key in @keys_with_preuploads')
+        abs_fnames = [str(Path(self.raw_master_root, f))
+                      for f in rel_files['filename'].values]
+        rel_files['filename'] = abs_fnames
 
         output_df = file_df.copy()
 
         for key, filerows in rel_files.groupby('source_key'):
             preupload_func = page.input_preuploads[key]
-            out_format = '__'.join([preupload_func.__name__, page.input_patterns[key]])
+            out_format = str(Path(self.raw_dataset_root,
+                                  '__'.join([preupload_func.__name__, page.input_patterns[key]])))
 
             with ThreadPoolExecutor(max_workers=nthreads) as exe:
-                futures = {row['filename']: exe.submit(preupload_func, row, out_format, page.local_store)
-                           for row in filerows}
+                futures = {}
+
+                for row in filerows.to_dict(orient='records'):
+                    # row.filename = self.raw_master_root + row.filename
+                    # out_format = self.raw_dataset_root + out_format
+                    futures[row['filename']] = exe.submit(preupload_func, row, out_format, page.local_store)
+
                 done = 0
                 while done < len(futures):
                     for fname, future in futures.items():
