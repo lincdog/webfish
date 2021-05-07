@@ -631,11 +631,13 @@ class DataServer:
         errors = {}
 
         for key, filerows in rel_files.groupby('source_key'):
+
             errors[key] = []
-            if key in self.pages[page].source_patterns.keys():
+
+            if key in page.source_patterns.keys():
                 abs_root = self.master_root
                 data_root = self.dataset_root
-            elif key in self.pages[page].raw_patterns.keys():
+            elif key in page.raw_patterns.keys():
                 abs_root = self.raw_master_root
                 data_root = self.raw_master_root
 
@@ -646,7 +648,8 @@ class DataServer:
 
             out_format = Path(data_root, page.input_patterns[key])
             out_format = str(out_format.with_name(
-                '__'.join([preupload_func.__name__, out_format.name])))
+                '__'.join([preupload_func.__name__, out_format.name])
+            ))
 
             with ThreadPoolExecutor(max_workers=nthreads) as exe:
                 futures = {}
@@ -660,12 +663,14 @@ class DataServer:
 
                 done = 0
                 while done < len(futures):
+
                     if done % 50 == 0:
                         print(f'Done with {done} files out of {len(futures)}')
 
                     for fname, future in futures.items():
                         if future.done():
                             new_fname, err = future.result(1)
+
                             if err:
                                 errors[key].append((new_fname, err))
                             # update the filename
