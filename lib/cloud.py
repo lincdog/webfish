@@ -128,6 +128,8 @@ class DotDetectionPreupload:
         im = inrow['filename']
         outfile = Path(savedir, outpattern.format_map(inrow))
 
+        print(f'compress_raw_im: outfile = {outfile}')
+
         if outfile.is_file():
             return outfile.relative_to(savedir)
 
@@ -613,6 +615,7 @@ class DataServer:
         rel_files['filename'] = abs_fnames
 
         output_df = file_df.copy()
+        savedir = Path(self.preupload_root, pagename)
 
         for key, filerows in rel_files.groupby('source_key'):
             preupload_func = page.input_preuploads[key]
@@ -625,7 +628,6 @@ class DataServer:
                 futures = {}
 
                 for row in filerows.to_dict(orient='records'):
-                    savedir = Path(self.preupload_root, pagename)
                     parent_dir = Path(savedir, out_format.format_map(row)).parent
                     parent_dir.mkdir(parents=True, exist_ok=True)
 
