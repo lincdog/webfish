@@ -130,8 +130,6 @@ class DotDetectionPreupload:
         im = inrow['filename']
         outfile = Path(savedir, outpattern.format_map(inrow))
 
-        print(f'compress_raw_im: outfile = {outfile}')
-
         if outfile.is_file():
             return outfile.relative_to(savedir), False
 
@@ -639,7 +637,7 @@ class DataServer:
                 data_root = self.dataset_root
             elif key in page.raw_patterns.keys():
                 abs_root = self.raw_master_root
-                data_root = self.raw_master_root
+                data_root = self.raw_dataset_root
 
             # prepend proper absolute root
             filerows['filename'] = [str(Path(abs_root, f)) for f in filerows['filename']]
