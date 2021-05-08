@@ -139,8 +139,13 @@ def datafile_search(dm, diffs, mtime, dryrun=False, deep=False):
         if not args.dryrun:
             remaining_files = dm.upload_to_s3(page, new_files, progress=100)
 
-            if not remaining_files.empty:
+            if remaining_files.empty:
+                # Remove the pending file if we successfully uploaded
+                pending_csv.unlink(missing_ok=True)
+            else:
+                # Save the pending file if we didn't upload everything
                 remaining_files.to_csv(pending_csv, index=False)
+
         else:
             new_files.to_csv(Path(dm.sync_folder, f'{page}_dryrun.csv'))
 

@@ -644,23 +644,26 @@ class DataServer:
 
             preupload_func = page.input_preuploads[key]
 
-            out_format = Path(data_root, page.input_patterns[key])
-            out_format = str(out_format.with_name(
-                '__'.join([preupload_func.__name__, out_format.name])
+            in_format = str(Path(data_root, page.input_patterns[key]))
+            out_format = str(Path(in_format).with_name(
+                '__'.join([preupload_func.__name__, Path(in_format).name])
             ))
 
             with ThreadPoolExecutor(max_workers=nthreads) as exe:
                 futures = {}
-
+                breakpoint()
                 for row in filerows.to_dict(orient='records'):
+                    old_fname = in_format.format_map(row)
                     new_fname = out_format.format_map(row)
-                    parent_dir = Path(new_fname).parent
+
+                    parent_dir = Path(abs_root, new_fname).parent
                     parent_dir.mkdir(parents=True, exist_ok=True)
 
-                    futures[(row['filename'], new_fname)] = exe.submit(
+                    futures[(old_fname, new_fname)] = exe.submit(
                         preupload_func, row, out_format, savedir)
 
                 done = 0
+                breakpoint()
                 while done < len(futures):
 
                     if done % 50 == 0:
