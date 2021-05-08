@@ -656,7 +656,7 @@ class DataServer:
                     old_fname = in_format.format_map(row)
                     new_fname = out_format.format_map(row)
 
-                    parent_dir = Path(abs_root, new_fname).parent
+                    parent_dir = Path(savedir, new_fname).parent
                     parent_dir.mkdir(parents=True, exist_ok=True)
 
                     futures[(old_fname, new_fname)] = exe.submit(
