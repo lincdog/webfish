@@ -679,10 +679,24 @@ class DataServer:
 
                             if err:
                                 errors[key].append((old_fname, err))
-                            # update the filename
-                            output_df.loc[
-                                output_df['filename'] == old_fname, 'filename'] = new_fname
-                            done += 1
+                            else:
+                                # update the filename
+                                output_df.loc[
+                                    output_df['filename'] == old_fname, 'filename'] = new_fname
+                                done += 1
+
+        self.pages[pagename].datafiles = pd.concat([self.pages[pagename].datafiles, output_df])
+        # This drops any duplicates that did not get their filename modified
+        self.pages[pagename].datafiles.drop_duplicates(
+            subset=['filename'], inplace=True, ignore_index=True)
+        # This drops the *old* unmodified rows. Note we keep *last* because we concatenate
+        # file_df on the end of the current datafiles table. So we are keeping the rows from file_df
+        # that match on every column *except* filename - those that got modified filenames.
+        self.pages[pagename].datafiles.drop_duplicates(
+            subset=self.pages[pagename].datafiles.columns.difference(['filename']),
+            keep='last', inplace=True, ignore_index=True
+        )
+        self.save_and_sync(pagename)
 
         return output_df, errors
 
@@ -691,7 +705,8 @@ class DataServer:
         pagename,
         file_df=None,
         run_preuploads=True,
-        progress=0
+        progress=0,
+        dryrun=False
     ):
         """
         upload_to_s3
@@ -707,22 +722,8 @@ class DataServer:
             file_df = self.pages[pagename].datafiles
 
         if run_preuploads:
-            preuploaded_files, errors = self.run_preuploads(
+            _, errors = self.run_preuploads(
                 pagename, file_df=file_df, nthreads=10)
-            # save and upload the modified filenames, if any
-            file_df = preuploaded_files
-            self.pages[pagename].datafiles = pd.concat([self.pages[pagename].datafiles, file_df])
-            # This drops any duplicates that did not get their filename modified
-            self.pages[pagename].datafiles.drop_duplicates(
-                subset=['filename'], inplace=True, ignore_index=True)
-            # This drops the *old* unmodified rows. Note we keep *last* because we concatenate
-            # file_df on the end of the current datafiles table. So we are keeping the rows from file_df
-            # that match on every column *except* filename - those that got modified filenames.
-            self.pages[pagename].datafiles.drop_duplicates(
-                subset=self.pages[pagename].datafiles.columns.difference(['filename']),
-                keep='last', inplace=True, ignore_index=True
-            )
-            self.save_and_sync(pagename)
 
         page = self.pages[pagename]
 
@@ -730,6 +731,9 @@ class DataServer:
         total = len(page.datafiles)
 
         remaining_files = file_df.copy()
+
+        if dryrun:
+            return remaining_files
 
         for row in file_df.itertuples():
             if progress and p % progress == 0:
