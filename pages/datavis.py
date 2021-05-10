@@ -142,15 +142,12 @@ def update_figure(selected_genes, pos, analysis, dataset, user):
     if 'All' in selected_genes:
         selected_genes = ['All']
 
-    b4 = datetime.now()
-    print('BEFORE REQUEST')
     active = data_client.request({
         'user': user,
         'dataset': dataset,
         'analysis': analysis,
         'position': pos
     }, fields=('mesh', 'dots'))
-    print(f'AFTER REQUEST {datetime.now() - b4}')
 
     if not active['mesh'] and not active['dots']:
         return html.H2('Segmented image and dots not found!')

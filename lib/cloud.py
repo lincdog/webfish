@@ -349,6 +349,7 @@ class DataServer:
     def get_source_datasets(
         self,
         folders=None,
+        save=True,
         sync=True
     ):
         possible_folders, fields = find_matching_files(
@@ -366,21 +367,23 @@ class DataServer:
 
         all_datasets_file = Path(self.sync_folder, 'all_datasets.csv')
 
-        self.all_datasets.to_csv(all_datasets_file, index=False)
+        if save:
+            self.all_datasets.to_csv(all_datasets_file, index=False)
 
-        if sync:
-            self.client.client.upload_file(
-                str(all_datasets_file),
-                Bucket=self.bucket_name,
-                Key=str(all_datasets_file)
-            )
+            if sync:
+                self.client.client.upload_file(
+                    str(all_datasets_file),
+                    Bucket=self.bucket_name,
+                    Key=str(all_datasets_file)
+                )
 
         return self.all_datasets
 
     def get_raw_datasets(
-            self,
-            folders=None,
-            sync=True
+        self,
+        folders=None,
+        save=True,
+        sync=True
     ):
 
         possible_folders, fields = find_matching_files(
@@ -398,14 +401,15 @@ class DataServer:
 
         all_raw_datasets_file = Path(self.sync_folder, 'all_raw_datasets.csv')
 
-        self.all_raw_datasets.to_csv(all_raw_datasets_file, index=False)
+        if save:
+            self.all_raw_datasets.to_csv(all_raw_datasets_file, index=False)
 
-        if sync:
-            self.client.client.upload_file(
-                str(all_raw_datasets_file),
-                Bucket=self.bucket_name,
-                Key=str(all_raw_datasets_file)
-            )
+            if sync:
+                self.client.client.upload_file(
+                    str(all_raw_datasets_file),
+                    Bucket=self.bucket_name,
+                    Key=str(all_raw_datasets_file)
+                )
 
         return self.all_raw_datasets
 
@@ -490,7 +494,7 @@ class DataServer:
             # FIXME: Technically we should also group by the source file variables, but
             #   usually all the positions etc WITHIN one analysis ALL have the same
             #   files present.
-            dataset['source_keys'] = list(rows['source_key'].unique())
+            dataset['source_keys'] = '|'.join(list(rows['source_key'].unique()))
 
             # TODO: Add boolean logic to exclude datasets that do not have the right
             #   combo of source keys present. Here we are implicitly keeping any
@@ -708,8 +712,16 @@ class DataServer:
             # save and upload the modified filenames, if any
             file_df = preuploaded_files
             self.pages[pagename].datafiles = pd.concat([self.pages[pagename].datafiles, file_df])
+            # This drops any duplicates that did not get their filename modified
             self.pages[pagename].datafiles.drop_duplicates(
                 subset=['filename'], inplace=True, ignore_index=True)
+            # This drops the *old* unmodified rows. Note we keep *last* because we concatenate
+            # file_df on the end of the current datafiles table. So we are keeping the rows from file_df
+            # that match on every column *except* filename - those that got modified filenames.
+            self.pages[pagename].datafiles.drop_duplicates(
+                subset=self.pages[pagename].datafiles.columns.difference(['filename']),
+                keep='last', inplace=True, ignore_index=True
+            )
             self.save_and_sync(pagename)
 
         page = self.pages[pagename]
@@ -778,6 +790,7 @@ class DataClient:
         self.sync_folder.mkdir(parents=True, exist_ok=True)
 
         self.analysis_folder = config.get('analysis_folder', 'analyses/')
+        self.raw_folder = config.get('raw_folder', 'raw/')
         self.bucket_name = config['bucket_name']
 
         self._page = None
@@ -839,7 +852,7 @@ class DataClient:
 
         if len(error) > 0:
             raise FileNotFoundError(
-                f'select_dataset: errors downloading keys:',
+                f'sync_with_s3: errors downloading keys:',
                 error)
 
         self.datasets = pd.read_csv(
@@ -872,10 +885,10 @@ class DataClient:
         return Path(key)
 
     def request(
-            self,
-            request,
-            fields=(),
-            force_download=False
+        self,
+        request,
+        fields=(),
+        force_download=False
     ):
         """
         request
@@ -933,14 +946,16 @@ class DataClient:
         #   on other outputs can be generated.
         results = []
 
+        # Input files: no client side processing required
         if (field in self.page.source_files.keys()
                 or field in self.page.raw_files.keys()):
             files = needed.query('source_key == @field')['filename'].values
             results = [
-                self.retrieve_or_download(f, force_download=force_download)
+                self.retrieve_or_download(f, field=field, force_download=force_download)
                 for f in files
             ]
 
+        # Output files: client-side processing required
         elif field in self.page.output_files.keys():
             required_fields = process_requires(
                 self.page.output_files[field].get('requires', []))
@@ -953,6 +968,7 @@ class DataClient:
                 local_filenames.append(
                     self.retrieve_or_download(
                         row.filename,
+                        field=field,
                         force_download=force_download
                     )
                 )
@@ -984,25 +1000,31 @@ class DataClient:
         print(f'RETRIEVEORDOWNLOAD: starting {key}')
         error = []
 
+        if self.page:
+            if field in self.page.source_patterns.keys():
+                prefix = self.analysis_folder
+            elif field in self.page.raw_patterns.keys():
+                prefix = self.raw_folder
+
+        print(prefix, key)
+
         lp = self.local(k2f(key))
 
         if force_download or not lp.is_file():
             error = self.client.download_s3_objects(
                 self.bucket_name,
                 str(key),
-                prefix=str(self.analysis_folder),
+                prefix=str(prefix),
                 local_dir=self.page.local_store
             )
 
         if len(error) > 0:
+            print('ERROR: ', error)
             lp = None
 
         print(f'RETRIVEORDOWNLOAD: ending {key} after {datetime.now()-now}')
-
-        if field is None:
-            return lp
-
-        return {field: lp}
+        print(f'lp: {lp}')
+        return lp
 
 
 ###### AWS Code #######

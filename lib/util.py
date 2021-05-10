@@ -517,7 +517,7 @@ def process_requires(requires):
 
 def source_keys_conv(sks):
     # convert a string rep of a list to an actual list
-    return [k.strip("' ") for k in sks.strip('[]').split(',')]
+    return sks.split('|')
 
 
 def process_file_entries(entries):

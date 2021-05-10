@@ -1,13 +1,13 @@
 import os
 import sys
-WF_HOME = '/home/lombelet/cron/webfish_sandbox/webfish'
-sys.path.append(WF_HOME)
 import yaml
 import time
 import signal
 import pandas as pd
 from pathlib import Path, PurePath
 from argparse import ArgumentParser
+WF_HOME = '/home/lombelet/cron/webfish_sandbox/webfish'
+sys.path.append(WF_HOME)
 from lib import cloud
 from lib.util import (
     ls_recursive,
@@ -19,6 +19,7 @@ from lib.util import (
 
 TIMESTAMP = 'TIMESTAMP'
 PATTERNS = 'input_patterns'
+LOCKFILE = 'upload_datasets.lck'
 
 # TODO: Much of this functionality would better be integrated into cloud.DataClient itself
 
@@ -125,7 +126,7 @@ def datafile_search(dm, diffs, mtime, dryrun=False, deep=False):
             source_folders=diffs[0],
             raw_folders=diffs[1],
             since=mtime,
-            sync=True
+            sync=(not args.dryrun)
         )
 
         new_files = pd.concat([new_files, pending_files])
@@ -153,12 +154,20 @@ def datafile_search(dm, diffs, mtime, dryrun=False, deep=False):
 
 
 def main(args):
+
     dm, old_patterns = init_server()
 
-    breakpoint()
+    lock = Path(dm.sync_folder, LOCKFILE)
+
+    if lock.exists():
+        return 0
+
+    with open(lock, 'w') as lockfp:
+        lockfp.write(f'{0} {1}'.format(os.getpid(), time.time()))
 
     if args.fresh:
         deep = True
+        # Delete all monitoring files
         for f in Path(dm.sync_folder).iterdir():
             if not f.name == PATTERNS:
                 f.unlink()
@@ -190,6 +199,8 @@ def main(args):
 
     with open(Path(dm.sync_folder, TIMESTAMP), 'w') as ts:
         ts.write(str(now))
+
+    lock.unlink(missing_ok=True)
 
 
 if __name__ == '__main__':
