@@ -23,10 +23,6 @@ data_client = cloud.DataClient(
 )
 data_client.sync_with_s3()
 
-# dataset_root = Path('webfish_data', 'dotdetection', 'nrezaee')
-# img_name = Path(dataset_root, 'raw', '2020-08-08-takei', f'HybCycle_{hyb}', f'compressed_MMStack_Pos{pos}.ome.tif')
-# dots_name = Path(dataset_root, '2020-08-08-takei', f'takei_strict_6/MMStack_Pos{pos}/Dot_Locations/locations.csv')
-
 
 def gen_image_figure(
     imfile,
@@ -35,6 +31,8 @@ def gen_image_figure(
     channel='0',
     contrast_minmax=(0, 2000)
 ):
+    # FIXME: Seems that some images come in C, Z, X, Y order rather than the assumed
+    #   Z, C, X, Y order! May need ImageMeta-type reading to ensure we get it right
     image = tif.imread(imfile)
 
     z_slice = int(z_slice)
@@ -116,7 +114,7 @@ def update_image_params(
 )
 def select_pos_hyb(position, hyb, dataset, user):
     if not all((position, hyb, dataset, user)):
-        raise PreventUpdate
+        return []
 
     imagefile = data_client.request(
         {'user': user, 'dataset': dataset, 'hyb': hyb, 'position': position},
@@ -132,7 +130,7 @@ def select_pos_hyb(position, hyb, dataset, user):
     z_range = range(image.shape[0])
     chan_range = range(image.shape[1])
 
-    marks = {a: str(256 * a) for a in range(0, 255, 32)}
+    marks = {a: str(256 * a) for a in range(0, 127, 32)}
 
     return [
         dcc.Dropdown(
@@ -150,7 +148,7 @@ def select_pos_hyb(position, hyb, dataset, user):
             dcc.RangeSlider(
                 id='dd-contrast-slider',
                 min=0,
-                max=255,
+                max=127,
                 step=5,
                 marks=marks,
                 value=[0, 10],
@@ -167,7 +165,7 @@ def select_pos_hyb(position, hyb, dataset, user):
 )
 def select_dataset_position(dataset, user):
     if not dataset:
-        raise PreventUpdate
+        return []
 
     positions = data_client.datafiles.query(
         'user == @user and dataset == @dataset')['position'].dropna().unique()
@@ -182,7 +180,7 @@ def select_dataset_position(dataset, user):
 )
 def select_dataset_hyb(dataset, user):
     if not dataset:
-        raise PreventUpdate
+        return []
 
     hybs = data_client.datafiles.query(
         'user == @user and dataset == @dataset')['hyb'].dropna().unique()
@@ -219,7 +217,7 @@ layout = html.Div([
                 dcc.Dropdown(id='dd-hyb-select'),
                 dcc.Dropdown(id='dd-position-select')
             ], id='dd-dataset-select-div', style={'margin': '10px'}),
-
+            html.Hr(),
             html.Div([
                 dcc.Dropdown(id='dd-z-select', disabled=True),
                 dcc.Dropdown(id='dd-chan-select', disabled=True),

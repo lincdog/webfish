@@ -45,6 +45,7 @@ def gen_figure(selected_genes, active):
     Returns: plotly.graph_objects.Figure containing the selected data.
     """
 
+    print(active)
     dots = active.get('dots')
     mesh = active.get('mesh')
 
@@ -117,12 +118,12 @@ def gen_figure(selected_genes, active):
 ####### Callbacks #######
 
 @app.callback(
-    Output('graph-wrapper', 'children'),
-    Input('gene-select', 'value'),
-    State('pos-select', 'value'),
-    State('analysis-select', 'value'),
-    State('dataset-select', 'value'),
-    State('user-select', 'value'),
+    Output('dv-graph-wrapper', 'children'),
+    Input('dv-gene-select', 'value'),
+    State('dv-pos-select', 'value'),
+    State('dv-analysis-select', 'value'),
+    State('dv-dataset-select', 'value'),
+    State('dv-user-select', 'value'),
     prevent_initial_call=True
 )
 def update_figure(selected_genes, pos, analysis, dataset, user):
@@ -163,11 +164,11 @@ def update_figure(selected_genes, pos, analysis, dataset, user):
 
 
 @app.callback(
-    Output('analytics-wrapper', 'children'),
-    Input('pos-select', 'value'),
-    State('analysis-select', 'value'),
-    State('dataset-select', 'value'),
-    State('user-select', 'value'),
+    Output('dv-analytics-wrapper', 'children'),
+    Input('dv-pos-select', 'value'),
+    State('dv-analysis-select', 'value'),
+    State('dv-dataset-select', 'value'),
+    State('dv-user-select', 'value'),
     prevent_initial_call=True
 )
 def populate_analytics(pos, analysis, dataset, user):
@@ -201,13 +202,13 @@ def populate_analytics(pos, analysis, dataset, user):
         fp_comp = html.Div(
             [
                 dbc.Button(
-                    "Toggle false positive analysis",
-                    id="collapse-button",
-                    color="primary",
+                    'Toggle false positive analysis',
+                    id='dv-collapse-button',
+                    color='primary',
                 ),
                 dbc.Collapse(
                     dbc.Card(dbc.CardBody(fp_txt)),
-                    id="collapse",
+                    id='dv-collapse',
                 ),
             ]
         )
@@ -220,9 +221,9 @@ def populate_analytics(pos, analysis, dataset, user):
 
 
 @app.callback(
-    Output("collapse", "is_open"),
-    [Input("collapse-button", "n_clicks")],
-    [State("collapse", "is_open")],
+    Output('dv-collapse', 'is_open'),
+    [Input('dv-collapse-button', 'n_clicks')],
+    [State('dv-collapse', 'is_open')],
     prevent_initial_call=True
 )
 def toggle_collapse(n, is_open):
@@ -232,11 +233,11 @@ def toggle_collapse(n, is_open):
 
 
 @app.callback(
-    Output('gene-wrapper', 'children'),
-    Input('pos-select', 'value'),
-    State('analysis-select', 'value'),
-    State('dataset-select', 'value'),
-    State('user-select', 'value'),
+    Output('dv-gene-wrapper', 'children'),
+    Input('dv-pos-select', 'value'),
+    State('dv-analysis-select', 'value'),
+    State('dv-dataset-select', 'value'),
+    State('dv-user-select', 'value'),
     prevent_initial_call=True
 )
 def select_pos(pos, analysis, dataset, user):
@@ -276,10 +277,10 @@ def select_pos(pos, analysis, dataset, user):
 
 
 @app.callback(
-    Output('pos-div', 'children'),
-    Input('analysis-select', 'value'),
-    State('dataset-select', 'value'),
-    State('user-select', 'value')
+    Output('dv-pos-div', 'children'),
+    Input('dv-analysis-select', 'value'),
+    State('dv-dataset-select', 'value'),
+    State('dv-user-select', 'value')
 )
 def select_analysis(analysis, dataset, user):
     if not analysis:
@@ -291,7 +292,7 @@ def select_analysis(analysis, dataset, user):
     return [
         'Position select: ',
         dcc.Dropdown(
-            id='dv-dv-pos-select',
+            id='dv-pos-select',
             options=[{'label': i, 'value': i} for i in sorted(positions)],
             value=positions[0],
             placeholder='Select a position',
@@ -300,10 +301,11 @@ def select_analysis(analysis, dataset, user):
         )
     ]
 
+
 @app.callback(
-    Output('analysis-select-div', 'children'),
-    Input('dataset-select', 'value'),
-    State('user-select', 'value')
+    Output('dv-analysis-select-div', 'children'),
+    Input('dv-dataset-select', 'value'),
+    State('dv-user-select', 'value')
 )
 def select_dataset(dataset, user):
 
@@ -315,7 +317,7 @@ def select_dataset(dataset, user):
     return [
         'Analysis select: ',
         dcc.Dropdown(
-            id='dv-dv-analysis-select',
+            id='dv-analysis-select',
             options=[{'label': i, 'value': i} for i in sorted(analyses)],
             value=None,
             placeholder='Select an analysis run',
@@ -325,8 +327,8 @@ def select_dataset(dataset, user):
     ]
 
 @app.callback(
-    Output('dataset-select-div', 'children'),
-    Input('user-select', 'value')
+    Output('dv-dataset-select-div', 'children'),
+    Input('dv-user-select', 'value')
 )
 def select_user(user):
 
@@ -338,7 +340,7 @@ def select_user(user):
     return [
         'Dataset select: ',
         dcc.Dropdown(
-            id='dv-dv-dataset-select',
+            id='dv-dataset-select',
             options=[{'label': i, 'value': i} for i in sorted(datasets)],
             value=None,
             placeholder='Select dataset',
@@ -358,30 +360,30 @@ layout = dbc.Container(dbc.Row([
             html.Div([
                 'User select:',
                 dcc.Dropdown(
-                    id='dv-dv-user-select',
+                    id='dv-user-select',
                     options=[{'label': i, 'value': i}
                              for i in data_client.datasets.index.unique(level=0)],
                     placeholder='Select a user folder',
                     style={'width': '200px'}
-                )], id='dv-dv-user-select-div'
+                )], id='dv-user-select-div'
             ),
 
-            html.Div(id='dv-dv-dataset-select-div'),
-            html.Div(id='dv-dv-analysis-select-div')
+            html.Div(id='dv-dataset-select-div'),
+            html.Div(id='dv-analysis-select-div')
 
-           ], id='dv-dv-analysis-selectors-div'),
+           ], id='dv-analysis-selectors-div'),
 
         html.Hr(),
         html.Div([
             html.Div(
-                dcc.Loading(dcc.Dropdown(id='dv-dv-pos-select', disabled=True),
-                    id='dv-dv-pos-wrapper'),
-                id='dv-dv-pos-div'),
+                dcc.Loading(dcc.Dropdown(id='dv-pos-select', disabled=True),
+                    id='dv-pos-wrapper'),
+                id='dv-pos-div'),
             html.Div(
-                dcc.Loading(dcc.Dropdown(id='dv-dv-gene-select', disabled=True),
-                    id='dv-dv-gene-wrapper'),
-                id='dv-dv-gene-div')
-            ], id='dv-dv-selectors-wrapper', style={'width': '200px', 'margin': '20px'}),
+                dcc.Loading(dcc.Dropdown(id='dv-gene-select', disabled=True),
+                    id='dv-gene-wrapper'),
+                id='dv-gene-div')
+            ], id='dv-selectors-wrapper', style={'width': '200px', 'margin': '20px'}),
         html.Hr(),
 
         html.Div([
@@ -389,7 +391,7 @@ layout = dbc.Container(dbc.Row([
             html.Hr(),
             dcc.Loading([
 
-            ], id='dv-dv-analytics-wrapper')
+            ], id='dv-analytics-wrapper')
         ])
 
     ], width=4, style={'border-right': '1px solid gray'}),
@@ -398,8 +400,8 @@ layout = dbc.Container(dbc.Row([
         html.Div([
             dcc.Loading(
                 dcc.Graph(
-                    id='dv-dv-test-graph',
-                ), id='dv-dv-graph-wrapper'
+                    id='dv-test-graph',
+                ), id='dv-graph-wrapper'
             )
         ])
     ], width="auto")

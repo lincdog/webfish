@@ -967,7 +967,7 @@ class DataClient:
                 local_filenames.append(
                     self.retrieve_or_download(
                         row.filename,
-                        field=field,
+                        field=row.source_key,
                         force_download=force_download
                     )
                 )
@@ -999,13 +999,11 @@ class DataClient:
         print(f'RETRIEVEORDOWNLOAD: starting {key}')
         error = []
 
-        if self.page:
+        if self.page is not None:
             if field in self.page.source_patterns.keys():
                 prefix = self.analysis_folder
             elif field in self.page.raw_patterns.keys():
                 prefix = self.raw_folder
-
-        print(prefix, key)
 
         lp = self.local(k2f(key))
 
