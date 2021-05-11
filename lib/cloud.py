@@ -266,6 +266,7 @@ class Page:
         self.datafiles = None
         self.datasets = None
         self.pending = None
+        self.s3_diff = None
 
 
 class DataServer:
@@ -305,6 +306,7 @@ class DataServer:
 
         self.local_store = config.get('local_store', 'webfish_data/')
         self.preupload_root = config.get('preupload_root')
+        self.have_run_preuploads = False
 
         self.all_datasets = pd.DataFrame()
         self.all_raw_datasets = pd.DataFrame()
@@ -365,10 +367,10 @@ class DataServer:
         pagenames=None,
         replace=False,
     ):
-        if not pagenames:
+        if pagenames is None:
             pagenames = self.pagenames
 
-        sync_folder_contents = list(self.sync_folder.iterdir())
+        sync_folder_contents = list(Path(self.sync_folder).iterdir())
 
         for name, item in self.sync_contents.items():
             if isinstance(item, Path) and item in sync_folder_contents:
@@ -400,6 +402,57 @@ class DataServer:
                 self.pages[name].datafiles = self.local_sync[name]['file_table'].copy()
                 self.pages[name].pending = self.local_sync[name]['pending_uploads'].copy()
 
+    def check_s3_contents(
+        self,
+        pagenames=None,
+        raw=True,
+        source=True
+    ):
+        if pagenames is None:
+            pagenames = self.pagenames
+
+        paginator = self.client.client.get_paginator('list_objects_v2')
+
+        if raw:
+            raw_pag = paginator.paginate(
+                Bucket=self.bucket_name,
+                Prefix=str(self.raw_folder),
+                PaginationConfig=dict(PageSize=10000))
+
+            raw_results = raw_pag.build_full_result()['Contents']
+            raw_keys = [
+                self._preupload_revert(
+                    Path(k['Key']).relative_to(self.raw_folder))
+                for k in raw_results
+            ]
+
+        if source:
+            source_pag = paginator.paginate(
+                Bucket=self.bucket_name,
+                Prefix=str(self.analysis_folder),
+                PaginationConfig=dict(PageSize=10000))
+
+            source_results = source_pag.build_full_result()['Contents']
+            source_keys = [
+                self._preupload_revert(
+                    Path(k['Key']).relative_to(self.analysis_folder))
+                for k in source_results
+            ]
+
+        for pagename in pagenames:
+            page = self.pages[pagename]
+
+            if empty_or_false(page.datafiles):
+                continue
+
+            page_raw_diff = set(page.datafiles['filename'].values) -\
+                set(raw_keys)
+            page_source_diff = set(page.datafiles['filename'].values) -\
+                set(source_keys)
+
+            page_diff = page_raw_diff | page_source_diff
+
+            self.pages[pagename].s3_diff = page.datafiles.query('filename in @page_diff').copy()
 
     def get_source_datasets(
         self,
@@ -442,7 +495,7 @@ class DataServer:
 
     def find_page_files(
         self,
-        page,
+        pagename,
         source_folders=None,
         raw_folders=None,
         since=0,
@@ -470,14 +523,14 @@ class DataServer:
                                   ['folder', 'source_key'])
 
         # If this page doesn't require any files, just show all datasets
-        if not self.pages[page].input_patterns:
+        if not self.pages[pagename].input_patterns:
             page_datasets = self.all_datasets
 
         all_sourcefiles = [self.find_source_files(key, pattern, source_folders, since)
-                           for key, pattern in self.pages[page].source_patterns.items()]
+                           for key, pattern in self.pages[pagename].source_patterns.items()]
 
         all_rawfiles = [self.find_raw_files(key, pattern, raw_folders, since)
-                        for key, pattern in self.pages[page].raw_patterns.items()]
+                        for key, pattern in self.pages[pagename].raw_patterns.items()]
 
         if any(notempty(all_sourcefiles)):
             sourcefile_df = pd.concat(all_sourcefiles).sort_values(by=self.dataset_fields)
@@ -497,10 +550,10 @@ class DataServer:
                 self.raw_dataset_root
             )
 
-        self.pages[page].datafiles = pd.concat([sourcefile_df, rawfile_df])
-        self.pages[page].datasets = pd.concat([source_datasets, raw_datasets])
+        self.pages[pagename].datafiles = pd.concat([sourcefile_df, rawfile_df])
+        self.pages[pagename].datasets = pd.concat([source_datasets, raw_datasets])
 
-        return self.pages[page].datafiles, self.pages[page].datasets
+        return self.pages[pagename].datafiles, self.pages[pagename].datasets
 
     @staticmethod
     def filter_datasets(
@@ -660,22 +713,46 @@ class DataServer:
             # the pending DF, so we can just write it out and replace the existing file.
             # Also, if it's empty we'll delete the file. We don't upload this to s3.
             page_pending_table = self.sync_contents[name]['pending_uploads']
-            if notempty(self.pages[name].pending):
+            if not empty_or_false(self.pages[name].pending):
                 self.pages[name].pending.to_csv(page_pending_table, index=False)
             else:
                 page_pending_table.unlink(missing_ok=True)
 
             if upload:
                 self.client.client.upload_file(
-                    page_sync_file,
+                    str(page_sync_file),
                     Bucket=self.bucket_name,
-                    Key=page_sync_file
+                    Key=str(page_sync_file)
                 )
                 self.client.client.upload_file(
-                    page_file_table,
+                    str(page_file_table),
                     Bucket=self.bucket_name,
-                    Key=page_file_table
+                    Key=str(page_file_table)
                 )
+
+    def _preupload_newname(
+        self,
+        oldname,
+        pagename,
+        source_key
+    ):
+        page = self.pages[pagename]
+        if source_key not in page.has_preupload:
+            return oldname
+
+        preupload_func = page.input_preuploads[source_key]
+
+        return str(Path(oldname).with_name(
+            '__'.join([preupload_func.__name__, Path(oldname).name])
+        ))
+
+    @staticmethod
+    def _preupload_revert(name):
+        if '__' not in Path(name).name:
+            return name
+
+        return str(Path(name).with_name(
+            str(name).split('__')[1]))
 
     def run_preuploads(
         self,
@@ -721,9 +798,7 @@ class DataServer:
             preupload_func = page.input_preuploads[key]
 
             in_format = str(Path(data_root, page.input_patterns[key]))
-            out_format = str(Path(in_format).with_name(
-                '__'.join([preupload_func.__name__, Path(in_format).name])
-            ))
+            out_format = self._preupload_newname(in_format, pagename, key)
 
             with ThreadPoolExecutor(max_workers=nthreads) as exe:
                 futures = {}
@@ -777,6 +852,7 @@ class DataServer:
         file_df=None,
         run_preuploads=True,
         do_pending=False,
+        do_s3_diff=False,
         progress=0,
         dryrun=False
     ):
@@ -796,7 +872,12 @@ class DataServer:
 
         if do_pending:
             file_df = pd.concat([page.pending, file_df]).drop_duplicates(
-                subset='filename', inplace=True, ignore_index=True)
+                subset='filename', ignore_index=True)
+
+        if do_s3_diff:
+            if not empty_or_false(page.s3_diff):
+                file_df = pd.concat([page.s3_df, file_df]).drop_duplicates(
+                    subset='filename', ignore_index=True)
 
         if run_preuploads:
             file_df, errors = self.run_preuploads(
