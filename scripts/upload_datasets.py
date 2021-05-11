@@ -137,7 +137,7 @@ def datafile_search(dm, diffs, mtime, dryrun=False, deep=False):
             source_folders=diffs[0],
             raw_folders=diffs[1],
             since=mtime,
-            sync=(not args.dryrun)
+            sync=True
         )
 
         new_files = pd.concat([new_files, pending_files])

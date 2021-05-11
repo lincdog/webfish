@@ -1020,7 +1020,7 @@ class DataClient:
             lp = None
 
         print(f'RETRIVEORDOWNLOAD: ending {key} after {datetime.now()-now}')
-        print(f'lp: {lp}')
+
         return lp
 
 
