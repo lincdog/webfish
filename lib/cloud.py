@@ -270,15 +270,10 @@ class DataServer:
     DataServer
     -----------
     Class that manages data requests mediated by an s3 bucket and pushes local
-    files to another s3 bucket.
-    Basically the same as DataManager but inverted...
-    * Uses same config for source files as DataManager - local_store is different
-      and bucket/path for requests vs uploads and dataset listings may be different
-    * find_datafiles: lists local structure rather than s3
-    * publishes json file listing directory structure
-    * listen: checks for request file on s3
-    * put or upload or respond: uploads local file structure to specified
-      cloud key structure
+    files to same bucket
+    * Uses same config for source files as DataManager
+    * find_page_files: lists local structure rather than s3
+    * publishes CSV file listing directory structure
     """
 
     def __init__(

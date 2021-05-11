@@ -92,6 +92,8 @@ def sigint_write_pending(signo, frame):
     pending_csv = frame.f_globals.get('pending_csv', None)
     df = frame.f_globals.get('remaining_files', None)
 
+    lockfile = frame.f_globals.get('lock', None)
+
     if pending_csv and df:
         try:
             df.to_csv(pending_csv, index=False)
@@ -100,12 +102,21 @@ def sigint_write_pending(signo, frame):
         except IOError:
             print('Keyboard interrupt received, failed to save pending uploads.')
             sys.exit(1)
-    else:
-        print('Keyboard interrupt received, unable to locate pending uploads')
-        sys.exit(1)
+
+    if lockfile:
+        try:
+            lockfile.unlink(missing_ok=True)
+            sys.exit(0)
+        except AttributeError:
+            print('Keyboard interrupt received but failed to unlink lockfile.')
+            sys.exit(1)
+
+    sys.exit(1)
 
 
 def datafile_search(dm, diffs, mtime, dryrun=False, deep=False):
+
+    new_files = pd.DataFrame()
 
     if deep or dryrun:
         # setting the folders arg of find_datafiles to none looks in ALL folders
@@ -163,7 +174,7 @@ def main(args):
         return 0
 
     with open(lock, 'w') as lockfp:
-        lockfp.write(f'{0} {1}'.format(os.getpid(), time.time()))
+        lockfp.write('{0} {1}'.format(os.getpid(), time.time()))
 
     if args.fresh:
         deep = True
