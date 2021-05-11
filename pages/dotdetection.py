@@ -70,9 +70,10 @@ def gen_image_figure(
             y=dots_select['y'].values - 1,
             mode='markers',
             marker_symbol='cross',
-            marker=dict(maxdisplayed=1000,
-                        size=10,
-                        color=dots_select['int'].values))
+            marker=dict(
+                maxdisplayed=1000,
+                size=10,
+                color=dots_select['int'].values))
         )
 
     return fig
@@ -105,7 +106,7 @@ def update_image_params(
     hyb_fov = data_client.request(
         {'user': user, 'dataset': dataset, 'position': position, 'hyb': hyb},
         fields='hyb_fov'
-    )
+    )['hyb_fov']
 
     if analysis:
         dot_locations = data_client.request(
@@ -118,7 +119,7 @@ def update_image_params(
     print(f'hyb_fov: {hyb_fov}')
     print(f'dot locations: {dot_locations}')
 
-    return gen_image_figure(hyb_fov['hyb_fov'], dot_locations, hyb, z, channel, contrast)
+    return gen_image_figure(hyb_fov[0], dot_locations[0], hyb, z, channel, contrast)
 
 
 @app.callback(

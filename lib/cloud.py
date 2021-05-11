@@ -1,3 +1,5 @@
+import time
+
 import numpy as np
 import pandas as pd
 import boto3
@@ -263,6 +265,7 @@ class Page:
 
         self.datafiles = None
         self.datasets = None
+        self.pending = None
 
 
 class DataServer:
@@ -338,14 +341,69 @@ class DataServer:
         for p in self.pages.values():
             pats.extend(list(p.input_patterns.values()))
 
-        with open(Path(self.sync_folder, 'input_patterns'), 'w') as sp:
-            sp.write('\n'.join(pats))
+        self.all_input_patterns = pats
+
+        self.sync_contents = {
+            'all_datasets': Path(self.sync_folder, 'all_datasets.csv'),
+            'all_raw_datasets': Path(self.sync_folder, 'all_raw_datasets.csv'),
+            'input_patterns': Path(self.sync_folder, 'input_patterns'),
+            'timestamp': Path(self.sync_folder, 'TIMESTAMP')
+        }
+
+        for name, page in self.pages.items():
+            self.sync_contents[name] = {
+                'sync_file': Path(self.sync_folder, f'{name}_sync.csv'),
+                'file_table': Path(self.sync_folder, f'{name}_files.csv'),
+                'pending_uploads': Path(self.sync_folder, f'{name}_pending.csv')
+            }
+
+        self.local_sync = dict.fromkeys(self.sync_contents.keys(), None)
+        self.remote_sync = dict.fromkeys(self.sync_contents.keys(), None)
+
+    def read_local_sync(
+        self,
+        pagenames=None,
+        replace=False,
+    ):
+        if not pagenames:
+            pagenames = self.pagenames
+
+        sync_folder_contents = list(self.sync_folder.iterdir())
+
+        for name, item in self.sync_contents.items():
+            if isinstance(item, Path) and item in sync_folder_contents:
+                if name in ('all_datasets', 'all_raw_datasets'):
+                    self.local_sync[name] = pd.read_csv(item, dtype=str)
+                elif name == 'input_patterns':
+                    self.local_sync[name] = open(item).read().split()
+                elif name == 'timestamp':
+                    self.local_sync[name] = float(open(item).read().strip())
+                else:
+                    pass
+            elif isinstance(item, dict):
+                if name in pagenames:
+                    self.local_sync[name] = defaultdict(pd.DataFrame)
+                    # noinspection PyTypeChecker
+                    self.local_sync[name] = {
+                        k: pd.read_csv(v, dtype=str)
+                        for k, v in item.items() if v in sync_folder_contents
+                    }
+            else:
+                pass
+
+        if replace:
+            self.all_datasets = self.local_sync['all_datasets'].copy()
+            self.all_raw_datasets = self.local_sync['all_raw_datasets'].copy()
+
+            for name in pagenames:
+                self.pages[name].datasets = self.local_sync[name]['sync_file'].copy()
+                self.pages[name].datafiles = self.local_sync[name]['file_table'].copy()
+                self.pages[name].pending = self.local_sync[name]['pending_uploads'].copy()
+
 
     def get_source_datasets(
         self,
         folders=None,
-        save=True,
-        sync=True
     ):
         possible_folders, fields = find_matching_files(
             self.master_root,
@@ -360,25 +418,11 @@ class DataServer:
 
         self.all_datasets = all_datasets
 
-        all_datasets_file = Path(self.sync_folder, 'all_datasets.csv')
-
-        if save:
-            self.all_datasets.to_csv(all_datasets_file, index=False)
-
-            if sync:
-                self.client.client.upload_file(
-                    str(all_datasets_file),
-                    Bucket=self.bucket_name,
-                    Key=str(all_datasets_file)
-                )
-
         return self.all_datasets
 
     def get_raw_datasets(
         self,
         folders=None,
-        save=True,
-        sync=True
     ):
 
         possible_folders, fields = find_matching_files(
@@ -394,18 +438,6 @@ class DataServer:
 
         self.all_raw_datasets = all_raw_datasets
 
-        all_raw_datasets_file = Path(self.sync_folder, 'all_raw_datasets.csv')
-
-        if save:
-            self.all_raw_datasets.to_csv(all_raw_datasets_file, index=False)
-
-            if sync:
-                self.client.client.upload_file(
-                    str(all_raw_datasets_file),
-                    Bucket=self.bucket_name,
-                    Key=str(all_raw_datasets_file)
-                )
-
         return self.all_raw_datasets
 
     def find_page_files(
@@ -414,7 +446,6 @@ class DataServer:
         source_folders=None,
         raw_folders=None,
         since=0,
-        sync=True
     ):
         """
         find_page_files
@@ -425,6 +456,8 @@ class DataServer:
 
         if self.all_datasets.empty:
             self.get_source_datasets()
+
+        if self.all_raw_datasets.empty:
             self.get_raw_datasets()
 
         source_datasets = pd.DataFrame()
@@ -467,9 +500,6 @@ class DataServer:
         self.pages[page].datafiles = pd.concat([sourcefile_df, rawfile_df])
         self.pages[page].datasets = pd.concat([source_datasets, raw_datasets])
 
-        if sync:
-            self.save_and_sync(page)
-
         return self.pages[page].datafiles, self.pages[page].datasets
 
     @staticmethod
@@ -507,7 +537,7 @@ class DataServer:
         key,
         pattern,
         folders,
-        since
+        since=0
     ):
         paths = None
         if folders:
@@ -566,39 +596,86 @@ class DataServer:
         else:
             return pd.DataFrame()
 
-    def save_and_sync(self, page):
-        
-        page_sync_file = str(self.pages[page].sync_file)
-        try:
-            current_sync = pd.read_csv(page_sync_file, dtype=str)
-            updated_sync = pd.concat([current_sync, self.pages[page].datasets])
-            updated_sync.drop_duplicates(subset=['folder'], keep='last', inplace=True, ignore_index=True)
-        except FileNotFoundError:
-            updated_sync = self.pages[page].datasets
+    def save_and_sync(
+        self,
+        pagenames=None,
+        timestamp=True,
+        patterns=True,
+        upload=True
+    ):
+        if timestamp:
+            now = time.time()
+            with open(self.sync_contents['timestamp'], 'w') as ts:
+                ts.write(str(now)+'\n')
 
-        updated_sync.to_csv(page_sync_file, index=False)
+        if patterns:
+            with open(self.sync_contents['input_patterns'], 'w') as ips:
+                ips.write('\n'.join(self.all_input_patterns))
 
-        self.client.client.upload_file(
-            page_sync_file,
-            Bucket=self.bucket_name,
-            Key=page_sync_file
-        )
+        if pagenames is None:
+            pagenames = self.pagenames
 
-        page_file_table = str(self.pages[page].file_table)
-        try:
-            current_files = pd.read_csv(page_file_table, dtype=str)
-            updated_files = pd.concat([current_files, self.pages[page].datafiles])
-            updated_files.drop_duplicates(subset=['filename'], inplace=True, ignore_index=True)
-        except FileNotFoundError:
-            updated_files = self.pages[page].datafiles
+        all_datasets_file = self.sync_contents['all_datasets']
+        all_raw_datasets_file = self.sync_contents['all_raw_datasets']
 
-        updated_files.to_csv(page_file_table, index=False)
+        self.all_datasets.to_csv(all_datasets_file, index=False)
+        self.all_raw_datasets.to_csv(all_raw_datasets_file, index=False)
 
-        self.client.client.upload_file(
-            page_file_table,
-            Bucket=self.bucket_name,
-            Key=page_file_table
-        )
+        if upload:
+            self.client.client.upload_file(
+                str(all_raw_datasets_file),
+                Bucket=self.bucket_name,
+                Key=str(all_raw_datasets_file)
+            )
+            self.client.client.upload_file(
+                str(all_datasets_file),
+                Bucket=self.bucket_name,
+                Key=str(all_datasets_file)
+            )
+
+        for name in pagenames:
+            page_sync_file = self.sync_contents[name]['sync_file']
+            try:
+                current_sync = self.local_sync[name].get('sync_file', None)
+                updated_sync = pd.concat([current_sync, self.pages[name].datasets])
+                updated_sync.drop_duplicates(subset=['folder'], keep='last', inplace=True, ignore_index=True)
+            except FileNotFoundError:
+                updated_sync = self.pages[name].datasets
+
+            updated_sync.to_csv(page_sync_file, index=False)
+
+            page_file_table = self.sync_contents[name]['file_table']
+            try:
+                current_files = self.local_sync[name].get('file_table', None)
+                updated_files = pd.concat([current_files, self.pages[name].datafiles])
+                updated_files.drop_duplicates(subset=['filename'], inplace=True, ignore_index=True)
+            except FileNotFoundError:
+                updated_files = self.pages[name].datafiles
+
+            updated_files.to_csv(page_file_table, index=False)
+
+            # We don't try to merge the pending file table with the existing one, because
+            # upload_to_s3 already does that - it considers any existing pending files as well
+            # as the new ones supplied to it. If it does error, the remaining files are still in
+            # the pending DF, so we can just write it out and replace the existing file.
+            # Also, if it's empty we'll delete the file. We don't upload this to s3.
+            page_pending_table = self.sync_contents[name]['pending_uploads']
+            if notempty(self.pages[name].pending):
+                self.pages[name].pending.to_csv(page_pending_table, index=False)
+            else:
+                page_pending_table.unlink(missing_ok=True)
+
+            if upload:
+                self.client.client.upload_file(
+                    page_sync_file,
+                    Bucket=self.bucket_name,
+                    Key=page_sync_file
+                )
+                self.client.client.upload_file(
+                    page_file_table,
+                    Bucket=self.bucket_name,
+                    Key=page_file_table
+                )
 
     def run_preuploads(
         self,
@@ -691,7 +768,6 @@ class DataServer:
             subset=self.pages[pagename].datafiles.columns.difference(['filename']),
             keep='last', inplace=True, ignore_index=True
         )
-        self.save_and_sync(pagename)
 
         return output_df, errors
 
@@ -700,6 +776,7 @@ class DataServer:
         pagename,
         file_df=None,
         run_preuploads=True,
+        do_pending=False,
         progress=0,
         dryrun=False
     ):
@@ -712,23 +789,26 @@ class DataServer:
         Analogous to DataClient.request().
         """
         breakpoint()
-
-        if empty_or_false(file_df):
-            file_df = self.pages[pagename].datafiles
-
-        if run_preuploads:
-            _, errors = self.run_preuploads(
-                pagename, file_df=file_df, nthreads=10)
-
         page = self.pages[pagename]
 
-        p = 0
-        total = len(page.datafiles)
+        if empty_or_false(file_df):
+            file_df = page.datafiles
 
-        remaining_files = file_df.copy()
+        if do_pending:
+            file_df = pd.concat([page.pending, file_df]).drop_duplicates(
+                subset='filename', inplace=True, ignore_index=True)
+
+        if run_preuploads:
+            file_df, errors = self.run_preuploads(
+                pagename, file_df=file_df, nthreads=10)
+
+        p = 0
+        total = len(file_df)
+
+        self.pages[pagename].pending = file_df.copy()
 
         if dryrun:
-            return remaining_files
+            return file_df
 
         for row in file_df.itertuples():
             if progress and p % progress == 0:
@@ -755,12 +835,12 @@ class DataServer:
                     Key=str(keyname)
                 )
 
-                remaining_files.drop(index=row.Index, inplace=True)
+                self.pages[pagename].pending.drop(index=row.Index, inplace=True)
 
             except Exception as ex:
                 print(f'problem uploading file {row.filename}: {ex}')
 
-        return remaining_files
+        return self.pages[pagename].pending
 
 
 class DataClient:

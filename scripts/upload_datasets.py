@@ -40,18 +40,13 @@ def process_args():
 
 def init_server():
     config = yaml.load(open('./consts.yml'), Loader=yaml.Loader)
-    try:
-        old_patterns = open(Path(config['sync_folder'], PATTERNS)).read()
-    except FileNotFoundError:
-        old_patterns = ''
-
-    old_patterns = old_patterns.split()
 
     s3c = cloud.S3Connect(config=config)
 
     dm = cloud.DataServer(config=config, s3_client=s3c)
+    dm.read_local_sync()
 
-    return dm, old_patterns
+    return dm
 
 
 def stat_compare(dm):
@@ -122,57 +117,34 @@ def datafile_search(dm, diffs, mtime, dryrun=False, deep=False):
         # setting the folders arg of find_datafiles to none looks in ALL folders
         diffs = (None, None)
 
-    for page in dm.pagenames:
+    for pagename in dm.pagenames:
 
-        pending_csv = Path(dm.sync_folder, f'{page}_pending.csv')
-        pending_files = pd.DataFrame()
-        if pending_csv.exists():
-            pending_files = pd.read_csv(pending_csv, dtype=str)
-
-        if diffs == ([], []) and pending_files.empty:
+        if diffs == ([], []):
             continue
 
         new_files, new_datasets = dm.find_page_files(
-            page=page,
+            page=pagename,
             source_folders=diffs[0],
             raw_folders=diffs[1],
             since=mtime,
-            sync=False
         )
-
-        new_files = pd.concat([new_files, pending_files])
-        new_files.drop_duplicates(subset='filename', inplace=True, ignore_index=True)
-
-        if new_files.empty:
-            continue
 
         signal.signal(signal.SIGINT, sigint_write_pending)
 
-        remaining_files = dm.upload_to_s3(
-            page,
+        dm.upload_to_s3(
+            pagename,
             new_files,
+            do_pending=True,
             progress=100,
             dryrun=args.dryrun
         )
-
-        dm.save_and_sync(page)
-
-        if remaining_files.empty:
-            # Remove the pending file if we successfully uploaded
-            pending_csv.unlink(missing_ok=True)
-        else:
-            # Save the pending file if we didn't upload everything
-            remaining_files.to_csv(pending_csv, index=False)
-
-        if args.dryrun:
-            new_files.to_csv(Path(dm.sync_folder, f'{page}_dryrun.csv'))
 
     return new_files
 
 
 def main(args):
 
-    dm, old_patterns = init_server()
+    dm = init_server()
 
     lock = Path(dm.sync_folder, LOCKFILE)
 
@@ -186,16 +158,13 @@ def main(args):
         deep = True
         # Delete all monitoring files
         for f in Path(dm.sync_folder).iterdir():
-            if f.name not in (PATTERNS, LOCKFILE):
+            if f.name != LOCKFILE:
                 f.unlink()
 
     source_diffs, raw_diffs, mtime = stat_compare(dm)
 
-    new_patterns = []
-    for p in dm.pages.values():
-        new_patterns.extend(list(p.input_patterns.values()))
-
-    deep = sorted(old_patterns) != sorted(new_patterns)
+    deep = sorted(dm.local_sync['input_patterns']) \
+        != sorted(dm.all_input_patterns)
 
     new_files = datafile_search(
         dm,
@@ -205,17 +174,19 @@ def main(args):
         deep=deep
     )
 
-    now = time.time()
-
     if args.dryrun:
         verb = 'Found'
     else:
         verb = 'Uploaded'
 
-    print(f'{verb} {len(new_files)} files, finishing at {now}')
+    print(f'{verb} {len(new_files)} files')
 
-    with open(Path(dm.sync_folder, TIMESTAMP), 'w') as ts:
-        ts.write(str(now))
+    dm.save_and_sync(
+        pagenames=None,
+        timestamp=True,
+        patterns=True,
+        upload=(not args.dryrun)
+    )
 
     lock.unlink(missing_ok=True)
 
