@@ -137,7 +137,7 @@ def datafile_search(dm, diffs, mtime, dryrun=False, deep=False):
             source_folders=diffs[0],
             raw_folders=diffs[1],
             since=mtime,
-            sync=True
+            sync=False
         )
 
         new_files = pd.concat([new_files, pending_files])
@@ -148,9 +148,6 @@ def datafile_search(dm, diffs, mtime, dryrun=False, deep=False):
 
         signal.signal(signal.SIGINT, sigint_write_pending)
 
-        if args.dryrun:
-            new_files.to_csv(Path(dm.sync_folder, f'{page}_dryrun.csv'))
-
         remaining_files = dm.upload_to_s3(
             page,
             new_files,
@@ -158,12 +155,17 @@ def datafile_search(dm, diffs, mtime, dryrun=False, deep=False):
             dryrun=args.dryrun
         )
 
+        dm.save_and_sync(page)
+
         if remaining_files.empty:
             # Remove the pending file if we successfully uploaded
             pending_csv.unlink(missing_ok=True)
         else:
             # Save the pending file if we didn't upload everything
             remaining_files.to_csv(pending_csv, index=False)
+
+        if args.dryrun:
+            new_files.to_csv(Path(dm.sync_folder, f'{page}_dryrun.csv'))
 
     return new_files
 
@@ -184,7 +186,7 @@ def main(args):
         deep = True
         # Delete all monitoring files
         for f in Path(dm.sync_folder).iterdir():
-            if not f.name == PATTERNS:
+            if f.name not in (PATTERNS, LOCKFILE):
                 f.unlink()
 
     source_diffs, raw_diffs, mtime = stat_compare(dm)
