@@ -696,7 +696,7 @@ class DataServer:
                 current_sync = self.local_sync[name].get('sync_file', None)
                 updated_sync = pd.concat([current_sync, self.pages[name].datasets])
                 updated_sync.drop_duplicates(subset=['folder'], keep='last', inplace=True, ignore_index=True)
-            except FileNotFoundError:
+            except AttributeError:
                 updated_sync = self.pages[name].datasets
 
             updated_sync.to_csv(page_sync_file, index=False)
@@ -705,8 +705,18 @@ class DataServer:
             try:
                 current_files = self.local_sync[name].get('file_table', None)
                 updated_files = pd.concat([current_files, self.pages[name].datafiles])
+
+                if page.have_run_preuploads:
+                    preup_filenames = []
+
+                    for row in updated_files.itertuples():
+                        preup_filenames.append(self._preupload_newname(
+                            row.filename, name, row.source_key
+                        ))
+                    updated_files['filename'] = preup_filenames
+
                 updated_files.drop_duplicates(subset=['filename'], inplace=True, ignore_index=True)
-            except FileNotFoundError:
+            except AttributeError:
                 updated_files = self.pages[name].datafiles
 
             updated_files.to_csv(page_file_table, index=False)
