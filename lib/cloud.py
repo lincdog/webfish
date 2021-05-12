@@ -349,7 +349,8 @@ class DataServer:
             'all_datasets': Path(self.sync_folder, 'all_datasets.csv'),
             'all_raw_datasets': Path(self.sync_folder, 'all_raw_datasets.csv'),
             'input_patterns': Path(self.sync_folder, 'input_patterns'),
-            'timestamp': Path(self.sync_folder, 'TIMESTAMP')
+            'timestamp': Path(self.sync_folder, 'TIMESTAMP'),
+            's3_keys': Path(self.sync_folder, 's3_keys')
         }
 
         for name, page in self.pages.items():
@@ -360,7 +361,8 @@ class DataServer:
             }
 
         self.local_sync = dict.fromkeys(self.sync_contents.keys(), None)
-        self.remote_sync = dict.fromkeys(self.sync_contents.keys(), None)
+        self.s3_raw_keys = []
+        self.s3_source_keys = []
 
     def read_local_sync(
         self,
@@ -426,6 +428,8 @@ class DataServer:
                 for k in raw_results
             ]
 
+            self.s3_raw_keys = raw_keys
+
         if source:
             source_pag = paginator.paginate(
                 Bucket=self.bucket_name,
@@ -438,6 +442,9 @@ class DataServer:
                     Path(k['Key']).relative_to(self.analysis_folder))
                 for k in source_results
             ]
+
+            self.s3_source_keys = source_keys
+
 
         for pagename in pagenames:
             page = self.pages[pagename]
@@ -658,6 +665,7 @@ class DataServer:
         pagenames=None,
         timestamp=True,
         patterns=True,
+        s3_keys=True,
         upload=True
     ):
         if timestamp:
@@ -668,6 +676,10 @@ class DataServer:
         if patterns:
             with open(self.sync_contents['input_patterns'], 'w') as ips:
                 ips.write('\n'.join(self.all_input_patterns))
+
+        if s3_keys and len(self.s3_raw_keys+self.s3_source_keys) > 0:
+            with open(self.sync_contents['s3_keys'], 'w') as s3kf:
+                s3kf.write('\n'.join(self.s3_raw_keys+self.s3_source_keys))
 
         if pagenames is None:
             pagenames = self.pagenames
