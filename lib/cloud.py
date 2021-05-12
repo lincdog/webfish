@@ -718,18 +718,18 @@ class DataServer:
                 current_files = self.local_sync[name].get('file_table', None)
                 updated_files = pd.concat([current_files, self.pages[name].datafiles])
 
-                if self.pages[name].have_run_preuploads:
-                    preup_filenames = []
-
-                    for row in updated_files.itertuples():
-                        preup_filenames.append(self._preupload_newname(
-                            row.filename, name, row.source_key
-                        ))
-                    updated_files['filename'] = preup_filenames
-
                 updated_files.drop_duplicates(subset=['filename'], inplace=True, ignore_index=True)
             except AttributeError:
                 updated_files = self.pages[name].datafiles
+
+            if self.pages[name].have_run_preuploads:
+                preup_filenames = []
+
+                for row in updated_files.itertuples():
+                    preup_filenames.append(self._preupload_newname(
+                        row.filename, name, row.source_key
+                    ))
+                updated_files['filename'] = preup_filenames
 
             updated_files.to_csv(page_file_table, index=False)
 
