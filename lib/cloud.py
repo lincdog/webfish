@@ -879,7 +879,7 @@ class DataServer:
 
         if do_s3_diff:
             if not empty_or_false(page.s3_diff):
-                file_df = pd.concat([page.s3_df, file_df]).drop_duplicates(
+                file_df = pd.concat([page.s3_diff, file_df]).drop_duplicates(
                     subset='filename', ignore_index=True)
 
         if run_preuploads:
@@ -887,7 +887,7 @@ class DataServer:
                 pagename, file_df=file_df, nthreads=10)
 
         if empty_or_false(file_df):
-            file_df = page.datafiles
+            return page.pending
 
         p = 0
         total = len(file_df)
