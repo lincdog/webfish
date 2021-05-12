@@ -16,12 +16,7 @@ from lib.util import (
     notempty
 )
 
-
-TIMESTAMP = 'TIMESTAMP'
-PATTERNS = 'input_patterns'
-LOCKFILE = 'upload_datasets.lck'
-
-# TODO: Much of this functionality would better be integrated into cloud.DataClient itself
+LOCKFILE = f'{__file__}.lck'
 
 
 def process_args():
@@ -34,6 +29,11 @@ def process_args():
                         help='Erase all stored monitoring files and regenerate them. '
                              'Note: if --dryrun is not specified, will begin '
                              'uploading ALL datafiles.')
+
+    parser.add_argument('--check-s3', action='store_true',
+                        help='List actual keys from the s3 bucket to accurately determine '
+                             'the difference between local files and cloud storage.'
+                             ' Somewhat slow to list many objects.')
 
     return parser.parse_args()
 
@@ -52,7 +52,7 @@ def init_server():
 def stat_compare(dm):
     try:
         listmtime = float(open(
-            Path(dm.sync_folder, TIMESTAMP), 'r').read().strip())
+            Path(dm.sync_folder, dm.sync_contents['timestamp']), 'r').read().strip())
     except FileNotFoundError:
         listmtime = 0
 
@@ -135,6 +135,7 @@ def datafile_search(dm, diffs, mtime, dryrun=False, deep=False):
             pagename,
             new_files,
             do_pending=True,
+            run_preuploads=True,
             progress=100,
             dryrun=args.dryrun
         )

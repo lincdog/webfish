@@ -34,7 +34,9 @@ def gen_image_figure(
 ):
     # FIXME: Seems that some images come in C, Z, X, Y order rather than the assumed
     #   Z, C, X, Y order! May need ImageMeta-type reading to ensure we get it right
-    image = tif.imread(imfile)
+
+    if len(imfile) > 0:
+        image = tif.imread(imfile[0])
 
     hyb = int(hyb)
     hyb_q = hyb + 1
@@ -61,9 +63,11 @@ def gen_image_figure(
 
     if dots_csv:
         dots_select = pd.read_csv(
-            dots_csv,
-            dtype={'ch': int, 'z': int, 'hyb': int}
+            dots_csv[0],
+            #dtype={'ch': int, 'z': int, 'hyb': int}
         ).query(dots_query)
+
+        print(dots_query, dots_select.info())
 
         fig.add_trace(go.Scatter(
             x=dots_select['x'].values - 1,
@@ -119,7 +123,7 @@ def update_image_params(
     print(f'hyb_fov: {hyb_fov}')
     print(f'dot locations: {dot_locations}')
 
-    return gen_image_figure(hyb_fov[0], dot_locations[0], hyb, z, channel, contrast)
+    return gen_image_figure(hyb_fov, dot_locations, hyb, z, channel, contrast)
 
 
 @app.callback(

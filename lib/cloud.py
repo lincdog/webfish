@@ -350,7 +350,7 @@ class DataServer:
             'all_raw_datasets': Path(self.sync_folder, 'all_raw_datasets.csv'),
             'input_patterns': Path(self.sync_folder, 'input_patterns'),
             'timestamp': Path(self.sync_folder, 'TIMESTAMP'),
-            's3_keys': Path(self.sync_folder, 's3_keys')
+            's3_keys': Path(self.sync_folder, 's3_keys.json')
         }
 
         for name, page in self.pages.items():
@@ -361,8 +361,7 @@ class DataServer:
             }
 
         self.local_sync = dict.fromkeys(self.sync_contents.keys(), None)
-        self.s3_raw_keys = []
-        self.s3_source_keys = []
+        self.s3_keys = {'raw': [], 'source': []}
 
     def read_local_sync(
         self,
@@ -382,6 +381,8 @@ class DataServer:
                     self.local_sync[name] = open(item).read().split()
                 elif name == 'timestamp':
                     self.local_sync[name] = float(open(item).read().strip())
+                elif name == 's3_keys':
+                    self.local_sync[name] = json.load(open(item))
                 else:
                     pass
             elif isinstance(item, dict):
@@ -408,43 +409,51 @@ class DataServer:
         self,
         pagenames=None,
         raw=True,
-        source=True
+        source=True,
+        use_local=False
     ):
         if pagenames is None:
             pagenames = self.pagenames
 
-        paginator = self.client.client.get_paginator('list_objects_v2')
+        if use_local:
+            self.s3_keys = self.local_sync['s3_keys']
+            if not any(self.s3_keys.values()):
+                use_local = False
 
-        if raw:
-            raw_pag = paginator.paginate(
-                Bucket=self.bucket_name,
-                Prefix=str(self.raw_folder),
-                PaginationConfig=dict(PageSize=10000))
+        if not use_local:
+            paginator = self.client.client.get_paginator('list_objects_v2')
 
-            raw_results = raw_pag.build_full_result()['Contents']
-            raw_keys = [
-                self._preupload_revert(
-                    Path(k['Key']).relative_to(self.raw_folder))
-                for k in raw_results
-            ]
+            if raw:
+                raw_pag = paginator.paginate(
+                    Bucket=self.bucket_name,
+                    Prefix=str(self.raw_folder),
+                    PaginationConfig=dict(PageSize=10000))
 
-            self.s3_raw_keys = raw_keys
+                raw_results = raw_pag.build_full_result()['Contents']
+                raw_keys = [
+                    self._preupload_revert(
+                        Path(k['Key']).relative_to(self.raw_folder))
+                    for k in raw_results
+                ]
 
-        if source:
-            source_pag = paginator.paginate(
-                Bucket=self.bucket_name,
-                Prefix=str(self.analysis_folder),
-                PaginationConfig=dict(PageSize=10000))
+                self.s3_keys['raw'] = raw_keys
 
-            source_results = source_pag.build_full_result()['Contents']
-            source_keys = [
-                self._preupload_revert(
-                    Path(k['Key']).relative_to(self.analysis_folder))
-                for k in source_results
-            ]
+            if source:
+                source_pag = paginator.paginate(
+                    Bucket=self.bucket_name,
+                    Prefix=str(self.analysis_folder),
+                    PaginationConfig=dict(PageSize=10000))
 
-            self.s3_source_keys = source_keys
+                source_results = source_pag.build_full_result()['Contents']
+                source_keys = [
+                    self._preupload_revert(
+                        Path(k['Key']).relative_to(self.analysis_folder))
+                    for k in source_results
+                ]
 
+                self.s3_keys['source'] = source_keys
+
+        all_keys = self.s3_keys['raw'] + self.s3_keys['source']
 
         for pagename in pagenames:
             page = self.pages[pagename]
@@ -460,8 +469,7 @@ class DataServer:
             else:
                 local_filenames = page.datafiles['filename'].values
 
-            page_diff = set(local_filenames) -\
-                        (set(raw_keys) | set(source_keys))
+            page_diff = set(local_filenames) - set(all_keys)
 
             self.pages[pagename].s3_diff = page.datafiles.query('filename in @page_diff').copy()
 
@@ -677,9 +685,9 @@ class DataServer:
             with open(self.sync_contents['input_patterns'], 'w') as ips:
                 ips.write('\n'.join(self.all_input_patterns))
 
-        if s3_keys and len(self.s3_raw_keys+self.s3_source_keys) > 0:
+        if s3_keys and any(self.s3_keys.values()):
             with open(self.sync_contents['s3_keys'], 'w') as s3kf:
-                s3kf.write('\n'.join(self.s3_raw_keys+self.s3_source_keys))
+                json.dump(self.s3_keys, s3kf)
 
         if pagenames is None:
             pagenames = self.pagenames
