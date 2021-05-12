@@ -416,8 +416,9 @@ class DataServer:
             pagenames = self.pagenames
 
         if use_local:
-            self.s3_keys = self.local_sync['s3_keys']
-            if not any(self.s3_keys.values()):
+            if isinstance(self.local_sync['s3_keys'], dict):
+                self.s3_keys = self.local_sync['s3_keys']
+            else:
                 use_local = False
 
         if not use_local:
@@ -834,7 +835,7 @@ class DataServer:
 
             with ThreadPoolExecutor(max_workers=nthreads) as exe:
                 futures = {}
-                breakpoint()
+
                 for row in filerows.to_dict(orient='records'):
                     old_fname = in_format.format_map(row)
                     new_fname = out_format.format_map(row)
@@ -846,7 +847,6 @@ class DataServer:
                         preupload_func, row, out_format, savedir)
 
                 done = 0
-                breakpoint()
                 while done < len(futures):
 
                     if done % 50 == 0:
@@ -899,7 +899,6 @@ class DataServer:
 
         Analogous to DataClient.request().
         """
-        breakpoint()
         page = self.pages[pagename]
 
         if do_pending:

@@ -45,6 +45,9 @@ def init_server():
 
     dm = cloud.DataServer(config=config, s3_client=s3c)
     dm.read_local_sync()
+    # read in the s3 keys, unless --check-s3 is specified, from the local
+    # cached listing.
+    dm.check_s3_contents(use_local=(not args.check_s3))
 
     return dm
 
@@ -109,24 +112,14 @@ def sigint_write_pending(signo, frame):
     sys.exit(1)
 
 
-def datafile_search(dm, diffs, mtime, dryrun=False, deep=False):
+def search_and_upload(dm, mtime, use_s3=False, dryrun=False):
 
     new_files = pd.DataFrame()
 
-    if deep or dryrun:
-        # setting the folders arg of find_datafiles to none looks in ALL folders
-        diffs = (None, None)
-
     for pagename in dm.pagenames:
-
-        if diffs == ([], []):
-            continue
-
-        new_files, new_datasets = dm.find_page_files(
+        new_files, _ = dm.find_page_files(
             page=pagename,
-            source_folders=diffs[0],
-            raw_folders=diffs[1],
-            since=mtime,
+            since=mtime
         )
 
         signal.signal(signal.SIGINT, sigint_write_pending)
@@ -136,8 +129,9 @@ def datafile_search(dm, diffs, mtime, dryrun=False, deep=False):
             new_files,
             do_pending=True,
             run_preuploads=True,
+            do_s3_diff=use_s3,
             progress=100,
-            dryrun=args.dryrun
+            dryrun=dryrun
         )
 
     return new_files
@@ -146,6 +140,8 @@ def datafile_search(dm, diffs, mtime, dryrun=False, deep=False):
 def main(args):
 
     dm = init_server()
+
+    mtime = dm.local_sync.get('timestamp', 0)
 
     lock = Path(dm.sync_folder, LOCKFILE)
 
@@ -156,23 +152,16 @@ def main(args):
         lockfp.write('{0} {1}'.format(os.getpid(), time.time()))
 
     if args.fresh:
-        deep = True
+        mtime = 0
         # Delete all monitoring files
         for f in Path(dm.sync_folder).iterdir():
             if f.name != LOCKFILE:
                 f.unlink()
 
-    source_diffs, raw_diffs, mtime = stat_compare(dm)
-
-    deep = sorted(dm.local_sync['input_patterns']) \
-        != sorted(dm.all_input_patterns)
-
-    new_files = datafile_search(
+    new_files = search_and_upload(
         dm,
-        (source_diffs, raw_diffs),
         mtime,
         dryrun=args.dryrun,
-        deep=deep
     )
 
     if args.dryrun:
@@ -195,4 +184,5 @@ def main(args):
 if __name__ == '__main__':
     os.chdir(WF_HOME)
     args = process_args()
+    breakpoint()
     main(args)
