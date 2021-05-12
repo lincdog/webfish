@@ -445,12 +445,8 @@ class DataServer:
             if empty_or_false(page.datafiles):
                 continue
 
-            page_raw_diff = set(page.datafiles['filename'].values) -\
-                set(raw_keys)
-            page_source_diff = set(page.datafiles['filename'].values) -\
-                set(source_keys)
-
-            page_diff = page_raw_diff | page_source_diff
+            page_diff = set(page.datafiles['filename'].values) -\
+                        (set(raw_keys) | set(source_keys))
 
             self.pages[pagename].s3_diff = page.datafiles.query('filename in @page_diff').copy()
 
@@ -749,7 +745,7 @@ class DataServer:
     @staticmethod
     def _preupload_revert(name):
         if '__' not in Path(name).name:
-            return name
+            return str(name)
 
         return str(Path(name).with_name(
             str(name).split('__')[1]))
