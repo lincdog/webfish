@@ -478,7 +478,7 @@ class DataServer:
         self,
         folders=None,
     ):
-        possible_folders, fields = find_matching_files(
+        possible_folders, fields, mtimes = find_matching_files(
             self.master_root,
             self.dataset_root)
         fields['folder'] = possible_folders
@@ -498,7 +498,7 @@ class DataServer:
         folders=None,
     ):
 
-        possible_folders, fields = find_matching_files(
+        possible_folders, fields, mtimes = find_matching_files(
             self.raw_master_root,
             self.raw_dataset_root)
         fields['folder'] = possible_folders
