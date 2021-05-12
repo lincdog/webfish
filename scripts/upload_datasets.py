@@ -110,9 +110,6 @@ def sigint_write_pending(signo, frame):
 
 
 def search_and_upload(dm, mtime, use_s3=False, dryrun=False):
-    # read in the s3 keys, unless --check-s3 is specified, from the local
-    # cached listing.
-    dm.check_s3_contents(use_local=(not use_s3))
 
     new_files = pd.DataFrame()
 
@@ -122,8 +119,13 @@ def search_and_upload(dm, mtime, use_s3=False, dryrun=False):
             since=mtime
         )
 
-        signal.signal(signal.SIGINT, sigint_write_pending)
+    # read in the s3 keys, unless --check-s3 is specified, from the local
+    # cached listing.
+    dm.check_s3_contents(use_local=(not use_s3))
 
+    signal.signal(signal.SIGINT, sigint_write_pending)
+
+    for pagename in dm.pagenames:
         dm.upload_to_s3(
             pagename,
             new_files,
