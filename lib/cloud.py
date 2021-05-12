@@ -718,7 +718,7 @@ class DataServer:
                 current_files = self.local_sync[name].get('file_table', None)
                 updated_files = pd.concat([current_files, self.pages[name].datafiles])
 
-                if page.have_run_preuploads:
+                if self.pages[name].have_run_preuploads:
                     preup_filenames = []
 
                     for row in updated_files.itertuples():
