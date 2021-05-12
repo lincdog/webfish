@@ -765,8 +765,6 @@ class DataServer:
         nthreads=6
     ):
         page = self.pages[pagename]
-        if file_df is None:
-            file_df = page.datafiles
 
         if not page.preupload_class:
             return file_df, []
