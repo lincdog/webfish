@@ -623,7 +623,7 @@ class DataServer:
         elif folders == []:
             return pd.DataFrame()
 
-        filenames, fields = find_matching_files(
+        filenames, fields, mtimes = find_matching_files(
             str(self.master_root),
             str(Path(self.dataset_root, pattern)),
             paths=paths,
@@ -632,6 +632,7 @@ class DataServer:
 
         if filenames:
             fields['source_key'] = key
+            fields['mtime'] = mtimes
             fields['filename'] = [f.relative_to(self.master_root) for f in filenames]
             return pd.DataFrame(fields, dtype=str)
         else:
@@ -655,7 +656,7 @@ class DataServer:
         elif folders == []:
             return pd.DataFrame()
 
-        filenames, fields = find_matching_files(
+        filenames, fields, mtimes = find_matching_files(
             str(self.raw_master_root),
             str(Path(self.raw_dataset_root, pattern)),
             paths=paths,
@@ -664,6 +665,7 @@ class DataServer:
 
         if filenames:
             fields['source_key'] = key
+            fields['mtime'] = mtimes
             fields['filename'] = [f.relative_to(self.raw_master_root) for f in filenames]
             return pd.DataFrame(fields, dtype=str)
         else:
@@ -884,6 +886,7 @@ class DataServer:
     def upload_to_s3(
         self,
         pagename,
+        since=0,
         file_df=None,
         run_preuploads=True,
         do_pending=False,
@@ -919,6 +922,8 @@ class DataServer:
         if run_preuploads:
             file_df, errors = self.run_preuploads(
                 pagename, file_df=file_df, nthreads=10)
+
+        file_df = file_df.query('mtime > @since').copy()
 
         if empty_or_false(file_df):
             return page.pending

@@ -116,7 +116,6 @@ def search_and_upload(dm, mtime, use_s3=False, dryrun=False):
     for pagename in dm.pagenames:
         new_files, _ = dm.find_page_files(
             pagename=pagename,
-            since=mtime
         )
 
     # read in the s3 keys, unless --check-s3 is specified, from the local
@@ -128,6 +127,7 @@ def search_and_upload(dm, mtime, use_s3=False, dryrun=False):
     for pagename in dm.pagenames:
         dm.upload_to_s3(
             pagename,
+            since=mtime,
             do_pending=True,
             run_preuploads=True,
             do_s3_diff=use_s3,

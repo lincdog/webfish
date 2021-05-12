@@ -406,6 +406,7 @@ def find_matching_files(base, fmt, paths=None, modified_since=0):
     base = PurePath(base)
 
     files = []
+    mtimes = []
     keys = {}
 
     if paths is None:
@@ -417,16 +418,16 @@ def find_matching_files(base, fmt, paths=None, modified_since=0):
         m = reg.match(str(f.relative_to(base)))
 
         if m:
-            if os.stat(f).st_mtime > modified_since:
-                files.append(f)
+            mtimes.append(os.stat(f).st_mtime)
+            files.append(f)
 
-                for k, v in m.groupdict().items():
-                    if k not in keys.keys():
-                        keys[k] = []
+            for k, v in m.groupdict().items():
+                if k not in keys.keys():
+                    keys[k] = []
 
-                    keys[k].append(v)
+                keys[k].append(v)
 
-    return files, keys
+    return files, keys, mtimes
 
 
 def fmts2file(*fmts, fields={}):
