@@ -16,7 +16,7 @@ from lib.util import (
     notempty
 )
 
-LOCKFILE = f'{__file__}.lck'
+LOCKFILE = f'upload_datasets.lck'
 
 
 def process_args():
@@ -45,9 +45,6 @@ def init_server():
 
     dm = cloud.DataServer(config=config, s3_client=s3c)
     dm.read_local_sync()
-    # read in the s3 keys, unless --check-s3 is specified, from the local
-    # cached listing.
-    dm.check_s3_contents(use_local=(not args.check_s3))
 
     return dm
 
@@ -113,12 +110,15 @@ def sigint_write_pending(signo, frame):
 
 
 def search_and_upload(dm, mtime, use_s3=False, dryrun=False):
+    # read in the s3 keys, unless --check-s3 is specified, from the local
+    # cached listing.
+    dm.check_s3_contents(use_local=(not use_s3))
 
     new_files = pd.DataFrame()
 
     for pagename in dm.pagenames:
         new_files, _ = dm.find_page_files(
-            page=pagename,
+            pagename=pagename,
             since=mtime
         )
 
@@ -141,7 +141,7 @@ def main(args):
 
     dm = init_server()
 
-    mtime = dm.local_sync.get('timestamp', 0)
+    mtime = dm.local_sync['timestamp'] or 0
 
     lock = Path(dm.sync_folder, LOCKFILE)
 

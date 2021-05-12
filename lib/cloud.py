@@ -902,12 +902,15 @@ class DataServer:
         page = self.pages[pagename]
 
         if do_pending:
-            file_df = pd.concat([page.pending, file_df]).drop_duplicates(
+            local_pending = self.local_sync.get(pagename, {}).get('pending_uploads')
+            file_df = pd.concat(
+                [page.pending, file_df, local_pending]).drop_duplicates(
                 subset='filename', ignore_index=True)
 
         if do_s3_diff:
             if not empty_or_false(page.s3_diff):
-                file_df = pd.concat([page.s3_diff, file_df]).drop_duplicates(
+                file_df = pd.concat(
+                    [page.s3_diff, file_df]).drop_duplicates(
                     subset='filename', ignore_index=True)
 
         if run_preuploads:
