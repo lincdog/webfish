@@ -250,6 +250,7 @@ class Page:
         self.input_patterns = self.source_patterns | self.raw_patterns
         self.input_preuploads = self.source_preuploads | self.raw_preuploads
         self.has_preupload = [k for k, v in self.input_preuploads.items() if v]
+        self.have_run_preuploads = False
 
         # Output files and generators
         self.output_patterns = {}
@@ -306,7 +307,6 @@ class DataServer:
 
         self.local_store = config.get('local_store', 'webfish_data/')
         self.preupload_root = config.get('preupload_root')
-        self.have_run_preuploads = False
 
         self.all_datasets = pd.DataFrame()
         self.all_raw_datasets = pd.DataFrame()
@@ -445,7 +445,15 @@ class DataServer:
             if empty_or_false(page.datafiles):
                 continue
 
-            page_diff = set(page.datafiles['filename'].values) -\
+            if page.have_run_preuploads:
+                # If we already ran preuploads on this set, our local files will
+                # have a new name. we actually need to revert it
+                local_filenames = [self._preupload_revert(f)
+                                       for f in page.datafiles['filename'].values]
+            else:
+                local_filenames = page.datafiles['filename'].values
+
+            page_diff = set(local_filenames) -\
                         (set(raw_keys) | set(source_keys))
 
             self.pages[pagename].s3_diff = page.datafiles.query('filename in @page_diff').copy()
@@ -840,6 +848,8 @@ class DataServer:
             keep='last', inplace=True, ignore_index=True
         )
 
+        self.pages[pagename].have_run_preuploads = True
+
         return output_df, errors
 
     def upload_to_s3(
@@ -863,9 +873,6 @@ class DataServer:
         breakpoint()
         page = self.pages[pagename]
 
-        if empty_or_false(file_df):
-            file_df = page.datafiles
-
         if do_pending:
             file_df = pd.concat([page.pending, file_df]).drop_duplicates(
                 subset='filename', ignore_index=True)
@@ -879,8 +886,13 @@ class DataServer:
             file_df, errors = self.run_preuploads(
                 pagename, file_df=file_df, nthreads=10)
 
+        if empty_or_false(file_df):
+            file_df = page.datafiles
+
         p = 0
         total = len(file_df)
+
+        file_df = file_df.reset_index(drop=True)
 
         self.pages[pagename].pending = file_df.copy()
 
