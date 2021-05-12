@@ -775,7 +775,7 @@ class DataServer:
             return file_df, []
 
         if file_df.empty:
-            return page.datafiles, []
+            return file_df, []
 
         keys_with_preuploads = page.has_preupload
         rel_files = file_df.query('source_key in @keys_with_preuploads')
