@@ -834,7 +834,8 @@ class DataServer:
                                 # update the filename
                                 output_df.loc[
                                     output_df['filename'] == old_fname, 'filename'] = new_fname
-                                done += 1
+
+                            done += 1
 
         self.pages[pagename].datafiles = pd.concat([self.pages[pagename].datafiles, output_df])
         # This drops any duplicates that did not get their filename modified
