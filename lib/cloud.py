@@ -901,6 +901,9 @@ class DataServer:
         """
         page = self.pages[pagename]
 
+        if not isinstance(file_df, pd.DataFrame):
+            file_df = pd.DataFrame()
+
         if do_pending:
             local_pending = self.local_sync.get(pagename, {}).get('pending_uploads')
             file_df = pd.concat(
