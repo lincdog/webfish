@@ -115,7 +115,7 @@ def sigint_write_pending(signo, frame):
     sys.exit(1)
 
 
-def search_and_upload(dm, mtime, use_s3=False, dryrun=False):
+def search_and_upload(dm, mtime, use_s3_only=False, check_s3=False, dryrun=False):
 
     new_files = {}
 
@@ -128,7 +128,7 @@ def search_and_upload(dm, mtime, use_s3=False, dryrun=False):
 
     # read in the s3 keys, unless --check-s3 is specified, from the local
     # cached listing.
-    dm.check_s3_contents(use_local=(not use_s3))
+    dm.check_s3_contents(use_local=(not check_s3))
 
     signal.signal(signal.SIGINT, sigint_write_pending)
 
@@ -139,6 +139,7 @@ def search_and_upload(dm, mtime, use_s3=False, dryrun=False):
             do_pending=True,
             run_preuploads=True,
             do_s3_diff=True,
+            use_s3_only=use_s3_only,
             progress=100,
             dryrun=dryrun
         )
@@ -170,6 +171,8 @@ def main(args):
     new_files = search_and_upload(
         dm,
         mtime,
+        use_s3_only=args.use_s3_only,
+        check_s3=args.check_s3,
         dryrun=args.dryrun,
     )
 
