@@ -35,6 +35,9 @@ def process_args():
                              'the difference between local files and cloud storage.'
                              ' Somewhat slow to list many objects.')
 
+    parser.add_argument('--since',
+                        help='')
+
     return parser.parse_args()
 
 

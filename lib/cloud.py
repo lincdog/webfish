@@ -360,6 +360,7 @@ class DataServer:
 
         self.local_sync = dict.fromkeys(self.sync_contents.keys(), None)
         self.s3_keys = {'raw': [], 'source': []}
+        self.new_source_keys = []
 
     def read_local_sync(
         self,
@@ -376,7 +377,13 @@ class DataServer:
                 if name in ('all_datasets', 'all_raw_datasets'):
                     self.local_sync[name] = pd.read_csv(item, dtype=str)
                 elif name == 'input_patterns':
-                    self.local_sync[name] = open(item).read().split()
+                    local_patterns = open(item).read().split()
+                    self.new_source_keys = [
+                        k for k, v in self.all_input_patterns.items()
+                        if v not in local_patterns
+                    ]
+
+                    self.local_sync[name] = local_patterns
                 elif name == 'timestamp':
                     self.local_sync[name] = float(open(item).read().strip())
                 elif name == 's3_keys':
@@ -775,6 +782,7 @@ class DataServer:
         if source_key not in page.has_preupload:
             return oldname
 
+        # Remove any existing preupload prefix if present
         oldname = self._preupload_revert(oldname)
 
         preupload_func = page.input_preuploads[source_key]
@@ -788,6 +796,8 @@ class DataServer:
         if '__' not in Path(name).name:
             return str(name)
 
+        # we return the last element of the split string in case
+        # there were multiple prefixes
         return str(Path(name).with_name(
             str(name).split('__')[-1]))
 
@@ -906,23 +916,36 @@ class DataServer:
         page = self.pages[pagename]
 
         if not isinstance(file_df, pd.DataFrame):
-            file_df = pd.DataFrame()
+            file_df = page.datafiles
 
+        # Filter by last modified time
         if 'mtime' in file_df.columns:
             file_df = file_df.astype({'mtime': float})
             file_df = file_df.query('mtime > @since').copy()
 
+        # Add any pending files if present
         if do_pending:
             local_pending = self.local_sync.get(pagename, {}).get('pending_uploads')
             file_df = pd.concat(
                 [page.pending, file_df, local_pending]).drop_duplicates(
                 subset='filename', ignore_index=True)
 
+        # Add files present locally but not on s3
         if do_s3_diff:
             if not empty_or_false(page.s3_diff):
                 file_df = pd.concat(
                     [page.s3_diff, file_df]).drop_duplicates(
                     subset='filename', ignore_index=True)
+
+        # Add files from any new source keys (that are present in our
+        # current config but not in the locally saved one)
+        # Note that s3_diff should catch these too, as these files
+        # will not have been uploaded before.
+        if self.new_source_keys:
+            nsks = self.new_source_keys
+            file_df = pd.concat(
+                [file_df, page.datafiles.query('source_key in @nsks')]
+            ).drop_duplicates(subset='filename', ignore_index=True)
 
         if run_preuploads:
             file_df, errors = self.run_preuploads(
@@ -955,9 +978,11 @@ class DataServer:
             p += 1
 
             if row.source_key in page.source_files.keys():
+                s3_type = 'source'
                 root = self.master_root
                 key_prefix = self.analysis_folder
             elif row.source_key in page.raw_files.keys():
+                s3_type = 'raw'
                 root = self.raw_master_root
                 key_prefix = self.raw_folder
 
@@ -975,6 +1000,7 @@ class DataServer:
                 )
 
                 self.pages[pagename].pending.drop(index=row.Index, inplace=True)
+                self.s3_keys[s3_type].append(str(keyname))
 
             except Exception as ex:
                 print(f'problem uploading file {row.filename}: {ex}')
