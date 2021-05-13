@@ -829,7 +829,10 @@ class DataServer:
             return file_df, {}
 
         keys_with_preuploads = page.has_preupload
-        rel_files = file_df.query('source_key in @keys_with_preuploads')
+
+        file_df = file_df.reset_index(drop=True)
+
+        rel_files = file_df.query('source_key in @keys_with_preuploads').copy()
 
         output_df = file_df.copy()
         savedir = Path(self.preupload_root)
