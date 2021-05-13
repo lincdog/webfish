@@ -775,6 +775,8 @@ class DataServer:
         if source_key not in page.has_preupload:
             return oldname
 
+        oldname = self._preupload_revert(oldname)
+
         preupload_func = page.input_preuploads[source_key]
 
         return str(Path(oldname).with_name(
@@ -787,7 +789,7 @@ class DataServer:
             return str(name)
 
         return str(Path(name).with_name(
-            str(name).split('__')[1]))
+            str(name).split('__')[-1]))
 
     def run_preuploads(
         self,
