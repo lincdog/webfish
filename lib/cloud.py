@@ -798,13 +798,13 @@ class DataServer:
         page = self.pages[pagename]
 
         if not page.preupload_class:
-            return file_df, []
+            return file_df, {}
 
         if not page.has_preupload:
-            return file_df, []
+            return file_df, {}
 
         if file_df.empty:
-            return file_df, []
+            return file_df, {}
 
         keys_with_preuploads = page.has_preupload
         rel_files = file_df.query('source_key in @keys_with_preuploads')
@@ -831,7 +831,7 @@ class DataServer:
             preupload_func = page.input_preuploads[key]
 
             in_format = str(Path(data_root, page.input_patterns[key]))
-            out_format = self._preupload_newname(in_format, key)
+            out_format = self._preupload_newname(in_format, pagename, key)
 
             with ThreadPoolExecutor(max_workers=nthreads) as exe:
                 futures = {}
