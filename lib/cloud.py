@@ -1025,7 +1025,7 @@ class DataServer:
                 )
 
                 self.pages[pagename].pending.drop(index=row.Index, inplace=True)
-                self.s3_keys[s3_type].append(str(keyname))
+                self.s3_keys[s3_type].append(row.filename)
 
             except Exception as ex:
                 server_logger.warning(f'problem uploading file {row.filename}: {ex}')
