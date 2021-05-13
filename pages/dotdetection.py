@@ -1,8 +1,6 @@
-import json
 import tifffile as tif
 import numpy as np
 import pandas as pd
-from pathlib import Path
 
 import dash_core_components as dcc
 import dash_html_components as html
@@ -15,6 +13,7 @@ import plotly.graph_objects as go
 
 from app import app, config, s3_client
 from lib import cloud
+from lib.util import ImageMeta
 
 data_client = cloud.DataClient(
     config=config,
@@ -36,20 +35,24 @@ def gen_image_figure(
     #   Z, C, X, Y order! May need ImageMeta-type reading to ensure we get it right
 
     if len(imfile) > 0:
-        image = tif.imread(imfile[0])
+        image = ImageMeta(imfile[0]).asarray()
+    else:
+        return {}
 
     hyb = int(hyb)
-    hyb_q = hyb + 1
+    hyb_q = hyb
+    # 'z' column in locations.csv starts at 0
     z_slice = int(z_slice)
-    z_slice_q = z_slice + 1
+    z_slice_q = z_slice
+    # 'ch' column in locations.csv starts at 1
     channel = int(channel)
     channel_q = channel + 1
 
     if z_slice >= 0:
-        img_select = image[z_slice, channel]
+        img_select = image[channel, z_slice]
         dots_query = 'hyb == @hyb_q and ch == @channel_q and z == @z_slice_q'
     else:
-        img_select = np.max(image[:, channel], axis=0)
+        img_select = np.max(image[channel], axis=0)
         dots_query = 'hyb == @hyb_q and ch == @channel_q'
 
     fig = px.imshow(
@@ -70,8 +73,8 @@ def gen_image_figure(
         print(dots_query, dots_select.info())
 
         fig.add_trace(go.Scatter(
-            x=dots_select['x'].values - 1,
-            y=dots_select['y'].values - 1,
+            x=dots_select['x'].values,
+            y=dots_select['y'].values,
             mode='markers',
             marker_symbol='cross',
             marker=dict(
@@ -84,7 +87,7 @@ def gen_image_figure(
 
 
 @app.callback(
-    Output('dd-fig', 'figure'),
+    Output('dd-graph-wrapper', 'children'),
     Input('dd-z-select', 'value'),
     Input('dd-chan-select', 'value'),
     Input('dd-contrast-slider', 'value'),
@@ -123,15 +126,17 @@ def update_image_params(
     print(f'hyb_fov: {hyb_fov}')
     print(f'dot locations: {dot_locations}')
 
-    return gen_image_figure(hyb_fov, dot_locations, hyb, z, channel, contrast)
+    figure = gen_image_figure(hyb_fov, dot_locations, hyb, z, channel, contrast)
+
+    return dcc.Graph(figure=figure, id='dd-fig')
 
 
 @app.callback(
     Output('dd-image-params-wrapper', 'children'),
     Input('dd-position-select', 'value'),
     Input('dd-hyb-select', 'value'),
-    State('dd-dataset-select', 'value'),
-    State('dd-user-select', 'value')
+    Input('dd-dataset-select', 'value'),
+    Input('dd-user-select', 'value')
 )
 def select_pos_hyb(position, hyb, dataset, user):
     if not all((position, hyb, dataset, user)):
@@ -146,7 +151,9 @@ def select_pos_hyb(position, hyb, dataset, user):
         return html.H2(f'No image file for dataset {user}/{dataset} '
                        f'hyb {hyb} position {position} found!')
 
-    image = tif.imread(imagefile['hyb_fov'])
+    image = tif.imread(imagefile['hyb_fov'][0])
+
+    print(imagefile['hyb_fov'], image.shape)
 
     z_range = range(image.shape[0])
     chan_range = range(image.shape[1])
@@ -183,7 +190,7 @@ def select_pos_hyb(position, hyb, dataset, user):
 @app.callback(
     Output('dd-analysis-select-wrapper', 'children'),
     Input('dd-dataset-select', 'value'),
-    State('dd-user-select', 'value')
+    Input('dd-user-select', 'value')
 )
 def select_dataset_analysis(dataset, user):
     if not dataset:
@@ -206,7 +213,7 @@ def select_dataset_analysis(dataset, user):
 @app.callback(
     Output('dd-image-select-wrapper', 'children'),
     Input('dd-dataset-select', 'value'),
-    State('dd-user-select', 'value')
+    Input('dd-user-select', 'value')
 )
 def select_dataset_image(dataset, user):
     if not dataset:
@@ -280,7 +287,7 @@ layout = html.Div([
         ], style={'border-right': '1px solid gray'}, width=4),
 
         dbc.Col([
-            dcc.Graph(id='dd-fig')
+            dcc.Loading(dcc.Graph(id='dd-fig'), id='dd-graph-wrapper')
         ], id='dd-fig-col')
     ])
 ])

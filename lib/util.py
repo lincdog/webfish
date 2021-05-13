@@ -8,9 +8,323 @@ import json
 import re
 import os
 import string
+import numbers
 from pathlib import Path, PurePath
 import base64
 from matplotlib.pyplot import get_cmap
+
+
+class ImageMeta(tif.TiffFile):
+    """
+    ImageMeta:
+    class for grabbing important metadata from a micromanager tif file.
+
+    Basic cases:
+    1. We know which axis is C, which is Z via the MM metadata, or the series
+    axes order
+
+    We then just need to make sure Y and X are the last two axes, then reshape to
+    CZYX, inserting length-1 dimensions for C or Z if one is lacking.
+
+    2. We don't know which axis is C and which is Z because the series axes order
+    contains alternate letters (I, Q, S, ...)
+
+    We still need to make sure Y and X are the last two axes. But we have to guess
+    at the C and Z axes. The policy currently used is:
+    * If a non-YX axis is longer than `max_channels` (default 6), it will be assigned to Z no matter what
+    * If two non-YX axes are present, the longer one will be assigned to Z, the shorter to C
+    * If one non-YX axis is present, it will be assigned to C (unless it is longer than max_channels)
+
+    3. We know the number of channels and slices, but in the series they are combined into
+    one axis
+
+    We still make sure Y and X are the last axes. We verify that the length of the third
+    axis is equal to channels*slices. By default, channels are assumed to vary slower (i.e. first axis)),
+    unless the IJ/MM metadata says otherwise. Reshape using (channels, slices, Y, X).
+    """
+
+    def __init__(
+        self,
+        tifffile,
+        pixelsize_yx=None,
+        pixelsize_z=None,
+        axes=None,
+        slices_first=None,
+        max_channels=6
+    ):
+
+        if isinstance(tifffile, type(super())):
+            self = tifffile
+        else:
+            super().__init__(tifffile)
+
+        self.shape = None
+        self.channels = 1
+        self.slices = 1
+
+        self.channelnames = None
+
+        self.slices_first = False
+        self.indextable = None
+        self.rawarray = None
+        self.array = None
+
+        # This is a string like 'CZXY'
+        self.series_axes = self.series[0].axes
+        # This is the actual shape of the raw image that will be loaded in
+        self.series_shape = self.series[0].shape
+        # The positions of relevant axes in the axes string
+        self.series_order = {a: self.series_axes.find(a) for a in ('C', 'Z', 'Y', 'X', 'I', 'Q')}
+
+        if self.series_order['Y'] < 0 or self.series_order['X'] < 0:
+            raise np.AxisError(
+                f'ImageMeta: TIF axes string was {self.series_axes}, needs to have Y and X')
+
+        # The position of the Y and X axes
+        self.yx = (self.series_order['Y'], self.series_order['X'])
+        # The position of all other axes
+        self.nonyx = tuple(set(i for i in range(len(self.series_axes))) - set(self.yx))
+
+        self.height = self.series_shape[self.series_order['Y']]
+        self.width = self.series_shape[self.series_order['X']]
+
+        self.series_dtype = self.series[0].dtype
+
+        try:
+            self.ij_metadata = self.imagej_metadata
+            self.mm_metadata = self.micromanager_metadata
+            self.sh_metadata = self.shaped_metadata
+        except AttributeError:
+            # Even if the image lacks these, if opened with tifffile they exist as None
+            raise ValueError('ImageMeta: supplied image lacks `imagej_metadata`'
+                             ' or `micromanager_metadata` attribute. Open with `tifffile`.')
+
+        self.indextable = None
+
+        # MICROMANAGER METADATA
+        # Has IndexMap which unambiguously tells us the non-YX axis order
+        # We later set "SlicesFirst" using this rather than the metadata
+        if self.mm_metadata is not None:
+
+            self.metadata = self.mm_metadata['Summary']
+
+            if 'IndexMap' in self.mm_metadata.keys():
+                self.indextable = self.mm_metadata['IndexMap']
+            else:
+                self.slices_first = self.metadata['SlicesFirst']
+
+        # IMAGEJ METADATA
+        # 'Info' is identical (I think) to MM metadata
+        # If not present, there is still an outer level with channels, slices count.
+        elif self.ij_metadata is not None:
+
+            if 'Info' in self.ij_metadata.keys():
+                self.ij_metadata['Info'] = json.loads(self.ij_metadata['Info'])
+                self.metadata = self.ij_metadata['Info']
+                self.slices_first = self.metadata['SlicesFirst']
+            else:
+                self.metadata = self.ij_metadata
+
+        # SHAPED METADATA
+        # This is added for any file written with tifffile, I think.
+        # It minimally just describes the shape of the array at the time of writing.
+        elif self.sh_metadata is not None:
+
+            self.metadata = None
+
+            if 'shape' in self.sh_metadata[0].keys():
+
+                self.shape = self.sh_metadata[0]['shape']
+
+                self.height = self.series_shape[self.series_order['Y']] # y extent
+                self.width = self.series_shape[self.series_order['X']] # x extent
+
+                # Prepare to guess which is C, which is Z
+                shape_temp = list(self.shape).copy()
+                shape_temp.remove(self.height)
+                shape_temp.remove(self.width)
+
+                # If we can find C, set it. Else, take the minimum non-YX axis.
+                if self.series_order['C'] != -1:
+                    self.channels = self.series_shape[self.series_order['C']]
+                elif len(shape_temp) > 0:
+                    self.channels = min(shape_temp)
+                    shape_temp.remove(self.channels)
+                else:
+                    self.channels = 1
+
+                # If we can find Z, set it. Else, take the maximum remaining non-YX axis
+                if self.series_order['Z'] != -1:
+                    self.slices = self.series_shape[self.series_order['Z']]
+                elif len(shape_temp) > 0:
+                    self.slices = max(shape_temp)
+                    shape_temp.remove(self.slices)
+                else:
+                    self.slices = 1
+
+        # NO METADATA
+        # Without any metadata, we have to guess just like above.
+        else:
+
+            self.metadata = None
+            self.shape = self.series_shape
+
+            self.height = self.series_shape[self.series_order['Y']]
+            self.width = self.series_shape[self.series_order['X']]
+
+            shape_temp = list(self.shape).copy()
+            shape_temp.remove(self.height)
+            shape_temp.remove(self.width)
+
+            # If we can find C, set it. Else, take the minimum non-YX axis.
+            if self.series_order['C'] != -1:
+                self.channels = self.series_shape[self.series_order['C']]
+            elif len(shape_temp) > 0:
+                self.channels = min(shape_temp)
+                shape_temp.remove(self.channels)
+            else:
+                self.channels = 1
+
+            # If we can find Z, set it. Else, take the maximum remaining non-YX axis
+            if self.series_order['Z'] != -1:
+                self.slices = self.series_shape[self.series_order['Z']]
+            elif len(shape_temp) > 0:
+                self.slices = max(shape_temp)
+                shape_temp.remove(self.slices)
+            else:
+                self.slices = 1
+
+        # If we were able to find IJ/MM metadata,
+        # use it to set all the attributes
+        if self.metadata is not None:
+            for k, v in self.metadata.items():
+
+                if k.lower() == 'slices':
+                    self.slices = v
+
+                if k.lower() == 'channels':
+                    self.channels = v
+
+                if k.lower() == 'pixelsize_um' and pixelsize_yx is None:
+                    pixelsize_yx = v
+
+                if k.lower() == 'chnames':
+                    self.channelnames = v
+
+                if k.lower() == 'height':
+                    self.height = v
+
+                if k.lower() == 'width':
+                    self.width = v
+
+        if self.indextable is not None:
+
+            try:
+                slice1_ind = self.indextable['Slice'].index(1)
+            except ValueError:
+                slice1_ind = 0
+
+            try:
+                chan1_ind = self.indextable['Channel'].index(1)
+            except ValueError:
+                chan1_ind = 0
+
+            # if slices increase slower than channels
+            if slice1_ind > chan1_ind:
+                self.slices_first = True
+
+        # Regardless of other things, if we have assigned a channel count
+        # higher than max_channels, switch channels and slices.
+        if self.channels > max_channels:
+            ctmp = self.channels
+            self.channels = self.slices
+            self.slices = ctmp
+
+        # Set default pixel dimensions if they were not supplied
+        # nor set from metadata
+        if pixelsize_yx is None:
+            pixelsize_yx = (1.0, 1.0)
+
+        if pixelsize_z is None:
+            pixelsize_z = 0.5
+
+        # Assemble 3D pixel size
+        if isinstance(pixelsize_yx, numbers.Number):
+            self.pixelsize = (pixelsize_z, pixelsize_yx, pixelsize_yx)
+        elif hasattr(pixelsize_yx, '__iter__'):
+            self.pixelsize = (pixelsize_z,) + tuple(i for i in pixelsize_yx)
+        else:
+            self.pixelsize = (pixelsize_z, 1., 1.)
+
+        if slices_first is not None:
+            self.slices_first = slices_first
+
+        self.shape = (self.channels, self.slices, self.height, self.width)
+
+    def validate(
+        self,
+        channels,
+        slices,
+        height,
+        width,
+        shape=None
+    ):
+        if hasattr(shape, '__iter__'):
+            return all([a == b for a, b in zip(self.shape, shape)])
+
+        return self.shape == (channels, slices, height, width)
+
+    def asarray(
+        self,
+        raw=False,
+        **kwargs
+    ):
+        """
+        asarray
+        -------
+        Get the numpy ndarray of this image, correctly reshaped
+        according to the metadata.
+        """
+
+        self.rawarray = super().asarray(**kwargs)
+        self.array = None
+
+        if raw:
+            return self.rawarray
+
+        if self.rawarray.shape != self.shape:
+
+            # first, make sure Y and X are last two axes
+            transpose = self.nonyx + self.yx
+
+            self.array = self.rawarray.transpose(transpose)
+
+            if self.rawarray.ndim == 4:
+
+                # If slices vary slower than channels, we actually have to reshape,
+                # not just transpose. I think.
+                if self.slices_first:
+                    self.array = self.array.reshape(self.shape)
+
+                # The only way this could happen is if channels and slices are switched
+                if self.array.shape != self.shape:
+                    self.array = self.array.transpose((1, 0, 2, 3))
+
+            elif self.rawarray.ndim == 3:
+                # find which axis equals channels*slices
+                try:
+                    axis_to_split = self.rawarray.shape.index(self.channels*self.slices)
+                except ValueError:
+                    raise np.AxisError(
+                        f'3D image must have one axis of size channels*slices = {self.channels*self.slices}')
+                # This handles cases where C or Z is 1 too
+                self.array = self.array.reshape(self.shape)
+
+            elif self.rawarray.ndim == 2:
+
+                self.array = self.rawarray.reshape((1, 1, self.height, self.width))
+
+        return self.array
 
 
 def compress_8bit(
@@ -19,7 +333,7 @@ def compress_8bit(
     outfile=None
 ):
 
-    im = tif.imread(imgfilename)
+    im = ImageMeta(imgfilename).asarray()
     with tif.TiffWriter(outfile) as imw:
         imw.write(skiu.img_as_ubyte(im), compression=compression)
 
