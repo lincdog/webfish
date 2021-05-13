@@ -27,7 +27,7 @@ def process_args():
 
     parser.add_argument('--fresh', action='store_true',
                         help='Erase all stored monitoring files and regenerate them. '
-                             'Note: if --dryrun is not specified, will begin '
+                             'Note: if --dryrun or --use-s3-only is not specified, will begin '
                              'uploading ALL datafiles.')
 
     parser.add_argument('--check-s3', action='store_true',
@@ -35,8 +35,11 @@ def process_args():
                              'the difference between local files and cloud storage.'
                              ' Somewhat slow to list many objects.')
 
-    parser.add_argument('--since',
-                        help='')
+    parser.add_argument('--use-s3-only', action='store_true',
+                        help='When deciding what files need to be uploaded, '
+                             'ONLY consider those that are present locally '
+                             'but missing from s3 - ignore modification times,'
+                             ' new input patterns, and any current pending files')
 
     return parser.parse_args()
 

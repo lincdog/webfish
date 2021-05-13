@@ -902,7 +902,8 @@ class DataServer:
         do_pending=False,
         do_s3_diff=False,
         progress=0,
-        dryrun=False
+        dryrun=False,
+        use_s3_only=False
     ):
         """
         upload_to_s3
@@ -911,7 +912,11 @@ class DataServer:
         performing preprocessing if specified in the config.
 
         The criteria to be uploaded is:
-        mtime > since OR file in page.pending OR file in page.s3_diff.
+        mtime > since OR file in page.pending OR file in page.s3_diff
+        OR source_key is new (not present in the saved input_patterns)
+        UNLESS use_s3_only == True, in which case we ONLY consider the
+        files present locally but not on s3. This is useful for starting
+        fresh with no local monitoring files but not uploading everything again.
         """
         page = self.pages[pagename]
 
@@ -930,13 +935,6 @@ class DataServer:
                 [page.pending, file_df, local_pending]).drop_duplicates(
                 subset='filename', ignore_index=True)
 
-        # Add files present locally but not on s3
-        if do_s3_diff:
-            if not empty_or_false(page.s3_diff):
-                file_df = pd.concat(
-                    [page.s3_diff, file_df]).drop_duplicates(
-                    subset='filename', ignore_index=True)
-
         # Add files from any new source keys (that are present in our
         # current config but not in the locally saved one)
         # Note that s3_diff should catch these too, as these files
@@ -946,6 +944,19 @@ class DataServer:
             file_df = pd.concat(
                 [file_df, page.datafiles.query('source_key in @nsks')]
             ).drop_duplicates(subset='filename', ignore_index=True)
+
+        # If this is specified, we don't care about any of the above criteria.
+        # And by definition we need to check the s3_diff.
+        if use_s3_only:
+            file_df = pd.DataFrame()
+            do_s3_diff = True
+
+        # Add files present locally but not on s3
+        if do_s3_diff:
+            if not empty_or_false(page.s3_diff):
+                file_df = pd.concat(
+                    [page.s3_diff, file_df]).drop_duplicates(
+                    subset='filename', ignore_index=True)
 
         if run_preuploads:
             file_df, errors = self.run_preuploads(
