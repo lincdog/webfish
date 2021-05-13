@@ -825,7 +825,7 @@ class DataServer:
         rel_files = file_df.query('source_key in @keys_with_preuploads')
 
         output_df = file_df.copy()
-        savedir = Path(self.preupload_root, pagename)
+        savedir = Path(self.preupload_root)
 
         errors = {}
 
