@@ -1,18 +1,17 @@
-import time
-
+import logging
+import os
+import sys
+import json
+import configparser as cfparse
+from time import time, sleep
+from datetime import datetime
+from pathlib import Path, PurePath
+from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
 import numpy as np
 import pandas as pd
 import boto3
 import botocore.exceptions as boto3_exc
-import os
-from time import sleep
-from datetime import datetime
-from pathlib import Path, PurePath
-import configparser as cfparse
-from collections import defaultdict
-import json
-from concurrent.futures import ThreadPoolExecutor
-import sys
 from lib.util import (
     gen_pcd_df,
     gen_mesh,
@@ -20,7 +19,6 @@ from lib.util import (
     find_matching_files,
     k2f,
     f2k,
-    ls_recursive,
     process_requires,
     source_keys_conv,
     process_file_entries,
@@ -680,7 +678,7 @@ class DataServer:
         upload=True
     ):
         if timestamp:
-            now = time.time()
+            now = time()
             with open(self.sync_contents['timestamp'], 'w') as ts:
                 ts.write(str(now)+'\n')
 
@@ -833,7 +831,7 @@ class DataServer:
             preupload_func = page.input_preuploads[key]
 
             in_format = str(Path(data_root, page.input_patterns[key]))
-            out_format = self._preupload_newname(in_format, pagename, key)
+            out_format = self._preupload_newname(in_format, key)
 
             with ThreadPoolExecutor(max_workers=nthreads) as exe:
                 futures = {}
@@ -928,6 +926,13 @@ class DataServer:
             file_df, errors = self.run_preuploads(
                 pagename, file_df=file_df, nthreads=10)
 
+            if any(errors.values()):
+                for fname, _ in errors.values():
+                    file_df.drop(
+                        index=file_df.query('filename == @fname').index,
+                        inplace=True
+                    )
+
         if empty_or_false(file_df):
             return file_df
 
@@ -954,7 +959,7 @@ class DataServer:
                 key_prefix = self.raw_folder
 
             if row.source_key in page.has_preupload:
-                root = Path(self.preupload_root, pagename)
+                root = Path(self.preupload_root)
 
             keyname = Path(key_prefix, row.filename)
             filename = Path(root, row.filename)
