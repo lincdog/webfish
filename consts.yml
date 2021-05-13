@@ -8,9 +8,9 @@ region_name: us-west-1
 master_root: /groups/CaiLab/analyses/
 raw_master_root: /groups/CaiLab/personal/
 
-sync_folder: sandbox_monitoring/
-analysis_folder: sandbox_analyses/
-raw_folder: sandbox_raw/
+sync_folder: monitoring/
+analysis_folder: analyses/
+raw_folder: raw/
 
 dataset_root: "{user}/{dataset}/{analysis}"
 raw_dataset_root: "{user}/raw/{dataset}"
