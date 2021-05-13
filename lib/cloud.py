@@ -900,12 +900,16 @@ class DataServer:
         Uploads a group of requested fields and keys to s3,
         performing preprocessing if specified in the config.
 
-        Analogous to DataClient.request().
+        The criteria to be uploaded is:
+        mtime > since OR file in page.pending OR file in page.s3_diff.
         """
         page = self.pages[pagename]
 
         if not isinstance(file_df, pd.DataFrame):
             file_df = pd.DataFrame()
+
+        if 'mtime' in file_df.columns:
+            file_df = file_df.query('mtime > @since').copy()
 
         if do_pending:
             local_pending = self.local_sync.get(pagename, {}).get('pending_uploads')
@@ -922,8 +926,6 @@ class DataServer:
         if run_preuploads:
             file_df, errors = self.run_preuploads(
                 pagename, file_df=file_df, nthreads=10)
-
-        file_df = file_df.query('mtime > @since').copy()
 
         if empty_or_false(file_df):
             return page.pending

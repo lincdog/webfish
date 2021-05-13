@@ -130,7 +130,7 @@ def search_and_upload(dm, mtime, use_s3=False, dryrun=False):
             since=mtime,
             do_pending=True,
             run_preuploads=True,
-            do_s3_diff=use_s3,
+            do_s3_diff=True,
             progress=100,
             dryrun=dryrun
         )
