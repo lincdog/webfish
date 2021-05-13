@@ -337,16 +337,16 @@ class DataServer:
 
         self.bucket_name = config.get('bucket_name')
 
-        pats = []
+        pats = {}
         for p in self.pages.values():
-            pats.extend(list(p.input_patterns.values()))
+            pats.update(p.input_patterns)
 
         self.all_input_patterns = pats
 
         self.sync_contents = {
             'all_datasets': Path(self.sync_folder, 'all_datasets.csv'),
             'all_raw_datasets': Path(self.sync_folder, 'all_raw_datasets.csv'),
-            'input_patterns': Path(self.sync_folder, 'input_patterns'),
+            'input_patterns': Path(self.sync_folder, 'input_patterns.json'),
             'timestamp': Path(self.sync_folder, 'TIMESTAMP'),
             's3_keys': Path(self.sync_folder, 's3_keys.json')
         }
@@ -373,14 +373,16 @@ class DataServer:
         sync_folder_contents = list(Path(self.sync_folder).iterdir())
 
         for name, item in self.sync_contents.items():
+
             if isinstance(item, Path) and item in sync_folder_contents:
                 if name in ('all_datasets', 'all_raw_datasets'):
                     self.local_sync[name] = pd.read_csv(item, dtype=str)
+
                 elif name == 'input_patterns':
-                    local_patterns = open(item).read().split()
+                    local_patterns = json.load(open(item))
                     self.new_source_keys = [
                         k for k, v in self.all_input_patterns.items()
-                        if v not in local_patterns
+                        if v not in local_patterns.values()
                     ]
 
                     self.local_sync[name] = local_patterns
@@ -390,6 +392,7 @@ class DataServer:
                     self.local_sync[name] = json.load(open(item))
                 else:
                     pass
+
             elif isinstance(item, dict):
                 if name in pagenames:
                     self.local_sync[name] = defaultdict(pd.DataFrame)
@@ -691,7 +694,7 @@ class DataServer:
 
         if patterns:
             with open(self.sync_contents['input_patterns'], 'w') as ips:
-                ips.write('\n'.join(self.all_input_patterns))
+                json.dump(self.all_input_patterns, ips)
 
         if s3_keys and any(self.s3_keys.values()):
             with open(self.sync_contents['s3_keys'], 'w') as s3kf:
