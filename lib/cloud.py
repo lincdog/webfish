@@ -909,6 +909,7 @@ class DataServer:
             file_df = pd.DataFrame()
 
         if 'mtime' in file_df.columns:
+            file_df = file_df.astype({'mtime': float})
             file_df = file_df.query('mtime > @since').copy()
 
         if do_pending:
@@ -928,7 +929,7 @@ class DataServer:
                 pagename, file_df=file_df, nthreads=10)
 
         if empty_or_false(file_df):
-            return page.pending
+            return file_df
 
         p = 0
         total = len(file_df)

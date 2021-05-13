@@ -111,12 +111,14 @@ def sigint_write_pending(signo, frame):
 
 def search_and_upload(dm, mtime, use_s3=False, dryrun=False):
 
-    new_files = pd.DataFrame()
+    new_files = {}
 
     for pagename in dm.pagenames:
-        new_files, _ = dm.find_page_files(
+        tmp, _ = dm.find_page_files(
             pagename=pagename,
         )
+        new_files[pagename] = len(tmp)
+        del tmp
 
     # read in the s3 keys, unless --check-s3 is specified, from the local
     # cached listing.
@@ -170,7 +172,7 @@ def main(args):
     else:
         verb = 'Uploaded'
 
-    print(f'{verb} {len(new_files)} files')
+    print(f'{verb} {new_files} files')
 
     dm.save_and_sync(
         pagenames=None,
