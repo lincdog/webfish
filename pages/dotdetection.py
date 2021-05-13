@@ -7,7 +7,6 @@ import dash_html_components as html
 import dash_bootstrap_components as dbc
 from dash.dependencies import Input, Output, State
 from dash.exceptions import PreventUpdate
-from dash_slicer import VolumeSlicer
 
 import plotly.express as px
 import plotly.graph_objects as go
@@ -96,9 +95,9 @@ def gen_image_figure(
     Input('dd-contrast-slider', 'value'),
     Input('dd-position-select', 'value'),
     Input('dd-hyb-select', 'value'),
-    State('dd-analysis-select', 'value'),
-    State('dd-dataset-select', 'value'),
-    State('dd-user-select', 'value'),
+    Input('dd-analysis-select', 'value'),
+    Input('dd-dataset-select', 'value'),
+    Input('dd-user-select', 'value'),
 )
 def update_image_params(
     z,

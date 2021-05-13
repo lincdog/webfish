@@ -20,7 +20,7 @@ app = dash.Dash(
     __name__,
     external_stylesheets=[THEME],
     suppress_callback_exceptions=True,
-    update_title=None
+    update_title=None,
 )
 
 #cache = Cache(app.server, config={

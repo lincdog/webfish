@@ -35,4 +35,9 @@ def tab_handler(tabval):
 if __name__ == '__main__':
     hostip = os.environ.get('WEBFISH_HOST', '127.0.0.1')
     hostport = os.environ.get('WEBFISH_PORT', '8050')
-    app.run_server(debug=True, host=hostip, port=hostport)
+    app.run_server(
+        debug=True,
+        host=hostip,
+        port=hostport,
+        dev_tools_props_check=False
+    )
