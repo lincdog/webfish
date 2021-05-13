@@ -6,15 +6,10 @@ import signal
 import pandas as pd
 from pathlib import Path, PurePath
 from argparse import ArgumentParser
-WF_HOME = '/home/lombelet/cron/webfish_sandbox/webfish'
+WF_HOME = os.get('WF_HOME', '/home/lombelet/cron/webfish_sandbox/webfish')
 sys.path.append(WF_HOME)
 from lib import cloud
-from lib.util import (
-    ls_recursive,
-    find_matching_files,
-    empty_or_false,
-    notempty
-)
+from lib.util import find_matching_files
 
 LOCKFILE = f'upload_datasets.lck'
 
