@@ -8,7 +8,7 @@ from time import time, sleep
 from datetime import datetime
 from pathlib import Path, PurePath
 from collections import defaultdict
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import numpy as np
 import pandas as pd
 import boto3
@@ -30,6 +30,9 @@ from lib.util import (
 
 server_logger = logging.getLogger(f'{__name__}.server')
 client_logger = logging.getLogger(f'{__name__}.client')
+
+# Suppress tifffile warnings
+logging.getLogger('tifffile').addHandler(logging.NullHandler())
 
 
 class DatavisProcessing:
@@ -862,28 +865,28 @@ class DataServer:
                     parent_dir = Path(savedir, new_fname).parent
                     parent_dir.mkdir(parents=True, exist_ok=True)
 
-                    futures[(old_fname, new_fname)] = exe.submit(
-                        preupload_func, row, out_format, savedir)
+                    fut = exe.submit(preupload_func, row, out_format, savedir)
+                    futures[fut] = (old_fname, new_fname)
 
                 done = 0
-                while done < len(futures):
+
+                for fut in as_completed(list(futures.keys()), 0):
 
                     if done % 50 == 0:
                         server_logger.debug(
                             f'run_preuploads: done with {done} files out of {len(futures)}')
 
-                    for (old_fname, new_fname), future in futures.items():
-                        if future.done():
-                            _, err = future.result(1)
+                    _, err = fut.result(1)
+                    old_fname, new_fname = futures[fut]
 
-                            if err:
-                                errors[key].append((old_fname, err))
-                            else:
-                                # update the filename
-                                output_df.loc[
-                                    output_df['filename'] == old_fname, 'filename'] = new_fname
+                    if err:
+                        errors[key].append((old_fname, err))
+                    else:
+                        # update the filename
+                        output_df.loc[
+                            output_df['filename'] == old_fname, 'filename'] = new_fname
 
-                            done += 1
+                    done += 1
 
         self.pages[pagename].datafiles = pd.concat([self.pages[pagename].datafiles, output_df])
         # This drops any duplicates that did not get their filename modified
