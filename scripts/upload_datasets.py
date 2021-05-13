@@ -4,6 +4,8 @@ import yaml
 import time
 import signal
 import pandas as pd
+import logging
+from logging.handlers import RotatingFileHandler
 from pathlib import Path, PurePath
 from argparse import ArgumentParser
 WF_HOME = os.environ.get('WF_HOME', '/home/lombelet/cron/webfish_sandbox/webfish')
@@ -12,6 +14,13 @@ from lib import cloud
 from lib.util import find_matching_files
 
 LOCKFILE = f'upload_datasets.lck'
+
+logger = logging.getLogger('lib.cloud.server')
+logger.setLevel(logging.DEBUG)
+
+rth = RotatingFileHandler('upload_datasets.log', maxBytes=2**16, backupCount=4)
+rth.setLevel(logging.DEBUG)
+logger.addHandler(rth)
 
 
 def process_args():
@@ -176,7 +185,7 @@ def main(args):
     else:
         verb = 'Uploaded'
 
-    print(f'{verb} {new_files} files')
+    logger.info(f'{verb} {new_files} files')
 
     dm.save_and_sync(
         pagenames=None,
@@ -191,5 +200,4 @@ def main(args):
 if __name__ == '__main__':
     os.chdir(WF_HOME)
     args = process_args()
-    breakpoint()
     main(args)

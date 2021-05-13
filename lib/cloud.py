@@ -1,8 +1,9 @@
-import logging
 import os
 import sys
 import json
 import configparser as cfparse
+import logging
+from logging.handlers import RotatingFileHandler
 from time import time, sleep
 from datetime import datetime
 from pathlib import Path, PurePath
@@ -26,6 +27,9 @@ from lib.util import (
     notempty,
     empty_or_false
 )
+
+server_logger = logging.getLogger(f'{__name__}.server')
+client_logger = logging.getLogger(f'{__name__}.client')
 
 
 class DatavisProcessing:
@@ -865,7 +869,8 @@ class DataServer:
                 while done < len(futures):
 
                     if done % 50 == 0:
-                        print(f'Done with {done} files out of {len(futures)}')
+                        server_logger.debug(
+                            f'run_preuploads: done with {done} files out of {len(futures)}')
 
                     for (old_fname, new_fname), future in futures.items():
                         if future.done():
@@ -962,10 +967,14 @@ class DataServer:
                     subset='filename', ignore_index=True)
 
         if run_preuploads:
+            server_logger.info(f'upload_to_s3: running preuploads for page {pagename}')
             file_df, errors = self.run_preuploads(
                 pagename, file_df=file_df, nthreads=10)
 
             if any(errors.values()):
+                server_logger.warning(
+                    f'upload_to_s3: ran into some preupload errors for {pagename}')
+
                 for key_errs in errors.values():
                     bad_fnames = [e[0] for e in key_errs]
                     file_df.drop(
@@ -986,9 +995,11 @@ class DataServer:
         if dryrun:
             return file_df
 
+        server_logger.info(f'upload_to_s3: commencing uploading {total} files')
+
         for row in file_df.itertuples():
             if progress and p % progress == 0:
-                print(f'upload_to_s3: {p} files done out of {total}')
+                server_logger.info(f'upload_to_s3: {p} files done out of {total}')
             p += 1
 
             if row.source_key in page.source_files.keys():
@@ -1017,7 +1028,7 @@ class DataServer:
                 self.s3_keys[s3_type].append(str(keyname))
 
             except Exception as ex:
-                print(f'problem uploading file {row.filename}: {ex}')
+                server_logger.warning(f'problem uploading file {row.filename}: {ex}')
 
         return self.pages[pagename].pending
 
@@ -1180,7 +1191,7 @@ class DataClient:
                                   for k, v in request.items()
                                   if k in self.datafiles.columns])
 
-            print(request, query, len(self.datafiles))
+            client_logger.debug(f'{request}, {query}, {len(self.datafiles)}')
 
             needed = self.datafiles.query(query)
         else:
@@ -1255,7 +1266,7 @@ class DataClient:
         force_download=False
     ):
         now = datetime.now()
-        print(f'RETRIEVEORDOWNLOAD: starting {key}')
+        client_logger.debug(f'RETRIEVEORDOWNLOAD: starting {key}')
         error = []
 
         if self.page is not None:
@@ -1275,10 +1286,11 @@ class DataClient:
             )
 
         if len(error) > 0:
-            print('ERROR: ', error)
+            client_logger.warning(f'ERROR: {error}')
             lp = None
 
-        print(f'RETRIVEORDOWNLOAD: ending {key} after {datetime.now()-now}')
+        client_logger.warning(f'RETRIVEORDOWNLOAD: ending {key} after '
+                              f'{datetime.now()-now} seconds')
 
         return lp
 
