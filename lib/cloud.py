@@ -927,9 +927,10 @@ class DataServer:
                 pagename, file_df=file_df, nthreads=10)
 
             if any(errors.values()):
-                for fname, _ in errors.values():
+                for key_errs in errors.values():
+                    bad_fnames = [e[0] for e in key_errs]
                     file_df.drop(
-                        index=file_df.query('filename == @fname').index,
+                        index=file_df.query('filename in @bad_fnames').index,
                         inplace=True
                     )
 
