@@ -983,7 +983,7 @@ class DataServer:
                     )
 
         if empty_or_false(file_df):
-            return file_df
+            return file_df, 0
 
         p = 0
         total = len(file_df)
@@ -993,7 +993,7 @@ class DataServer:
         self.pages[pagename].pending = file_df.copy()
 
         if dryrun:
-            return file_df
+            return file_df, 0
 
         server_logger.info(f'upload_to_s3: commencing uploading {total} files')
 
@@ -1030,7 +1030,7 @@ class DataServer:
             except Exception as ex:
                 server_logger.warning(f'problem uploading file {row.filename}: {ex}')
 
-        return self.pages[pagename].pending
+        return self.pages[pagename].pending, p
 
 
 class DataClient:

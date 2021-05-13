@@ -20,6 +20,10 @@ logger.setLevel(logging.DEBUG)
 
 rth = RotatingFileHandler('upload_datasets.log', maxBytes=2**16, backupCount=4)
 rth.setLevel(logging.DEBUG)
+
+formatter = logging.Formatter('[%(asctime)s] %(name)s:%(levelname)s: %(message)s')
+rth.setFormatter(formatter)
+
 logger.addHandler(rth)
 
 
@@ -121,13 +125,13 @@ def sigint_write_pending(signo, frame):
 
 def search_and_upload(dm, mtime, use_s3_only=False, check_s3=False, dryrun=False):
 
-    new_files = {}
+    results = {}
 
     for pagename in dm.pagenames:
         tmp, _ = dm.find_page_files(
             pagename=pagename,
         )
-        new_files[pagename] = len(tmp)
+        results[pagename] = dict(all_files=len(tmp))
         del tmp
 
     # read in the s3 keys, unless --check-s3 is specified, from the local
@@ -137,7 +141,7 @@ def search_and_upload(dm, mtime, use_s3_only=False, check_s3=False, dryrun=False
     signal.signal(signal.SIGINT, sigint_write_pending)
 
     for pagename in dm.pagenames:
-        dm.upload_to_s3(
+        pending, uploaded = dm.upload_to_s3(
             pagename,
             since=mtime,
             do_pending=True,
@@ -148,7 +152,10 @@ def search_and_upload(dm, mtime, use_s3_only=False, check_s3=False, dryrun=False
             dryrun=dryrun
         )
 
-    return new_files
+        results[pagename].update(dict(pending_count=len(pending),
+                                      uploaded_count=uploaded))
+
+    return results
 
 
 def main(args):
@@ -172,7 +179,7 @@ def main(args):
             if f.name != LOCKFILE:
                 f.unlink()
 
-    new_files = search_and_upload(
+    results = search_and_upload(
         dm,
         mtime,
         use_s3_only=args.use_s3_only,
@@ -185,7 +192,7 @@ def main(args):
     else:
         verb = 'Uploaded'
 
-    logger.info(f'{verb} {new_files} files')
+    logger.info(f'Results: {results}')
 
     dm.save_and_sync(
         pagenames=None,
