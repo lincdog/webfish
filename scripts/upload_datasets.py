@@ -13,19 +13,6 @@ sys.path.append(WF_HOME)
 from lib import cloud
 from lib.util import find_matching_files
 
-LOCKFILE = f'upload_datasets.lck'
-
-logger = logging.getLogger('lib.cloud.server')
-logger.setLevel(logging.DEBUG)
-
-rth = RotatingFileHandler('upload_datasets.log', maxBytes=2**16, backupCount=4)
-rth.setLevel(logging.DEBUG)
-
-formatter = logging.Formatter('[%(asctime)s] %(name)s:%(levelname)s: %(message)s')
-rth.setFormatter(formatter)
-
-logger.addHandler(rth)
-
 
 def process_args():
     parser = ArgumentParser(description='HPC-side script to sync Cai Lab datasets to S3 storage')
@@ -206,5 +193,19 @@ def main(args):
 
 if __name__ == '__main__':
     os.chdir(WF_HOME)
+    LOCKFILE = f'upload_datasets.lck'
+
+    logger = logging.getLogger('lib.cloud.server')
+    logger.setLevel(logging.DEBUG)
+
+    rth = RotatingFileHandler('upload_datasets.log', maxBytes=2 ** 16, backupCount=4)
+    rth.setLevel(logging.DEBUG)
+
+    formatter = logging.Formatter('[%(asctime)s] %(name)s:%(levelname)s: %(message)s')
+    rth.setFormatter(formatter)
+
+    logger.addHandler(rth)
+
     args = process_args()
+    logger.info(f'upload_datasets: starting with arguments: {args}')
     main(args)
