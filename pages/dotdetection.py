@@ -7,6 +7,7 @@ import dash_html_components as html
 import dash_bootstrap_components as dbc
 from dash.dependencies import Input, Output, State
 from dash.exceptions import PreventUpdate
+from dash_slicer import VolumeSlicer
 
 import plotly.express as px
 import plotly.graph_objects as go
@@ -38,6 +39,8 @@ def gen_image_figure(
         image = ImageMeta(imfile[0]).asarray()
     else:
         return {}
+
+    print(f'hyb {hyb} z_slice {z_slice} channel {channel}')
 
     hyb = int(hyb)
     hyb_q = hyb
@@ -107,7 +110,8 @@ def update_image_params(
     dataset,
     user
 ):
-    if not all((z, channel, contrast, position, hyb, dataset, user)):
+    if any([v is None for v in
+            (z, channel, contrast, position, hyb, dataset, user)]):
         return {}
 
     hyb_fov = data_client.request(
@@ -139,7 +143,7 @@ def update_image_params(
     Input('dd-user-select', 'value')
 )
 def select_pos_hyb(position, hyb, dataset, user):
-    if not all((position, hyb, dataset, user)):
+    if any([v is None for v in (position, hyb, dataset, user)]):
         return []
 
     imagefile = data_client.request(
@@ -151,22 +155,30 @@ def select_pos_hyb(position, hyb, dataset, user):
         return html.H2(f'No image file for dataset {user}/{dataset} '
                        f'hyb {hyb} position {position} found!')
 
-    image = tif.imread(imagefile['hyb_fov'][0])
+    image = ImageMeta(imagefile['hyb_fov'][0])
 
     print(imagefile['hyb_fov'], image.shape)
 
-    z_range = range(image.shape[0])
-    chan_range = range(image.shape[1])
+    z_range = range(image.shape[1])
+    chan_range = range(image.shape[0])
 
     marks = {a//256: str(a) for a in range(0, 10000, 500)}
 
     return [
-        dcc.Dropdown(
+        #dcc.Dropdown(
+        #    id='dd-z-select',
+        #    options=[{'label': 'Max', 'value': '-1'}] +
+        #            [{'label': str(z), 'value': str(z)} for z in z_range],
+        #    placeholder='Select a Z slice',
+        #    clearable=False
+        #),
+        dcc.Slider(
             id='dd-z-select',
-            options=[{'label': 'Max', 'value': '-1'}] +
-                    [{'label': str(z), 'value': str(z)} for z in z_range],
-            placeholder='Select a Z slice',
-            clearable=False
+            min=-1,
+            max=image.shape[1],
+            step=1,
+            value=0,
+            marks={-1: 'Max'} | {z: str(z) for z in z_range}
         ),
         dcc.Dropdown(
             id='dd-chan-select',

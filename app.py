@@ -19,7 +19,8 @@ THEME = getattr(dbc.themes, config.get('theme', 'MINTY').upper())
 app = dash.Dash(
     __name__,
     external_stylesheets=[THEME],
-    suppress_callback_exceptions=True
+    suppress_callback_exceptions=True,
+    update_title=None
 )
 
 #cache = Cache(app.server, config={
