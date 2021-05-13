@@ -879,7 +879,11 @@ class DataServer:
                         server_logger.debug(
                             f'run_preuploads: done with {done} files out of {len(futures)}')
 
-                    _, err = fut.result(1)
+                    try:
+                        _, err = fut.result(1)
+                    except Exception as exc:
+                        err = exc
+
                     old_fname, new_fname = futures[fut]
 
                     if err:
