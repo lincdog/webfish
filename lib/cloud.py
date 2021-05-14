@@ -568,7 +568,10 @@ class DataServer:
                         for key, pattern in self.pages[pagename].raw_patterns.items()]
 
         if any(notempty(all_sourcefiles)):
-            sourcefile_df = pd.concat(all_sourcefiles).sort_values(by=self.dataset_fields)
+            sourcefile_df = pd.concat(
+                all_sourcefiles).sort_values(
+                by=self.dataset_fields).reset_index(drop=True)
+
             del all_sourcefiles
             source_datasets = self.filter_datasets(
                 sourcefile_df,
@@ -577,7 +580,10 @@ class DataServer:
             )
 
         if any(notempty(all_rawfiles)):
-            rawfile_df = pd.concat(all_rawfiles).sort_values(by=self.raw_fields)
+            rawfile_df = pd.concat(
+                all_rawfiles).sort_values(
+                by=self.raw_fields).reset_index(drop=True)
+
             del all_rawfiles
             raw_datasets = self.filter_datasets(
                 rawfile_df,
@@ -585,8 +591,10 @@ class DataServer:
                 self.raw_dataset_root
             )
 
-        self.pages[pagename].datafiles = pd.concat([sourcefile_df, rawfile_df])
-        self.pages[pagename].datasets = pd.concat([source_datasets, raw_datasets])
+        self.pages[pagename].datafiles = pd.concat(
+            [sourcefile_df, rawfile_df]).reset_index(drop=True)
+        self.pages[pagename].datasets = pd.concat(
+            [source_datasets, raw_datasets]).reset_index(drop=True)
 
         return self.pages[pagename].datafiles, self.pages[pagename].datasets
 
@@ -895,7 +903,8 @@ class DataServer:
 
                     done += 1
 
-        self.pages[pagename].datafiles = pd.concat([self.pages[pagename].datafiles, output_df])
+        self.pages[pagename].datafiles = pd.concat(
+            [self.pages[pagename].datafiles, output_df]).reset_index(drop=True)
         # This drops any duplicates that did not get their filename modified
         self.pages[pagename].datafiles.drop_duplicates(
             subset=['filename'], inplace=True, ignore_index=True)
@@ -950,7 +959,8 @@ class DataServer:
         if do_pending:
             local_pending = self.local_sync.get(pagename, {}).get('pending_uploads')
             file_df = pd.concat(
-                [page.pending, file_df, local_pending]).drop_duplicates(
+                [page.pending, file_df, local_pending]).reset_index(
+                drop=True).drop_duplicates(
                 subset='filename', ignore_index=True)
 
         # Add files from any new source keys (that are present in our
@@ -961,7 +971,8 @@ class DataServer:
             nsks = self.new_source_keys
             file_df = pd.concat(
                 [file_df, page.datafiles.query('source_key in @nsks')]
-            ).drop_duplicates(subset='filename', ignore_index=True)
+            ).reset_index(drop=True).drop_duplicates(
+                subset='filename', ignore_index=True)
 
         # If this is specified, we don't care about any of the above criteria.
         # And by definition we need to check the s3_diff.
@@ -973,7 +984,8 @@ class DataServer:
         if do_s3_diff:
             if not empty_or_false(page.s3_diff):
                 file_df = pd.concat(
-                    [page.s3_diff, file_df]).drop_duplicates(
+                    [page.s3_diff, file_df]).reset_index(
+                    drop=True).drop_duplicates(
                     subset='filename', ignore_index=True)
 
         if run_preuploads:
