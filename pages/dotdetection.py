@@ -163,13 +163,12 @@ def display_image_param_selectors(is_open, position, hyb, dataset, user):
     marks = {a // 256: str(a) for a in range(0, 10000, 500)}
 
     return [
-        # dcc.Dropdown(
-        #    id='dd-z-select',
-        #    options=[{'label': 'Max', 'value': '-1'}] +
-        #            [{'label': str(z), 'value': str(z)} for z in z_range],
-        #    placeholder='Select a Z slice',
-        #    clearable=False
-        # ),
+        dcc.Checklist(
+            id='dd-swap-channels-slices',
+            options=[{'label': 'Swap channels and slices', 'value': 'swap'}],
+            value=[]
+        ),
+        html.Hr(),
         dcc.Slider(
             id='dd-z-select',
             min=-1,
@@ -301,6 +300,7 @@ layout = html.Div([
                 ),
                 dcc.Dropdown(id='dd-dataset-select', placeholder='Select a dataset'),
                 dcc.Dropdown(id='dd-analysis-select', placeholder='Select an analysis'),
+                html.Hr(),
                 dbc.Collapse([
                     dcc.Dropdown(id='dd-hyb-select'),
                     dcc.Dropdown(id='dd-position-select')
@@ -308,12 +308,11 @@ layout = html.Div([
             ], id='dd-dataset-select-div', style={'margin': '10px'}),
             html.Hr(),
             html.Div([
-                dcc.Loading(dbc.Collapse([
+                dbc.Collapse([
                     dcc.Slider(id='dd-z-select'),
                     dcc.Dropdown(id='dd-chan-select'),
                     dcc.Slider(id='dd-contrast-slider')
                 ], is_open=False, id='dd-image-params-wrapper'),
-                id='dd-image-params-loading'),
             ], id='dd-image-params-div', style={'margin': '10px'})
 
         ], style={'border-right': '1px solid gray'}, width=4),
