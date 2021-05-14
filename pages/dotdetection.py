@@ -13,7 +13,6 @@ import plotly.graph_objects as go
 
 from app import app, config, s3_client
 from lib import cloud
-from lib.util import ImageMeta
 
 data_client = cloud.DataClient(
     config=config,
@@ -31,15 +30,14 @@ def gen_image_figure(
     channel='0',
     contrast_minmax=(0, 2000)
 ):
-    # FIXME: Seems that some images come in C, Z, X, Y order rather than the assumed
-    #   Z, C, X, Y order! May need ImageMeta-type reading to ensure we get it right
 
     if len(imfile) > 0:
-        image = ImageMeta(imfile[0]).asarray()
+        image = tif.imread(imfile[0])
     else:
         return {}
 
     print(f'hyb {hyb} z_slice {z_slice} channel {channel}')
+    print(image.shape)
 
     hyb = int(hyb)
     hyb_q = hyb
@@ -154,7 +152,7 @@ def select_pos_hyb(position, hyb, dataset, user):
         return html.H2(f'No image file for dataset {user}/{dataset} '
                        f'hyb {hyb} position {position} found!')
 
-    image = ImageMeta(imagefile['hyb_fov'][0])
+    image = tif.imread(imagefile['hyb_fov'][0])
 
     print(imagefile['hyb_fov'], image.shape)
 

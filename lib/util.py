@@ -12,6 +12,7 @@ import numbers
 from pathlib import Path, PurePath
 import base64
 from matplotlib.pyplot import get_cmap
+import plotly.graph_objects as go
 
 
 class ImageMeta(tif.TiffFile):
@@ -341,12 +342,12 @@ def compress_8bit(
 
 
 def gen_mesh(
-        imgfilename,
-        px_size=(0.5, 0.11, 0.11),
-        scale_factor=(1., 1. / 16, 1. / 16),
-        separate_regions=False,
-        region_data=None,
-        outfile=None
+    imgfilename,
+    px_size=(0.5, 0.11, 0.11),
+    scale_factor=(1., 1. / 16, 1. / 16),
+    separate_regions=False,
+    region_data=None,
+    outfile=None
 ):
     """
     gen_mesh
@@ -366,8 +367,6 @@ def gen_mesh(
           "data": <null or list of data for each face, length T>
         }
     """
-
-    print(f'entering gen_mesh with infile {imgfilename} and outfile {outfile}')
 
     im = tif.imread(imgfilename)
 
@@ -451,9 +450,44 @@ def gen_mesh(
         with open(outfile, 'w') as fp:
             json.dump(mesh, fp)
 
-    print('leaving gen_mesh')
-
     return mesh
+
+
+def make_simple_figure(filename):
+
+    figdata = []
+
+    mesh = gen_mesh(filename)
+
+    x, y, z, i, j, k = populate_mesh(mesh)
+
+    figdata.append(
+        go.Mesh3d(
+            x=x, y=y, z=z,
+            i=i, j=j, k=k,
+            color='lightgray',
+            opacity=0.7,
+            hoverinfo='skip',
+        )
+    )
+
+    figscene = go.layout.Scene(
+        aspectmode='manual',
+        aspectratio=dict(x=1, y=1, z=0.07),
+    )
+
+    figlayout = go.Layout(
+        height=800,
+        width=800,
+        #plot_bgcolor='black',
+        #paper_bgcolor='white',
+        margin=dict(b=10, l=10, r=10, t=10),
+        scene=figscene
+    )
+
+    fig = go.Figure(data=figdata, layout=figlayout)
+
+    return fig
 
 
 def gen_pcd_df(
@@ -472,8 +506,6 @@ def gen_pcd_df(
     
     Returns: Pandas DataFrame
     """
-
-    print('entering gen_pcd_df')
 
     if isinstance(csv, str):
         dots = pd.read_csv(csv)
@@ -547,8 +579,8 @@ def populate_mesh(cell_mesh):
     if cell_mesh is None:
         return None, None, None, None, None, None
 
-    z, x, y = cell_mesh['verts'].T
-    i, j, k = cell_mesh['faces'].T
+    z, x, y = np.array(cell_mesh['verts']).T
+    i, j, k = np.array(cell_mesh['faces']).T
 
     return x, y, z, i, j, k
 

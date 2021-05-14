@@ -873,7 +873,7 @@ class DataServer:
 
                 done = 0
 
-                for fut in as_completed(list(futures.keys()), 0):
+                for fut in as_completed(list(futures.keys()), None):
 
                     if done % 50 == 0:
                         server_logger.debug(

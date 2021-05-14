@@ -5,8 +5,17 @@ import logging
 import sys
 import lib.cloud as cloud
 
+sh = logging.StreamHandler(stream=sys.stdout)
+sh.setLevel(logging.DEBUG)
+
+formatter = logging.Formatter('[%(asctime)s] %(name)s:%(levelname)s: %(message)s')
+sh.setFormatter(formatter)
+
 server_logger = logging.getLogger('lib.cloud.server')
 client_logger = logging.getLogger('lib.cloud.client')
+
+server_logger.setLevel(logging.DEBUG)
+server_logger.addHandler(sh)
 
 
 def qclient(pagename='datavis'):
@@ -23,16 +32,6 @@ def qclient(pagename='datavis'):
 def qserver():
     global cloud
     cloud = reload(cloud)
-
-    server_logger.setLevel(logging.DEBUG)
-
-    rth = logging.StreamHandler(stream=sys.stdout)
-    rth.setLevel(logging.DEBUG)
-
-    formatter = logging.Formatter('[%(asctime)s] %(name)s:%(levelname)s: %(message)s')
-    rth.setFormatter(formatter)
-
-    server_logger.addHandler(rth)
 
     config = yaml.load(open('./consts.yml'), Loader=yaml.Loader)
     s3c = cloud.S3Connect(config=config)
