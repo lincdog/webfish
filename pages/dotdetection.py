@@ -134,14 +134,15 @@ def update_image_params(
 
 @app.callback(
     Output('dd-image-params-wrapper', 'children'),
-    Input('dd-position-select', 'value'),
-    Input('dd-hyb-select', 'value'),
-    Input('dd-dataset-select', 'value'),
-    Input('dd-user-select', 'value')
+    Input('dd-image-params-wrapper', 'is_open'),
+    State('dd-position-select', 'value'),
+    State('dd-hyb-select', 'value'),
+    State('dd-dataset-select', 'value'),
+    State('dd-user-select', 'value')
 )
-def select_pos_hyb(position, hyb, dataset, user):
-    if any([v is None for v in (position, hyb, dataset, user)]):
-        return []
+def display_image_param_selectors(is_open, position, hyb, dataset, user):
+    if not is_open:
+        raise PreventUpdate
 
     imagefile = data_client.request(
         {'user': user, 'dataset': dataset, 'hyb': hyb, 'position': position},
@@ -159,16 +160,16 @@ def select_pos_hyb(position, hyb, dataset, user):
     z_range = range(image.shape[1])
     chan_range = range(image.shape[0])
 
-    marks = {a//256: str(a) for a in range(0, 10000, 500)}
+    marks = {a // 256: str(a) for a in range(0, 10000, 500)}
 
     return [
-        #dcc.Dropdown(
+        # dcc.Dropdown(
         #    id='dd-z-select',
         #    options=[{'label': 'Max', 'value': '-1'}] +
         #            [{'label': str(z), 'value': str(z)} for z in z_range],
         #    placeholder='Select a Z slice',
         #    clearable=False
-        #),
+        # ),
         dcc.Slider(
             id='dd-z-select',
             min=-1,
@@ -180,13 +181,14 @@ def select_pos_hyb(position, hyb, dataset, user):
         dcc.Dropdown(
             id='dd-chan-select',
             placeholder='Select channel',
-            options=[{'label': str(c), 'value': str(c)} for c in chan_range]
+            options=[{'label': str(c), 'value': str(c)} for c in chan_range],
+            value='0'
         ),
         html.Div([
             dcc.RangeSlider(
                 id='dd-contrast-slider',
                 min=0,
-                max=10000//256,
+                max=10000 // 256,
                 step=1,
                 marks=marks,
                 value=[0, 10],
@@ -197,7 +199,21 @@ def select_pos_hyb(position, hyb, dataset, user):
 
 
 @app.callback(
-    Output('dd-analysis-select-wrapper', 'children'),
+    Output('dd-image-params-wrapper', 'is_open'),
+    Input('dd-position-select', 'value'),
+    Input('dd-hyb-select', 'value'),
+    Input('dd-dataset-select', 'value'),
+    Input('dd-user-select', 'value')
+)
+def select_pos_hyb(position, hyb, dataset, user):
+    if any([v is None for v in (position, hyb, dataset, user)]):
+        return False
+
+    return True
+
+
+@app.callback(
+    Output('dd-analysis-select', 'options'),
     Input('dd-dataset-select', 'value'),
     Input('dd-user-select', 'value')
 )
@@ -209,24 +225,20 @@ def select_dataset_analysis(dataset, user):
 
     print(analyses)
 
-    return [
-        dcc.Dropdown(
-            id='dd-analysis-select',
-            options=[{'label': '(new)', 'value': '__new__'}] +
-                    [{'label': a, 'value': a} for a in analyses],
-            placeholder='Select an analysis'
-        )
-    ]
+    return [{'label': '(new)', 'value': '__new__'}] +\
+           [{'label': a, 'value': a} for a in analyses]
+
 
 
 @app.callback(
     Output('dd-image-select-wrapper', 'children'),
-    Input('dd-dataset-select', 'value'),
-    Input('dd-user-select', 'value')
+    Input('dd-image-select-wrapper', 'is_open'),
+    State('dd-dataset-select', 'value'),
+    State('dd-user-select', 'value')
 )
-def select_dataset_image(dataset, user):
-    if not dataset:
-        return []
+def display_image_selectors(is_open, dataset, user):
+    if not is_open:
+        raise PreventUpdate
 
     hybs = data_client.datafiles.query(
         'user == @user and dataset == @dataset')['hyb'].dropna().unique()
@@ -251,7 +263,19 @@ def select_dataset_image(dataset, user):
 
 
 @app.callback(
-    Output('dd-dataset-select-wrapper', 'children'),
+    Output('dd-image-select-wrapper', 'is_open'),
+    Input('dd-dataset-select', 'value'),
+    Input('dd-user-select', 'value')
+)
+def select_dataset_image(dataset, user):
+    if not dataset:
+        raise PreventUpdate
+
+    return True
+
+
+@app.callback(
+    Output('dd-dataset-select', 'options'),
     Input('dd-user-select', 'value')
 )
 def select_user(user):
@@ -260,13 +284,7 @@ def select_user(user):
 
     datasets = data_client.datasets.loc[user].index.unique(level=0)
 
-    return [
-        dcc.Dropdown(
-            id='dd-dataset-select',
-            options=[{'label': d, 'value': d} for d in sorted(datasets)],
-            placeholder='Select a dataset name'
-        )
-    ]
+    return [{'label': d, 'value': d} for d in sorted(datasets)]
 
 
 layout = html.Div([
@@ -281,16 +299,21 @@ layout = html.Div([
                     options=[{'label': u, 'value': u} for u in data_client.datasets.index.unique(level=0)],
                     placeholder='Select a user'
                 ),
-                dcc.Loading(id='dd-dataset-select-wrapper'),
-                dcc.Loading(id='dd-analysis-select-wrapper'),
-                dcc.Loading([
-                    #dcc.Dropdown(id='dd-hyb-select'),
-                    #dcc.Dropdown(id='dd-position-select')
-                ], id='dd-image-select-wrapper'),
+                dcc.Dropdown(id='dd-dataset-select', placeholder='Select a dataset'),
+                dcc.Dropdown(id='dd-analysis-select', placeholder='Select an analysis'),
+                dbc.Collapse([
+                    dcc.Dropdown(id='dd-hyb-select'),
+                    dcc.Dropdown(id='dd-position-select')
+                ], is_open=False, id='dd-image-select-wrapper'),
             ], id='dd-dataset-select-div', style={'margin': '10px'}),
             html.Hr(),
             html.Div([
-                dcc.Loading(id='dd-image-params-wrapper')
+                dcc.Loading(dbc.Collapse([
+                    dcc.Slider(id='dd-z-select'),
+                    dcc.Dropdown(id='dd-chan-select'),
+                    dcc.Slider(id='dd-contrast-slider')
+                ], is_open=False, id='dd-image-params-wrapper'),
+                id='dd-image-params-loading'),
             ], id='dd-image-params-div', style={'margin': '10px'})
 
         ], style={'border-right': '1px solid gray'}, width=4),
