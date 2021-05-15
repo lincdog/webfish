@@ -1,6 +1,9 @@
 import tifffile as tif
 import numpy as np
 import pandas as pd
+import io
+import json
+import re
 
 import dash_core_components as dcc
 import dash_html_components as html
@@ -22,9 +25,52 @@ data_client = cloud.DataClient(
 data_client.sync_with_s3()
 
 
+def put_analysis_request(
+    user,
+    dataset,
+    analysis_name,
+    dot_detection='biggest jump 3d'
+):
+    analysis_dict = {
+        'personal': user,
+        'experiment_name': dataset,
+        'dot detection': dot_detection,
+        'dot detection test': 'true',
+        'visualize dot detection': 'true',
+        'strictness': 'multiple',
+        'clusters': {
+            'ntasks': '1',
+            'mem-per-cpu': '10G',
+            'email': 'nrezaee@caltech.edu'
+        }
+    }
+
+    dict_bytes = io.BytesIO(json.dumps(analysis_dict).encode())
+    # These are "characters to avoid" in keys according to AWS docs
+    # \, {, }, ^, [, ], %, `, <, >, ~, #, |
+    # TODO: Sanitize filenames on server side before uploading too; mostly
+    #   potential problem for user-defined dataset/analysis names
+    analysis_sanitized = re.sub('[\\\\{^}%` \\[\\]>~<#|]', '', analysis_name)
+    keyname = f'json_analyses/{analysis_sanitized}.json'
+
+    try:
+        data_client.client.client.upload_fileobj(
+            dict_bytes,
+            Bucket=data_client.bucket_name,
+            Key=keyname
+        )
+    except Exception as e:
+        return str(e)
+
+    print(f'analysis_dict: {json.dumps(analysis_dict, indent=2)}')
+
+    return analysis_sanitized
+
+
 def gen_image_figure(
     imfile,
     dots_csv=None,
+    swap=False,
     hyb='0',
     z_slice='0',
     channel='0',
@@ -49,10 +95,17 @@ def gen_image_figure(
     channel_q = channel + 1
 
     if z_slice >= 0:
-        img_select = image[channel, z_slice]
+        if swap:
+            img_select = image[z_slice, channel]
+        else:
+            img_select = image[channel, z_slice]
+
         dots_query = 'hyb == @hyb_q and ch == @channel_q and z == @z_slice_q'
     else:
-        img_select = np.max(image[channel], axis=0)
+        if swap:
+            img_select = np.max(image[:, channel], axis=0)
+        else:
+            img_select = np.max(image[channel], axis=0)
         dots_query = 'hyb == @hyb_q and ch == @channel_q'
 
     fig = px.imshow(
@@ -88,6 +141,8 @@ def gen_image_figure(
 
 @app.callback(
     Output('dd-graph-wrapper', 'children'),
+    Input('dd-image-params-wrapper', 'is_open'),
+    Input('dd-swap-channels-slices', 'value'),
     Input('dd-z-select', 'value'),
     Input('dd-chan-select', 'value'),
     Input('dd-contrast-slider', 'value'),
@@ -98,6 +153,8 @@ def gen_image_figure(
     Input('dd-user-select', 'value'),
 )
 def update_image_params(
+    is_open,
+    swap,
     z,
     channel,
     contrast,
@@ -107,9 +164,14 @@ def update_image_params(
     dataset,
     user
 ):
+    if not is_open:
+        raise PreventUpdate
+
     if any([v is None for v in
             (z, channel, contrast, position, hyb, dataset, user)]):
         return {}
+
+    swap = 'swap' in swap
 
     hyb_fov = data_client.request(
         {'user': user, 'dataset': dataset, 'position': position, 'hyb': hyb},
@@ -127,7 +189,7 @@ def update_image_params(
     print(f'hyb_fov: {hyb_fov}')
     print(f'dot locations: {dot_locations}')
 
-    figure = gen_image_figure(hyb_fov, dot_locations, hyb, z, channel, contrast)
+    figure = gen_image_figure(hyb_fov, dot_locations, swap, hyb, z, channel, contrast)
 
     return dcc.Graph(figure=figure, id='dd-fig')
 
@@ -135,54 +197,66 @@ def update_image_params(
 @app.callback(
     Output('dd-image-params-wrapper', 'children'),
     Input('dd-image-params-wrapper', 'is_open'),
+    Input('dd-swap-channels-slices', 'value'),
     State('dd-position-select', 'value'),
     State('dd-hyb-select', 'value'),
     State('dd-dataset-select', 'value'),
     State('dd-user-select', 'value')
 )
-def display_image_param_selectors(is_open, position, hyb, dataset, user):
+def display_image_param_selectors(is_open, swap, position, hyb, dataset, user):
     if not is_open:
         raise PreventUpdate
+
+    swap = 'swap' in swap
 
     imagefile = data_client.request(
         {'user': user, 'dataset': dataset, 'hyb': hyb, 'position': position},
         fields='hyb_fov'
     )
 
-    if not imagefile['hyb_fov']:
-        return html.H2(f'No image file for dataset {user}/{dataset} '
-                       f'hyb {hyb} position {position} found!')
+    try:
+        image = tif.imread(imagefile['hyb_fov'][0])
+        assert image.ndim == 4, 'Must have 4 dimensions'
+    except AssertionError:
+        return [
+            dbc.Alert(f'No image file for dataset {user}/{dataset} '
+                      f'hyb {hyb} position {position} found!', color='warning'),
+            dcc.Slider(id='dd-z-select', disabled=True),
+            dcc.Dropdown(id='dd-chan-select', disabled=True),
+            dcc.Slider(id='dd-contrast-slider', disabled=True)
+            ]
 
-    image = tif.imread(imagefile['hyb_fov'][0])
+    if swap:
+        z_ind = 0
+        c_ind = 1
+    else:
+        z_ind = 1
+        c_ind = 0
 
-    print(imagefile['hyb_fov'], image.shape)
-
-    z_range = range(image.shape[1])
-    chan_range = range(image.shape[0])
+    z_range = list(range(image.shape[z_ind]))
+    chan_range = list(range(image.shape[c_ind]))
 
     marks = {a // 256: str(a) for a in range(0, 10000, 500)}
 
     return [
-        dcc.Checklist(
-            id='dd-swap-channels-slices',
-            options=[{'label': 'Swap channels and slices', 'value': 'swap'}],
-            value=[]
-        ),
         html.Hr(),
+        html.B('Select Z slice'),
         dcc.Slider(
             id='dd-z-select',
             min=-1,
-            max=image.shape[1],
+            max=z_range[-1],
             step=1,
             value=0,
             marks={-1: 'Max'} | {z: str(z) for z in z_range}
         ),
+        html.B('Select channel'),
         dcc.Dropdown(
             id='dd-chan-select',
             placeholder='Select channel',
             options=[{'label': str(c), 'value': str(c)} for c in chan_range],
             value='0'
         ),
+        html.B('Adjust contrast'),
         html.Div([
             dcc.RangeSlider(
                 id='dd-contrast-slider',
@@ -214,7 +288,7 @@ def select_pos_hyb(position, hyb, dataset, user):
 @app.callback(
     Output('dd-analysis-select', 'options'),
     Input('dd-dataset-select', 'value'),
-    Input('dd-user-select', 'value')
+    State('dd-user-select', 'value')
 )
 def select_dataset_analysis(dataset, user):
     if not dataset:
@@ -227,6 +301,13 @@ def select_dataset_analysis(dataset, user):
     return [{'label': '(new)', 'value': '__new__'}] +\
            [{'label': a, 'value': a} for a in analyses]
 
+
+@app.callback(
+    Output('dd-analysis-select', 'value'),
+    Input('dd-user-select', 'value')
+)
+def clear_analysis_select(user):
+    return None
 
 
 @app.callback(
@@ -257,7 +338,12 @@ def display_image_selectors(is_open, dataset, user):
             options=[{'label': p, 'value': p} for p in sorted(positions)],
             placeholder='Select position',
             clearable=False
-        )
+        ),
+        dcc.Checklist(
+            id='dd-swap-channels-slices',
+            options=[{'label': 'Swap channels and slices', 'value': 'swap'}],
+            value=[]
+        ),
     ]
 
 
@@ -268,9 +354,17 @@ def display_image_selectors(is_open, dataset, user):
 )
 def select_dataset_image(dataset, user):
     if not dataset:
-        raise PreventUpdate
+        return False
 
     return True
+
+
+@app.callback(
+    Output('dd-dataset-select', 'value'),
+    Input('dd-dataset-select', 'options')
+)
+def clear_dataset_select(opts):
+    return None
 
 
 @app.callback(
@@ -279,11 +373,73 @@ def select_dataset_image(dataset, user):
 )
 def select_user(user):
     if not user:
-        raise PreventUpdate
+        return []
 
     datasets = data_client.datasets.loc[user].index.unique(level=0)
 
     return [{'label': d, 'value': d} for d in sorted(datasets)]
+
+
+@app.callback(
+    Output('dd-new-analysis-div', 'children'),
+    Input('dd-dataset-select', 'value'),
+    Input('dd-user-select', 'value')
+)
+def reset_new_analysis_div(dataset, user):
+    return [
+        dcc.Input(type='text', id='dd-new-analysis-name', value=None),
+        dcc.ConfirmDialogProvider(
+            html.Button('Submit new analysis'),
+            id='dd-submit-new-analysis-provider',
+            message='Confirm submission of new dot detection preview'
+        ),
+        html.Div(id='dd-new-analysis-text')
+    ]
+
+
+@app.callback(
+    Output('dd-new-analysis-text', 'children'),
+    Input('dd-submit-new-analysis-provider', 'submit_n_clicks'),
+    State('dd-new-analysis-name', 'value'),
+    State('dd-user-select', 'value'),
+    State('dd-dataset-select', 'value'),
+    State('dd-analysis-select', 'options')
+)
+def submit_new_analysis(
+    confirm_n_clicks,
+    new_analysis_name,
+    user,
+    dataset,
+    analysis_options
+):
+    print(confirm_n_clicks, new_analysis_name, user, dataset, analysis_options)
+    if not all((new_analysis_name, user, dataset, analysis_options)):
+        raise PreventUpdate
+
+    analyses = [o['value'] for o in analysis_options]
+
+    if new_analysis_name in analyses:
+        return dbc.Alert(f'Analysis {new_analysis_name} already exists. '
+                         f'Please choose a unique name.', color='error')
+
+    if confirm_n_clicks == 1:
+        new_analysis_future = put_analysis_request(
+            user,
+            dataset,
+            new_analysis_name
+        )
+
+        if isinstance(new_analysis_future, Exception):
+            return [dbc.Alert(f'Failure: failed to submit request for new '
+                             f'analysis. Exception: '),
+                    html.Pre(new_analysis_future)
+            ]
+
+        return dbc.Alert(f'Success! New dot detection test will be at '
+                         f'{user}/{dataset}/{new_analysis_future} '
+                         f'in 5-10 minutes.')
+    else:
+        raise PreventUpdate
 
 
 layout = html.Div([
@@ -301,9 +457,24 @@ layout = html.Div([
                 dcc.Dropdown(id='dd-dataset-select', placeholder='Select a dataset'),
                 dcc.Dropdown(id='dd-analysis-select', placeholder='Select an analysis'),
                 html.Hr(),
+                html.Div([
+                    dcc.Input(type='text', id='dd-new-analysis-name'),
+                    dcc.ConfirmDialogProvider(
+                        html.Button('Submit new analysis'),
+                        id='dd-submit-new-analysis-provider',
+                        message='Confirm submission of new dot detection preview'
+                    ),
+                    html.Div(id='dd-new-analysis-text')
+                ], id='dd-new-analysis-div'),
+                html.Hr(),
                 dbc.Collapse([
                     dcc.Dropdown(id='dd-hyb-select'),
-                    dcc.Dropdown(id='dd-position-select')
+                    dcc.Dropdown(id='dd-position-select'),
+                    dcc.Checklist(
+                        id='dd-swap-channels-slices',
+                        options=[{'label': 'Swap channels and slices', 'value': 'swap'}],
+                        value=[]
+                    ),
                 ], is_open=False, id='dd-image-select-wrapper'),
             ], id='dd-dataset-select-div', style={'margin': '10px'}),
             html.Hr(),
