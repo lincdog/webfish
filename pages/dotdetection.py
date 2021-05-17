@@ -4,6 +4,7 @@ import pandas as pd
 import io
 import json
 import re
+import time
 
 import dash_core_components as dcc
 import dash_html_components as html
@@ -442,10 +443,50 @@ def submit_new_analysis(
         raise PreventUpdate
 
 
+@app.callback(
+    Output('dd-s3-sync-div', 'children'),
+    Input('dd-s3-sync-button', 'children'),
+    State('dd-s3-sync-button', 'n_clicks')
+)
+def finish_client_s3_sync(contents, n_clicks):
+    if n_clicks != 1:
+        raise PreventUpdate
+
+    if 'Syncing...' not in contents:
+        raise PreventUpdate
+
+    data_client.sync_with_s3()
+
+    return dbc.Button(
+                'Sync with S3',
+                id='dd-s3-sync-button',
+                color='primary',
+                className='mr-1',
+                n_clicks=0
+            )
+
+
+@app.callback(
+    Output('dd-s3-sync-button', 'children'),
+    Input('dd-s3-sync-button', 'n_clicks')
+)
+def init_client_s3_sync(n_clicks):
+    if n_clicks == 1:
+        return [dbc.Spinner(size='sm'), 'Syncing...']
+    else:
+        raise PreventUpdate
+
+
 layout = html.Div([
     dbc.Alert('In this tab you can preview the results of dot detection'
                   ' using various parameter settings. Data is synced from the'
-                  ' HPC analyses folder every 2 minutes.', color='info'),
+                  ' HPC analyses folder every 10 minutes.', color='info'),
+    html.Div(dbc.Button(
+        'Sync with S3',
+        id='dd-s3-sync-button',
+        n_clicks=0,
+        color='primary'
+    ), id='dd-s3-sync-div'),
     dbc.Row([
         dbc.Col([
             html.Div([
@@ -460,7 +501,7 @@ layout = html.Div([
                 html.Div([
                     dcc.Input(type='text', id='dd-new-analysis-name'),
                     dcc.ConfirmDialogProvider(
-                        html.Button('Submit new analysis'),
+                        dbc.Button('Submit new analysis', color='secondary'),
                         id='dd-submit-new-analysis-provider',
                         message='Confirm submission of new dot detection preview'
                     ),

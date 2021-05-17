@@ -1,4 +1,5 @@
 import pandas as pd
+import time
 import plotly.graph_objects as go
 
 import dash_core_components as dcc
@@ -326,6 +327,7 @@ def select_dataset(dataset, user):
         )
     ]
 
+
 @app.callback(
     Output('dv-dataset-select-div', 'children'),
     Input('dv-user-select', 'value')
@@ -348,6 +350,42 @@ def select_user(user):
             style={'width': '200px',}),
     ]
 
+
+@app.callback(
+    Output('dv-s3-sync-div', 'children'),
+    Input('dv-s3-sync-button', 'children'),
+    State('dv-s3-sync-button', 'n_clicks')
+)
+def finish_client_s3_sync(contents, n_clicks):
+    if n_clicks != 1:
+        raise PreventUpdate
+
+    if 'Syncing...' not in contents:
+        raise PreventUpdate
+
+    data_client.sync_with_s3()
+
+    return dbc.Button(
+                'Sync with S3',
+                id='dv-s3-sync-button',
+                color='primary',
+                className='mr-1',
+                n_clicks=0
+            )
+
+
+@app.callback(
+    Output('dv-s3-sync-button', 'children'),
+    Input('dv-s3-sync-button', 'n_clicks')
+)
+def init_client_s3_sync(n_clicks):
+    if n_clicks == 1:
+        return [dbc.Spinner(size='sm'), 'Syncing...']
+    else:
+        raise PreventUpdate
+
+
+
 ######## Layout ########
 
 
@@ -356,7 +394,13 @@ layout = dbc.Container(dbc.Row([
         html.Div([
             html.H2('Data selection'),
             html.Hr(),
-
+            html.Div(dbc.Button(
+                'Sync with S3',
+                id='dv-s3-sync-button',
+                color='primary',
+                className='mr-1',
+                n_clicks=0
+            ), 'dv-s3-sync-div'),
             html.Div([
                 'User select:',
                 dcc.Dropdown(
