@@ -217,7 +217,7 @@ def display_image_param_selectors(is_open, swap, position, hyb, dataset, user):
     try:
         image = tif.imread(imagefile['hyb_fov'][0])
         assert image.ndim == 4, 'Must have 4 dimensions'
-    except AssertionError:
+    except (AssertionError, IndexError):
         return [
             dbc.Alert(f'No image file for dataset {user}/{dataset} '
                       f'hyb {hyb} position {position} found!', color='warning'),
