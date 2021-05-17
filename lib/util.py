@@ -370,6 +370,9 @@ def gen_mesh(
 
     im = tif.imread(imgfilename)
 
+    if im.ndim == 2:
+        im = np.array([im, im, im])
+
     px_scaled = tuple(a / b for a, b in zip(px_size, scale_factor))
 
     im_small = skit.rescale(
