@@ -351,17 +351,24 @@ def compress_8bit(
     compression='DEFLATE',
     outfile=None
 ):
+    err = None
 
-    im = ImageMeta(imgfilename).asarray()
+    try:
+        im = ImageMeta(imgfilename).asarray()
 
-    safe_imwrite(
-        skiu.img_as_ubyte(im),
-        imgfilename,
-        compression=compression
-    )
+        safe_imwrite(
+            skiu.img_as_ubyte(im),
+            outfile,
+            compression=compression
+        )
+    except (PermissionError, IOError, OSError) as e:
+        err = e
+    finally:
+        im.close()
+        del im
 
-    im.close()
-    del im
+    if err:
+        raise err
 
     return outfile
 
