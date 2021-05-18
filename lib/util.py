@@ -17,7 +17,10 @@ import plotly.graph_objects as go
 
 
 def safe_imread(fname, is_ome=False, is_imagej=True):
-    return tif.imread(fname, is_ome=is_ome, is_imagej=is_imagej)
+    try:
+        return tif.imread(fname, is_ome=is_ome, is_imagej=is_imagej)
+    except RuntimeError:
+        return tif.imread(fname, is_ome=is_ome, is_imagej=False)
 
 
 def safe_imwrite(
@@ -27,8 +30,15 @@ def safe_imwrite(
     ome=False,
     imagej=True
 ):
-    with tif.TiffWriter(fname, ome=ome, imagej=imagej) as tw:
-        tw.write(arr, compression=compression)
+    arr = arr.copy()
+    try:
+        with tif.TiffWriter(fname, ome=ome, imagej=imagej) as tw:
+            tw.write(arr, compression=compression)
+    except RuntimeError:
+        with tif.TiffWriter(fname, ome=ome, imagej=False) as tw:
+            tw.write(arr, compression=compression)
+
+    del arr
 
 
 class ImageMeta(tif.TiffFile):
@@ -72,11 +82,18 @@ class ImageMeta(tif.TiffFile):
         if isinstance(tifffile, type(super())):
             self = tifffile
         else:
-            super().__init__(
-                tifffile,
-                is_ome=False,
-                is_imagej=True
-            )
+            try:
+                super().__init__(
+                    tifffile,
+                    is_ome=False,
+                    is_imagej=True
+                )
+            except RuntimeError:
+                super().__init__(
+                    tifffile,
+                    is_ome=False,
+                    is_imagej=False
+                )
 
         self.shape = None
         self.channels = 1
