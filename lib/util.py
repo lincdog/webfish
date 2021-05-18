@@ -15,6 +15,21 @@ from matplotlib.pyplot import get_cmap
 import plotly.graph_objects as go
 
 
+def safe_imread(fname, is_ome=False, is_imagej=True):
+    return tif.imread(fname, is_ome=is_ome, is_imagej=is_imagej)
+
+
+def safe_imwrite(
+    arr,
+    fname,
+    compression='DEFLATE',
+    ome=False,
+    imagej=True
+):
+    with tif.TiffWriter(fname, ome=ome, imagej=imagej) as tw:
+        tw.write(arr, compression=compression)
+
+
 class ImageMeta(tif.TiffFile):
     """
     ImageMeta:
@@ -49,15 +64,18 @@ class ImageMeta(tif.TiffFile):
         tifffile,
         pixelsize_yx=None,
         pixelsize_z=None,
-        axes=None,
-        slices_first=None,
+        slices_first=True,
         max_channels=6
     ):
 
         if isinstance(tifffile, type(super())):
             self = tifffile
         else:
-            super().__init__(tifffile)
+            super().__init__(
+                tifffile,
+                is_ome=False,
+                is_imagej=True
+            )
 
         self.shape = None
         self.channels = 1
@@ -335,8 +353,12 @@ def compress_8bit(
 ):
 
     im = ImageMeta(imgfilename).asarray()
-    with tif.TiffWriter(outfile) as imw:
-        imw.write(skiu.img_as_ubyte(im), compression=compression)
+
+    safe_imwrite(
+        skiu.img_as_ubyte(im),
+        imgfilename,
+        compression=compression
+    )
 
     return outfile
 
@@ -368,7 +390,7 @@ def gen_mesh(
         }
     """
 
-    im = tif.imread(imgfilename)
+    im = safe_imread(imgfilename)
 
     if im.ndim == 2:
         im = np.array([im, im, im])

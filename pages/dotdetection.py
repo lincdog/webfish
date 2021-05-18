@@ -16,6 +16,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 
 from app import app, config, s3_client
+from lib.util import safe_imread
 from lib import cloud
 
 data_client = cloud.DataClient(
@@ -79,7 +80,7 @@ def gen_image_figure(
 ):
 
     if len(imfile) > 0:
-        image = tif.imread(imfile[0])
+        image = safe_imread(imfile[0])
     else:
         return {}
 
@@ -216,7 +217,7 @@ def display_image_param_selectors(is_open, swap, position, hyb, dataset, user):
     )
 
     try:
-        image = tif.imread(imagefile['hyb_fov'][0])
+        image = safe_imread(imagefile['hyb_fov'][0])
         assert image.ndim == 4, 'Must have 4 dimensions'
     except (AssertionError, IndexError):
         return [
