@@ -7,6 +7,7 @@ import pandas as pd
 import json
 import re
 import os
+import gc
 import string
 import numbers
 from pathlib import Path, PurePath
@@ -366,6 +367,7 @@ def compress_8bit(
         err = e
     finally:
         del imarr
+        gc.collect()
         im.close()
 
     if err:
@@ -387,12 +389,12 @@ def gen_mesh(
     ---------
     Takes an image along with pixel size and scale factor, and generates
     a triangular mesh from a scaled-down version of the image.
-    
+
     If `separate_regions` is True, triangulates each labeled region (identified by
     skimage.measure.regionprops) separately, and optionally associates data
     `region_data` with each region. `region_data` should be an iterable that
     yields a datum for each label in the image.
-    
+
     Returns: JSON structure as follows:
         {
           "verts": <2D list of vertex coordinates, shape Nx3>,
@@ -539,7 +541,7 @@ def gen_pcd_df(
     Takes a CSV file of dot locations and genes and converts pixel units to
     real space units as well as adding hex colors to differentiate each gene
     in a plot.
-    
+
     Returns: Pandas DataFrame
     """
 
@@ -581,7 +583,7 @@ def mesh_from_json(jsonfile):
     mesh_from_json:
     take a json filename, read it in,
     and convert the verts and faces keys into numpy arrays.
-    
+
     returns: dict of numpy arrays
     """
     if isinstance(jsonfile, str):
@@ -607,8 +609,8 @@ def populate_mesh(cell_mesh):
     populate_mesh:
     take a mesh dictionary (like returned from `mesh_from_json`) and return the
     six components used to specify a plotly.graph_objects.Mesh3D
-    
-    returns: 6-tuple of numpy arrays: x, y, z are vertex coords; 
+
+    returns: 6-tuple of numpy arrays: x, y, z are vertex coords;
     i, j, k are vertex indices that form triangles in the mesh.
     """
 
@@ -626,7 +628,7 @@ def populate_genes(dots_pcd):
     populate_genes:
     takes a dots dataframe and computes the unique genes present,
     sorting by most frequent to least frequent.
-    
+
     returns: list of genes (+ None and All options) sorted by frequency descending
     """
     unique_genes, gene_counts = np.unique(dots_pcd['gene'], return_counts=True)
@@ -646,13 +648,13 @@ def populate_files(
     """
     populate_files
     ------------------
-    Takes either a *list* of files/folders OR a directory name 
-    and searches in it for entries that match `regex` of the form 
+    Takes either a *list* of files/folders OR a directory name
+    and searches in it for entries that match `regex` of the form
     <Prefix><Number><Postfix>,capturing the number.
-    
+
     Also takes `converter`, a function to convert the number from a string
     to a number. default is int(). If this fails it is kept as a string.
-    
+
     Returns: List of tuples of the form (name, number), sorted by
     number.
     """

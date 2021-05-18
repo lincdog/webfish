@@ -1,3 +1,4 @@
+import gc
 import os
 import sys
 import json
@@ -8,7 +9,7 @@ from time import time, sleep
 from datetime import datetime
 from pathlib import Path, PurePath
 from collections import defaultdict
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 import numpy as np
 import pandas as pd
 import boto3
@@ -131,6 +132,7 @@ class DotDetectionPreupload:
         outpattern,
         savedir
     ):
+        gc.enable()
         if not inrow:
             return None
 
@@ -142,6 +144,7 @@ class DotDetectionPreupload:
 
         try:
             compress_8bit(im, 'DEFLATE', outfile)
+            gc.collect()
         except Exception as e:
             return im, e
 
@@ -834,6 +837,7 @@ class DataServer:
         file_df=None,
         nthreads=6
     ):
+        breakpoint()
         page = self.pages[pagename]
 
         if not page.preupload_class:
@@ -875,7 +879,7 @@ class DataServer:
             in_format = str(Path(data_root, page.input_patterns[key]))
             out_format = self._preupload_newname(in_format, pagename, key)
 
-            with ThreadPoolExecutor(max_workers=nthreads) as exe:
+            with ProcessPoolExecutor(max_workers=nthreads) as exe:
                 futures = {}
 
                 for row in filerows.to_dict(orient='records'):
@@ -889,6 +893,8 @@ class DataServer:
                     futures[fut] = (old_fname, new_fname)
 
                 done = 0
+
+                breakpoint()
 
                 for fut in as_completed(list(futures.keys()), None):
                     err = None
