@@ -1,6 +1,7 @@
 *.tif
 *.json
 *.csv
+*.log
 .ipynb_checkpoints*
 cache-directory*
 __pycache__

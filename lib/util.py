@@ -360,6 +360,9 @@ def compress_8bit(
         compression=compression
     )
 
+    im.close()
+    del im
+
     return outfile
 
 

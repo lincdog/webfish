@@ -842,7 +842,7 @@ class DataServer:
         if not page.has_preupload:
             return file_df, {}
 
-        if file_df.empty:
+        if empty_or_false(file_df):
             return file_df, {}
 
         keys_with_preuploads = page.has_preupload
