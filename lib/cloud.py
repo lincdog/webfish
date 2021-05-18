@@ -837,7 +837,6 @@ class DataServer:
         file_df=None,
         nthreads=6
     ):
-        breakpoint()
         page = self.pages[pagename]
 
         if not page.preupload_class:
@@ -893,8 +892,6 @@ class DataServer:
                     futures[fut] = (old_fname, new_fname)
 
                 done = 0
-
-                breakpoint()
 
                 for fut in as_completed(list(futures.keys()), None):
                     err = None
