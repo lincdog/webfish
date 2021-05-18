@@ -353,6 +353,8 @@ def compress_8bit(
     outfile=None
 ):
     err = None
+    im = None
+    imarr = None
 
     try:
         im = ImageMeta(imgfilename)
@@ -403,7 +405,8 @@ def gen_mesh(
         }
     """
 
-    im = safe_imread(imgfilename)
+    # imagej=False because TiffFile throws a TypeError otherwise
+    im = safe_imread(imgfilename, is_imagej=False)
 
     if im.ndim == 2:
         im = np.array([im, im, im])

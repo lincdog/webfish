@@ -135,7 +135,7 @@ def gen_image_figure(
             marker=dict(
                 maxdisplayed=1000,
                 size=10,
-                color=dots_select['int'].values))
+                color=dots_select['z'].values))
         )
 
     return fig
@@ -391,7 +391,7 @@ def reset_new_analysis_div(dataset, user):
     return [
         dcc.Input(type='text', id='dd-new-analysis-name', value=None),
         dcc.ConfirmDialogProvider(
-            html.Button('Submit new analysis'),
+            dbc.Button('Submit new analysis', color='secondary'),
             id='dd-submit-new-analysis-provider',
             message='Confirm submission of new dot detection preview'
         ),
