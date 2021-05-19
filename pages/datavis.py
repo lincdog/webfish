@@ -1,17 +1,16 @@
 import pandas as pd
-import time
+import numpy as np
 import plotly.graph_objects as go
 
 import dash_core_components as dcc
 import dash_html_components as html
 import dash_bootstrap_components as dbc
-from dash.dependencies import Input, Output, State
+from dash.dependencies import Input, Output, State, MATCH, ALL
 from dash.exceptions import PreventUpdate
 
 from app import app, config, s3_client
 from lib.util import populate_mesh, base64_image, populate_genes, mesh_from_json
 from lib import cloud
-from datetime import datetime
 
 data_client = cloud.DataClient(
     config=config,
@@ -290,11 +289,13 @@ def select_analysis(analysis, dataset, user):
     positions = data_client.datafiles.query(
         'user==@user and dataset==@dataset and analysis==@analysis')['position'].unique()
 
+    positions_sorted = np.sort(positions.astype(int)).astype(str)
+
     return [
         'Position select: ',
         dcc.Dropdown(
             id='dv-pos-select',
-            options=[{'label': i, 'value': i} for i in sorted(positions)],
+            options=[{'label': i, 'value': i} for i in positions_sorted],
             value=positions[0],
             placeholder='Select a position',
             clearable=False,

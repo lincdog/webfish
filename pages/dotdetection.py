@@ -1,16 +1,16 @@
-import tifffile as tif
 import numpy as np
 import pandas as pd
 import io
 import json
 import re
-import time
+from copy import copy
 
 import dash_core_components as dcc
 import dash_html_components as html
 import dash_bootstrap_components as dbc
-from dash.dependencies import Input, Output, State
+from dash.dependencies import Input, Output, State, MATCH, ALL
 from dash.exceptions import PreventUpdate
+from dash import no_update
 
 import plotly.express as px
 import plotly.graph_objects as go
@@ -141,6 +141,115 @@ def gen_image_figure(
     return fig
 
 
+clear_components = {
+    'dd-s3-sync-button':
+        dbc.Button(
+            'Sync with S3',
+            id='dd-s3-sync-button',
+            n_clicks=0,
+            color='primary'
+        ),
+
+    'dd-user-select':
+        dcc.Dropdown(
+            id='dd-user-select',
+            options=[{'label': u, 'value': u}
+                     for u in data_client.datasets.index.unique(level=0)],
+            placeholder='Select a user'
+        ),
+    'dd-dataset-select':
+        dcc.Dropdown(
+            id='dd-dataset-select',
+            placeholder='Select a dataset'
+        ),
+    'dd-analysis-select':
+        dcc.Dropdown(
+            id='dd-analysis-select',
+            placeholder='Select an analysis'
+        ),
+
+    'dd-new-analysis-name': dcc.Input(type='text', id='dd-new-analysis-name'),
+    'dd-submit-new-analysis-provider':
+        dcc.ConfirmDialogProvider(
+            dbc.Button('Submit new analysis', color='secondary'),
+            id='dd-submit-new-analysis-provider',
+            message='Confirm submission of new dot detection preview'
+        ),
+    'dd-new-analysis-text': html.Div(id='dd-new-analysis-text'),
+
+    'dd-hyb-select':
+        dcc.Dropdown(id='dd-hyb-select', placeholder='Select a hyb round'),
+    'dd-position-select':
+        dcc.Dropdown(id='dd-position-select', placeholder='Select a position'),
+    'dd-swap-channels-slices':
+        dcc.Checklist(
+            id='dd-swap-channels-slices',
+            options=[{'label': 'Swap channels and slices', 'value': 'swap'}],
+            value=[]
+        ),
+
+    'dd-z-select': dcc.Slider(id='dd-z-select'),
+    'dd-chan-select': dcc.Dropdown(id='dd-chan-select'),
+    'dd-contrast-slider': dcc.RangeSlider(id='dd-contrast-slider'),
+
+    'dd-fig': dcc.Graph(id='dd-fig')
+}
+
+component_groups = {
+    's3-sync': ['dd-s3-sync-button'],
+
+    'dataset-info': ['dd-user-select',
+                     'dd-dataset-select',
+                     'dd-analysis-select'],
+
+    'new-analysis': ['dd-new-analysis-name',
+                     'dd-submit-new-analysis-provider',
+                     'dd-new-analysis-text'],
+
+    'image-select': ['dd-hyb-select',
+                     'dd-position-select',
+                     'dd-swap-channels-slices'],
+
+    'image-params': ['dd-z-select',
+                     'dd-chan-select',
+                     'dd-contrast-slider']
+}
+
+
+def component(id, **options):
+    comp = copy(clear_components[id])
+
+    for k, v in options.items():
+        setattr(comp, k, v)
+
+    return comp
+
+
+def component_group(name, tolist=False, options={}):
+
+    ids = component_groups[name]
+
+    # get the component-specific options
+    id_options = {i: options.get(i, {}) for i in ids}
+
+    # get the whole-group options
+    for opt, val in options.items():
+        # Any options entries directly referring to an attribute
+        # get applied to all members of this component group
+        if opt not in ids:
+            id_options = {
+                i: oldopts | {opt: val}
+                for i, oldopts in id_options.items()
+            }
+
+    comps = {i: component(i, **opt) for i, opt in id_options.items()}
+
+    if tolist:
+        return list(comps.values())
+
+    return comps
+
+
 @app.callback(
     Output('dd-graph-wrapper', 'children'),
     Input('dd-image-params-wrapper', 'is_open'),
@@ -166,12 +275,10 @@ def update_image_params(
     dataset,
     user
 ):
-    if not is_open:
-        raise PreventUpdate
-
-    if any([v is None for v in
+    # Again test for None explicitly because z, channel, position or hyb might be 0
+    if not is_open or any([v is None for v in
             (z, channel, contrast, position, hyb, dataset, user)]):
-        return {}
+        return component('dd-fig')
 
     swap = 'swap' in swap
 
@@ -193,21 +300,26 @@ def update_image_params(
 
     figure = gen_image_figure(hyb_fov, dot_locations, swap, hyb, z, channel, contrast)
 
-    return dcc.Graph(figure=figure, id='dd-fig')
+    return component('dd-fig', figure=figure)
 
 
 @app.callback(
+    Output('dd-image-params-wrapper', 'is_open'),
     Output('dd-image-params-wrapper', 'children'),
-    Input('dd-image-params-wrapper', 'is_open'),
     Input('dd-swap-channels-slices', 'value'),
-    State('dd-position-select', 'value'),
-    State('dd-hyb-select', 'value'),
-    State('dd-dataset-select', 'value'),
-    State('dd-user-select', 'value')
+    Input('dd-position-select', 'value'),
+    Input('dd-hyb-select', 'value'),
+    Input('dd-dataset-select', 'value'),
+    Input('dd-user-select', 'value')
 )
-def display_image_param_selectors(is_open, swap, position, hyb, dataset, user):
+def select_pos_hyb(swap, position, hyb, dataset, user):
+    # Note we test for None rather than truthiness because a position or hyb of 0
+    # evaluates to False when cast to bool, but is in fact a real value.
+    is_open = not any([v is None for v in (position, hyb, dataset, user)])
+
+    # Close the collapser and reset the components
     if not is_open:
-        raise PreventUpdate
+        return False, component_group('image-params', tolist=True)
 
     swap = 'swap' in swap
 
@@ -219,14 +331,14 @@ def display_image_param_selectors(is_open, swap, position, hyb, dataset, user):
     try:
         image = safe_imread(imagefile['hyb_fov'][0])
         assert image.ndim == 4, 'Must have 4 dimensions'
-    except (AssertionError, IndexError):
-        return [
-            dbc.Alert(f'No image file for dataset {user}/{dataset} '
-                      f'hyb {hyb} position {position} found!', color='warning'),
-            dcc.Slider(id='dd-z-select', disabled=True),
-            dcc.Dropdown(id='dd-chan-select', disabled=True),
-            dcc.Slider(id='dd-contrast-slider', disabled=True)
-            ]
+    except (AssertionError, IndexError, RuntimeError):
+
+        return True, [
+                   dbc.Alert(f'No image file for dataset {user}/{dataset} '
+                             f'hyb {hyb} position {position} found!', color='warning')
+               ] + component_group('image-params',
+                                   tolist=True,
+                                   options=dict(disabled=True))
 
     if swap:
         z_ind = 0
@@ -240,28 +352,30 @@ def display_image_param_selectors(is_open, swap, position, hyb, dataset, user):
 
     marks = {a // 256: str(a) for a in range(0, 10000, 500)}
 
-    return [
+    return True, [
         html.Hr(),
         html.B('Select Z slice'),
-        dcc.Slider(
-            id='dd-z-select',
+        component(
+            'dd-z-select',
             min=-1,
             max=z_range[-1],
             step=1,
             value=0,
             marks={-1: 'Max'} | {z: str(z) for z in z_range}
         ),
+
         html.B('Select channel'),
-        dcc.Dropdown(
-            id='dd-chan-select',
+        component(
+            'dd-chan-select',
             placeholder='Select channel',
             options=[{'label': str(c), 'value': str(c)} for c in chan_range],
             value='0'
         ),
+
         html.B('Adjust contrast'),
         html.Div([
-            dcc.RangeSlider(
-                id='dd-contrast-slider',
+            component(
+                'dd-contrast-slider',
                 min=0,
                 max=10000 // 256,
                 step=1,
@@ -272,19 +386,6 @@ def display_image_param_selectors(is_open, swap, position, hyb, dataset, user):
         ], id='dd-contrast-div'),
     ]
 
-
-@app.callback(
-    Output('dd-image-params-wrapper', 'is_open'),
-    Input('dd-position-select', 'value'),
-    Input('dd-hyb-select', 'value'),
-    Input('dd-dataset-select', 'value'),
-    Input('dd-user-select', 'value')
-)
-def select_pos_hyb(position, hyb, dataset, user):
-    if any([v is None for v in (position, hyb, dataset, user)]):
-        return False
-
-    return True
 
 
 @app.callback(
@@ -298,18 +399,8 @@ def select_dataset_analysis(dataset, user):
 
     analyses = data_client.datasets.loc[(user, dataset)].index.unique(level=0).dropna()
 
-    print(analyses)
-
     return [{'label': '(new)', 'value': '__new__'}] +\
            [{'label': a, 'value': a} for a in analyses]
-
-
-@app.callback(
-    Output('dd-analysis-select', 'value'),
-    Input('dd-user-select', 'value')
-)
-def clear_analysis_select(user):
-    return None
 
 
 @app.callback(
@@ -320,83 +411,68 @@ def clear_analysis_select(user):
 )
 def display_image_selectors(is_open, dataset, user):
     if not is_open:
-        raise PreventUpdate
+        return component_group('image-select', tolist=True)
+
+    print(user, dataset)
 
     hybs = data_client.datafiles.query(
         'user == @user and dataset == @dataset')['hyb'].dropna().unique()
 
+    hybs_sorted = np.sort(hybs.astype(int)).astype(str)
+
     positions = data_client.datafiles.query(
         'user == @user and dataset == @dataset')['position'].dropna().unique()
 
-    return [
-        dcc.Dropdown(
-            id='dd-hyb-select',
-            options=[{'label': h, 'value': h} for h in sorted(hybs)],
-            placeholder='Select hyb',
-            clearable=False
-        ),
-        dcc.Dropdown(
-            id='dd-position-select',
-            options=[{'label': p, 'value': p} for p in sorted(positions)],
-            placeholder='Select position',
-            clearable=False
-        ),
-        dcc.Checklist(
-            id='dd-swap-channels-slices',
-            options=[{'label': 'Swap channels and slices', 'value': 'swap'}],
-            value=[]
-        ),
-    ]
+    positions_sorted = np.sort(positions.astype(int)).astype(str)
 
-
-@app.callback(
-    Output('dd-image-select-wrapper', 'is_open'),
-    Input('dd-dataset-select', 'value'),
-    Input('dd-user-select', 'value')
-)
-def select_dataset_image(dataset, user):
-    if not dataset:
-        return False
-
-    return True
+    return component_group(
+        'image-select',
+        tolist=True,
+        options=
+        {
+            'dd-hyb-select':
+                dict(options=[{'label': h, 'value': h} for h in hybs_sorted]),
+            'dd-position-select':
+                dict(options=[{'label': p, 'value': p} for p in positions_sorted])
+        }
+    )
 
 
 @app.callback(
     Output('dd-dataset-select', 'value'),
-    Input('dd-dataset-select', 'options')
-)
-def clear_dataset_select(opts):
-    return None
-
-
-@app.callback(
     Output('dd-dataset-select', 'options'),
     Input('dd-user-select', 'value')
 )
 def select_user(user):
     if not user:
-        return []
+        return None, []
 
     datasets = data_client.datasets.loc[user].index.unique(level=0)
 
-    return [{'label': d, 'value': d} for d in sorted(datasets)]
+    return None, [{'label': d, 'value': d} for d in sorted(datasets)]
 
 
 @app.callback(
-    Output('dd-new-analysis-div', 'children'),
-    Input('dd-dataset-select', 'value'),
-    Input('dd-user-select', 'value')
+    [Output('dd-new-analysis-div', 'children'),
+     Output('dd-image-select-wrapper', 'is_open'),
+     Output('dd-analysis-select', 'value'),
+
+     ],
+    [Input('dd-dataset-select', 'value'),
+     Input('dd-user-select', 'value')
+     ]
 )
-def reset_new_analysis_div(dataset, user):
-    return [
-        dcc.Input(type='text', id='dd-new-analysis-name', value=None),
-        dcc.ConfirmDialogProvider(
-            dbc.Button('Submit new analysis', color='secondary'),
-            id='dd-submit-new-analysis-provider',
-            message='Confirm submission of new dot detection preview'
-        ),
-        html.Div(id='dd-new-analysis-text')
-    ]
+def reset_dependents(dataset, user):
+    # Always reset the new-analysis-div on user/dataset change
+    new_analysis = component_group('new-analysis', tolist=True)
+
+    # Close the image-select wrapper if either is not defined
+    image_select_open = dataset and user
+
+    # Always reset the analysis value
+    analysis_value = None
+
+    return new_analysis, image_select_open, analysis_value
 
 
 @app.callback(
@@ -414,7 +490,6 @@ def submit_new_analysis(
     dataset,
     analysis_options
 ):
-    print(confirm_n_clicks, new_analysis_name, user, dataset, analysis_options)
     if not all((new_analysis_name, user, dataset, analysis_options)):
         raise PreventUpdate
 
@@ -433,13 +508,13 @@ def submit_new_analysis(
 
         if isinstance(new_analysis_future, Exception):
             return [dbc.Alert(f'Failure: failed to submit request for new '
-                             f'analysis. Exception: '),
+                             f'analysis. Exception: ', color='error'),
                     html.Pre(new_analysis_future)
             ]
 
         return dbc.Alert(f'Success! New dot detection test will be at '
                          f'{user}/{dataset}/{new_analysis_future} '
-                         f'in 5-10 minutes.')
+                         f'in 5-10 minutes.', color='success')
     else:
         raise PreventUpdate
 
@@ -458,13 +533,7 @@ def finish_client_s3_sync(contents, n_clicks):
 
     data_client.sync_with_s3()
 
-    return dbc.Button(
-                'Sync with S3',
-                id='dd-s3-sync-button',
-                color='primary',
-                className='mr-1',
-                n_clicks=0
-            )
+    return component('dd-s3-sync-button')
 
 
 @app.callback(
@@ -482,56 +551,50 @@ layout = html.Div([
     dbc.Alert('In this tab you can preview the results of dot detection'
                   ' using various parameter settings. Data is synced from the'
                   ' HPC analyses folder every 10 minutes.', color='info'),
+
     html.Div(dbc.Button(
         'Sync with S3',
         id='dd-s3-sync-button',
         n_clicks=0,
         color='primary'
     ), id='dd-s3-sync-div'),
+
     dbc.Row([
+
         dbc.Col([
+
             html.Div([
-                dcc.Dropdown(
-                    id='dd-user-select',
-                    options=[{'label': u, 'value': u} for u in data_client.datasets.index.unique(level=0)],
-                    placeholder='Select a user'
-                ),
-                dcc.Dropdown(id='dd-dataset-select', placeholder='Select a dataset'),
-                dcc.Dropdown(id='dd-analysis-select', placeholder='Select an analysis'),
+
+                *component_group('dataset-info', tolist=True),
+
                 html.Hr(),
+
                 html.Div([
-                    dcc.Input(type='text', id='dd-new-analysis-name'),
-                    dcc.ConfirmDialogProvider(
-                        dbc.Button('Submit new analysis', color='secondary'),
-                        id='dd-submit-new-analysis-provider',
-                        message='Confirm submission of new dot detection preview'
-                    ),
-                    html.Div(id='dd-new-analysis-text')
+                    *component_group('new-analysis', tolist=True)
                 ], id='dd-new-analysis-div'),
+
                 html.Hr(),
+
                 dbc.Collapse([
-                    dcc.Dropdown(id='dd-hyb-select'),
-                    dcc.Dropdown(id='dd-position-select'),
-                    dcc.Checklist(
-                        id='dd-swap-channels-slices',
-                        options=[{'label': 'Swap channels and slices', 'value': 'swap'}],
-                        value=[]
-                    ),
+                    *component_group('image-select', tolist=True)
                 ], is_open=False, id='dd-image-select-wrapper'),
+
             ], id='dd-dataset-select-div', style={'margin': '10px'}),
+
             html.Hr(),
+
             html.Div([
+
                 dbc.Collapse([
-                    dcc.Slider(id='dd-z-select'),
-                    dcc.Dropdown(id='dd-chan-select'),
-                    dcc.Slider(id='dd-contrast-slider')
+                    *component_group('image-params', tolist=True)
                 ], is_open=False, id='dd-image-params-wrapper'),
+
             ], id='dd-image-params-div', style={'margin': '10px'})
 
         ], style={'border-right': '1px solid gray'}, width=4),
 
         dbc.Col([
-            dcc.Loading(dcc.Graph(id='dd-fig'), id='dd-graph-wrapper')
+            dcc.Loading(component('dd-fig'), id='dd-graph-wrapper')
         ], id='dd-fig-col')
     ])
 ])
