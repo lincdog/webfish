@@ -835,7 +835,7 @@ class DataServer:
         self,
         pagename,
         file_df=None,
-        nthreads=6
+        nthreads=5
     ):
         page = self.pages[pagename]
 
@@ -943,7 +943,8 @@ class DataServer:
         do_s3_diff=False,
         progress=0,
         dryrun=False,
-        use_s3_only=False
+        use_s3_only=False,
+        nthreads=5
     ):
         """
         upload_to_s3
@@ -1004,7 +1005,7 @@ class DataServer:
         if run_preuploads:
             server_logger.info(f'upload_to_s3: running preuploads for page {pagename}')
             file_df, errors = self.run_preuploads(
-                pagename, file_df=file_df, nthreads=10)
+                pagename, file_df=file_df, nthreads=nthreads)
 
             if any(errors.values()):
                 server_logger.warning(
@@ -1060,7 +1061,8 @@ class DataServer:
                 )
 
                 self.pages[pagename].pending.drop(index=row.Index, inplace=True)
-                self.s3_keys[s3_type].append(row.filename)
+                self.s3_keys[s3_type].append(
+                  self._preupload_revert(row.filename))
 
             except Exception as ex:
                 server_logger.warning(f'problem uploading file {row.filename}: {ex}')

@@ -49,30 +49,6 @@ def init_server():
     return dm
 
 
-def stat_compare(dm):
-    try:
-        listmtime = float(open(
-            Path(dm.sync_folder, dm.sync_contents['timestamp']), 'r').read().strip())
-    except FileNotFoundError:
-        listmtime = 0
-
-    source_dirlist, _ = find_matching_files(dm.master_root, dm.dataset_root)
-    raw_dirlist, _ = find_matching_files(dm.raw_master_root, dm.raw_dataset_root)
-
-    source_modified = []
-    raw_modified = []
-
-    for d in source_dirlist:
-        if os.stat(Path(dm.master_root, d)).st_mtime > listmtime:
-            source_modified.append(Path(dm.master_root, d))
-
-    for d in raw_dirlist:
-        if os.stat(Path(dm.raw_master_root, d)).st_mtime > listmtime:
-            raw_modified.append(Path(dm.raw_master_root, d))
-
-    return source_modified, raw_modified, listmtime
-
-
 def search_and_upload(dm, mtime, use_s3_only=False, check_s3=False, dryrun=False):
 
     results = {}
@@ -119,6 +95,7 @@ def main(args):
     lock = Path(dm.sync_folder, LOCKFILE)
 
     if lock.exists():
+        logger.info('Lockfile exists, exiting.')
         return 0
 
     with open(lock, 'w') as lockfp:
@@ -140,11 +117,6 @@ def main(args):
         check_s3=args.check_s3,
         dryrun=args.dryrun,
     )
-
-    if args.dryrun:
-        verb = 'Found'
-    else:
-        verb = 'Uploaded'
 
     logger.info(f'Results: {results}')
 
@@ -168,7 +140,8 @@ if __name__ == '__main__':
     rth = RotatingFileHandler('upload_datasets.log', maxBytes=2 ** 16, backupCount=4)
     rth.setLevel(logging.DEBUG)
 
-    formatter = logging.Formatter('[%(asctime)s] %(name)s:%(levelname)s: %(message)s')
+    formatter = logging.Formatter(
+        f'<pid {os.getpid()}>[%(asctime)s] %(name)s:%(levelname)s: %(message)s')
     rth.setFormatter(formatter)
 
     logger.addHandler(rth)
