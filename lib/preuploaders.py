@@ -1,7 +1,7 @@
 import gc
 import skimage.util as skiu
 from pathlib import Path
-from util import ImageMeta, safe_imwrite
+from lib.util import ImageMeta, safe_imwrite
 
 """
 preuploaders.py

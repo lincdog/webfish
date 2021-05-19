@@ -5,7 +5,7 @@ import skimage.measure as skim
 import json
 from matplotlib.pyplot import get_cmap
 from pathlib import Path
-from util import safe_imread
+from lib.util import safe_imread
 
 """
 generators.py

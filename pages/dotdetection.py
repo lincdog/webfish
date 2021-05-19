@@ -3,7 +3,6 @@ import pandas as pd
 import io
 import json
 import re
-from copy import copy
 
 import dash_core_components as dcc
 import dash_html_components as html
@@ -17,9 +16,10 @@ import plotly.graph_objects as go
 
 from app import app, config, s3_client
 from lib.util import safe_imread
-from lib import cloud
+from lib.client import DataClient
+from pages._common import ComponentManager
 
-data_client = cloud.DataClient(
+data_client = DataClient(
     config=config,
     s3_client=s3_client,
     pagename='dotdetection'
@@ -27,6 +27,7 @@ data_client = cloud.DataClient(
 data_client.sync_with_s3()
 
 
+# TODO: move this to DataClient
 def put_analysis_request(
     user,
     dataset,
@@ -171,7 +172,7 @@ clear_components = {
     'dd-new-analysis-name': dcc.Input(type='text', id='dd-new-analysis-name'),
     'dd-submit-new-analysis-provider':
         dcc.ConfirmDialogProvider(
-            dbc.Button('Submit new analysis', color='secondary'),
+            html.Button('Submit new dot detection preview', n_clicks=0),
             id='dd-submit-new-analysis-provider',
             message='Confirm submission of new dot detection preview'
         ),
@@ -188,6 +189,9 @@ clear_components = {
             value=[]
         ),
 
+    'dd-z-cap': html.B('Select Z slice'),
+    'dd-chan-cap': html.B('Select a channel'),
+    'dd-contrast-cap': html.B('Adjust contrast'),
     'dd-z-select': dcc.Slider(id='dd-z-select'),
     'dd-chan-select': dcc.Dropdown(id='dd-chan-select'),
     'dd-contrast-slider': dcc.RangeSlider(id='dd-contrast-slider'),
@@ -210,44 +214,15 @@ component_groups = {
                      'dd-position-select',
                      'dd-swap-channels-slices'],
 
-    'image-params': ['dd-z-select',
+    'image-params': ['dd-z-cap',
+                     'dd-z-select',
+                     'dd-chan-cap',
                      'dd-chan-select',
+                     'dd-contrast-cap',
                      'dd-contrast-slider']
 }
 
-
-def component(id, **options):
-    comp = copy(clear_components[id])
-
-    for k, v in options.items():
-        setattr(comp, k, v)
-
-    return comp
-
-
-def component_group(name, tolist=False, options={}):
-
-    ids = component_groups[name]
-
-    # get the component-specific options
-    id_options = {i: options.get(i, {}) for i in ids}
-
-    # get the whole-group options
-    for opt, val in options.items():
-        # Any options entries directly referring to an attribute
-        # get applied to all members of this component group
-        if opt not in ids:
-            id_options = {
-                i: oldopts | {opt: val}
-                for i, oldopts in id_options.items()
-            }
-
-    comps = {i: component(i, **opt) for i, opt in id_options.items()}
-
-    if tolist:
-        return list(comps.values())
-
-    return comps
+cm = ComponentManager(clear_components, component_groups=component_groups)
 
 
 @app.callback(
@@ -278,7 +253,7 @@ def update_image_params(
     # Again test for None explicitly because z, channel, position or hyb might be 0
     if not is_open or any([v is None for v in
             (z, channel, contrast, position, hyb, dataset, user)]):
-        return component('dd-fig')
+        return cm.component('dd-fig')
 
     swap = 'swap' in swap
 
@@ -300,7 +275,7 @@ def update_image_params(
 
     figure = gen_image_figure(hyb_fov, dot_locations, swap, hyb, z, channel, contrast)
 
-    return component('dd-fig', figure=figure)
+    return cm.component('dd-fig', figure=figure)
 
 
 @app.callback(
@@ -319,7 +294,7 @@ def select_pos_hyb(swap, position, hyb, dataset, user):
 
     # Close the collapser and reset the components
     if not is_open:
-        return False, component_group('image-params', tolist=True)
+        return False, cm.component_group('image-params', tolist=True)
 
     swap = 'swap' in swap
 
@@ -336,9 +311,9 @@ def select_pos_hyb(swap, position, hyb, dataset, user):
         return True, [
                    dbc.Alert(f'No image file for dataset {user}/{dataset} '
                              f'hyb {hyb} position {position} found!', color='warning')
-               ] + component_group('image-params',
-                                   tolist=True,
-                                   options=dict(disabled=True))
+               ] + cm.component_group('image-params',
+                                      tolist=True,
+                                      options=dict(disabled=True))
 
     if swap:
         z_ind = 0
@@ -354,7 +329,7 @@ def select_pos_hyb(swap, position, hyb, dataset, user):
 
     return True, [
         html.B('Select Z slice'),
-        component(
+        cm.component(
             'dd-z-select',
             min=-1,
             max=z_range[-1],
@@ -364,7 +339,7 @@ def select_pos_hyb(swap, position, hyb, dataset, user):
         ),
 
         html.B('Select channel'),
-        component(
+        cm.component(
             'dd-chan-select',
             placeholder='Select channel',
             options=[{'label': str(c), 'value': str(c)} for c in chan_range],
@@ -373,7 +348,7 @@ def select_pos_hyb(swap, position, hyb, dataset, user):
 
         html.B('Adjust contrast'),
         html.Div([
-            component(
+            cm.component(
                 'dd-contrast-slider',
                 min=0,
                 max=10000 // 256,
@@ -409,7 +384,7 @@ def select_dataset_analysis(dataset, user):
 )
 def display_image_selectors(is_open, dataset, user):
     if not is_open:
-        return component_group('image-select', tolist=True)
+        return cm.component_group('image-select', tolist=True)
 
     print(user, dataset)
 
@@ -423,7 +398,7 @@ def display_image_selectors(is_open, dataset, user):
 
     positions_sorted = np.sort(positions.astype(int)).astype(str)
 
-    return component_group(
+    return cm.component_group(
         'image-select',
         tolist=True,
         options=
@@ -462,7 +437,7 @@ def select_user(user):
 )
 def reset_dependents(dataset, user):
     # Always reset the new-analysis-div on user/dataset change
-    new_analysis = component_group('new-analysis', tolist=True)
+    new_analysis = cm.component_group('new-analysis', tolist=True)
 
     # Close the image-select wrapper if either is not defined
     image_select_open = dataset and user
@@ -531,7 +506,7 @@ def finish_client_s3_sync(contents, n_clicks):
 
     data_client.sync_with_s3()
 
-    return component('dd-s3-sync-button')
+    return cm.component('dd-s3-sync-button')
 
 
 @app.callback(
@@ -563,18 +538,18 @@ layout = html.Div([
 
             html.Div([
 
-                *component_group('dataset-info', tolist=True),
+                *cm.component_group('dataset-info', tolist=True),
 
                 html.Hr(),
 
                 html.Div([
-                    *component_group('new-analysis', tolist=True)
+                    *cm.component_group('new-analysis', tolist=True)
                 ], id='dd-new-analysis-div'),
 
                 html.Hr(),
 
                 dbc.Collapse([
-                    *component_group('image-select', tolist=True)
+                    *cm.component_group('image-select', tolist=True)
                 ], is_open=False, id='dd-image-select-wrapper'),
 
             ], id='dd-dataset-select-div', style={'margin': '10px'}),
@@ -585,7 +560,7 @@ layout = html.Div([
 
                 dbc.Collapse([
                     dbc.Spinner([
-                        *component_group('image-params', tolist=True)
+                        *cm.component_group('image-params', tolist=True)
                     ], id='dd-image-params-loader')
                 ], is_open=False, id='dd-image-params-wrapper'),
 
@@ -594,7 +569,7 @@ layout = html.Div([
         ], style={'border-right': '1px solid gray'}, width=4),
 
         dbc.Col([
-            dcc.Loading(component('dd-fig'), id='dd-graph-wrapper')
+            dcc.Loading(cm.component('dd-fig'), id='dd-graph-wrapper')
         ], id='dd-fig-col')
     ])
 ])

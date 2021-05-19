@@ -1,12 +1,15 @@
-from pathlib import Path, PurePath
-import numpy as np
-import sys
 import os
 import configparser as cfparse
+import numpy as np
+from pathlib import Path, PurePath
 from time import sleep
+
 import boto3
 import botocore.exceptions as boto3_exc
-from util import process_file_entries, fmt2regex
+
+from lib.util import process_file_entries, fmt2regex
+import lib.generators as generators
+import lib.preuploaders as preuploaders
 
 
 class Page:
@@ -78,12 +81,12 @@ class Page:
         # Try to grab the generator class object from this module
         self.generator_class = None
         if 'generator_class' in self.config.keys():
-            self.generator_class = getattr(sys.modules.get(__name__),
+            self.generator_class = getattr(generators,
                                            self.config['generator_class'])
         # Same for the preupload function class
         self.preupload_class = None
         if 'preupload_class' in self.config.keys():
-            self.preupload_class = getattr(sys.modules.get(__name__),
+            self.preupload_class = getattr(preuploaders,
                                            self.config['preupload_class'])
 
         # Make convenience dicts for the different fields of each file type
@@ -136,7 +139,6 @@ class Page:
         self.s3_diff = None
 
 
-
 class S3Connect:
     """
     S3Connect
@@ -177,14 +179,17 @@ class S3Connect:
             cf = cfparse.ConfigParser()
             result = cf.read(file)
 
+            key_id = None
+            secret_key = None
+
             if len(result) == 0:
                 if wait_for_creds:
                     return False, None, None
                 else:
-                     raise FileNotFoundError(
-                         f'S3Connect: unable to read credentials file'
-                         f' {file} and not waiting for it.'
-                     )
+                    raise FileNotFoundError(
+                     f'S3Connect: unable to read credentials file'
+                     f' {file} and not waiting for it.'
+                    )
 
             try:
                 # Find the desired profile section

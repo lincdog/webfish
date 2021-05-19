@@ -1,29 +1,68 @@
 theme: COSMO
 
+# Environment variable specifying location of AWS key file
 credentials: WEBFISH_CREDS
+
+# Profile name to use from the above file
 cred_profile_name: hpc-wasabi-user
+
+# URL to connect to S3 on
 endpoint_url: "https://s3.us-west-1.wasabisys.com"
+
+# S3 region to connect to
 region_name: us-west-1
 
-master_root: /groups/CaiLab/analyses/
-raw_master_root: /groups/CaiLab/personal/
-
-sync_folder: monitoring/
-analysis_folder: analyses/
-raw_folder: raw/
-
-dataset_root: "{user}/{dataset}/{analysis}"
-raw_dataset_root: "{user}/raw/{dataset}"
-
+# S3 bucket to access
 bucket_name: hpc-wasabi
 
+# Root directory for master analyses storage (server)
+master_root: /groups/CaiLab/analyses/
+
+# Root directory for master raw data storage (server
+raw_master_root: /groups/CaiLab/personal/
+
+# Folder to save file manifests and syncing information to, both on
+#   server and on client (running instance of webapp)
+sync_folder: monitoring/
+
+# S3 prefix for storage of analyzed data files
+analysis_folder: analyses/
+
+# S3 prefix for storage of raw data files
+raw_folder: raw/
+
+# Format string describing directory structure leading to each analyzed
+#   dataset
+dataset_root: "{user}/{dataset}/{analysis}"
+
+# Format string describing directory structure leading to each raw dataset
+raw_dataset_root: "{user}/raw/{dataset}"
+
+# Location to save files that have been processed with preuploader functions
 preupload_root: /groups/CaiLab/personal/lincoln/webfish_preupload/
+
+# Folder on client (webapp) to save all downloaded data/analysis files that
+#   are used in the webapp
 local_store: webfish_data/
 
+# ----------------------------
+
+# Specification of pages that use the data infrastructure
 pages:
+
   datavis:
+    # Class from generators.py that contains methods for processing data files
+    #   for this page
     generator_class: DatavisProcessing
+
+    # Variable fields in the files required by this page
     variables: [ "position", "channel" ]
+
+    # Listing of files from master_root / dataset_root (i.e. analyzed data files)
+    #   that this page uses.
+    # Note that this is an abbreviated format, can also specify pattern,
+    #   preupload function as done below for dot detection
+    # Note use of format {fields} in patterns
     source_files:
       segmentation: "MMStack_Pos{position}/Segmentation/labeled_img.tif"
       dots_csv:
@@ -39,6 +78,13 @@ pages:
       falsepositive_txt:
         "MMStack_Pos{position}/False_Positive_Rate_Analysis/Channel_{channel}/false_positives_after_segmentation.txt"
 
+    # Listing of output files generated from the source files
+    # - "pattern" is the format string pattern for the output file,
+    # - "requires" is an array of keys from source_files or raw_files that
+    #   specifies what input files are needed. Alternative sources that can
+    #   substitute for another are denoted with pipes key_1 | key_2
+    # - "generator" is the name of a function from the generator_class
+    #   that will produce the output file from the input files.
     output_files:
       mesh:
         pattern: "MMStack_Pos{position}/labeled_mesh.json"
@@ -50,14 +96,26 @@ pages:
         generator: "generate_dots"
 
   dotdetection:
+
     variables: [ "hyb", "position" ]
+    # This page uses preuploaders, here specifying the class from preuploaders.py
     preupload_class: DotDetectionPreupload
+
+    # These are unused now, but may be useful for page-specific monitoring or
+    #   something.
     global_files:
       exp_tree: "monitoring/exp_tree.json"
+
     source_files:
       dot_locations: "MMStack_Pos{position}/Dot_Locations/locations.csv"
       avg_brightness: "MMStack_Pos{position}/Dot_Locations/Average_Brightness_Analysis.csv"
       biggest_jump: "MMStack_Pos{position}/Dot_Locations/Biggest_Jump_Histograms/HybCycle_{hyb}_Jump.png"
+
+    # This page requires raw data files, which are stored on master storage
+    #   in raw_master_root / raw_dataset_root, a different location than source_files.
+    # Here the "preupload" key specifies a function name from the preupload_class
+    #   that will be applied on master storage *before* uploading to S3.
+    #   So the web app itself will only see the processed file, with a modified name.
     raw_files:
       hyb_fov:
         pattern: "HybCycle_{hyb}/MMStack_Pos{position}.ome.tif"

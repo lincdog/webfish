@@ -555,7 +555,7 @@ def fmt2regex(fmt, delim=os.path.sep):
     return reg, globstr
 
 
-def find_matching_files(base, fmt, paths=None, modified_since=0):
+def find_matching_files(base, fmt, paths=None):
     """
     findAllMatchingFiles: Starting within a base directory,
     find all files that match format `fmt` with named fields.
@@ -613,6 +613,36 @@ def f2k(
     delimiter='/'
 ):
     return str(f).replace(os.sep, delimiter)
+
+
+def sanitize(
+    k,
+    delimiter='/',
+    delimiter_allowed=True,
+    raiseonfailure=False
+):
+    badchars = '\\[]{}^%#` <>~|'
+
+    if raiseonfailure:
+        err = delimiter in badchars or (delimiter in k and not delimiter_allowed)
+        if err:
+            raise ValueError(f'Delimiter:  {delimiter}  is not allowed.')
+
+    if delimiter and delimiter_allowed:
+        parts = k.split(delimiter)
+    else:
+        parts = [k]
+
+    # put it in the middle so there's less chance of it messing up
+    # the exp
+    exp = '[\\\\{^}%` ' + re.escape(delimiter) + '\\[\\]>~<#|]'
+    parts_sanitized = [re.sub(exp, '', part) for part in parts]
+
+    if any([len(part) == 0 for part in parts_sanitized]):
+        raise ValueError(f'After sanitizing, a part of the string "{k}"'
+                         f' disappeared completely.')
+
+    return delimiter.join(parts_sanitized)
 
 
 def ls_recursive(root='.', level=1, ignore=[], dirsonly=True, flat=False):

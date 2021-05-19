@@ -5,8 +5,8 @@ import logging
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from collections import defaultdict
 from time import time
-from core import Page
-from util import (
+from lib.core import Page
+from lib.util import (
     fmt2regex,
     find_matching_files,
     notempty,

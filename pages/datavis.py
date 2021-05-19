@@ -10,9 +10,9 @@ from dash.exceptions import PreventUpdate
 
 from app import app, config, s3_client
 from lib.util import populate_mesh, base64_image, populate_genes, mesh_from_json
-from lib import cloud
+from lib.client import DataClient
 
-data_client = cloud.DataClient(
+data_client = DataClient(
     config=config,
     s3_client=s3_client,
     pagename='datavis'

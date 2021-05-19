@@ -3,8 +3,8 @@ import logging
 from datetime import datetime
 
 from pathlib import Path
-from core import Page
-from util import (
+from lib.core import Page
+from lib.util import (
     f2k,
     k2f,
     source_keys_conv,
