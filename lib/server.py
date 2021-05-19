@@ -27,6 +27,10 @@ class DataServer:
     * Uses same config for source files as DataManager
     * find_page_files: lists local structure rather than s3
     * publishes CSV file listing directory structure
+
+    TODO: Document this
+    TODO: Simplify the processing of source vs raw files, and the
+        functions generally in this class.
     """
 
     def __init__(
@@ -800,7 +804,8 @@ class DataServer:
                 )
 
                 self.pages[pagename].pending.drop(index=row.Index, inplace=True)
-                self.s3_keys[s3_type].append(row.filename)
+                self.s3_keys[s3_type].append(
+                    self._preupload_revert(row.filename))
 
             except Exception as ex:
                 server_logger.warning(f'problem uploading file {row.filename}: {ex}')
