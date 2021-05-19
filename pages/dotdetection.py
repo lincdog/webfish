@@ -305,7 +305,7 @@ def update_image_params(
 
 @app.callback(
     Output('dd-image-params-wrapper', 'is_open'),
-    Output('dd-image-params-wrapper', 'children'),
+    Output('dd-image-params-loader', 'children'),
     Input('dd-swap-channels-slices', 'value'),
     Input('dd-position-select', 'value'),
     Input('dd-hyb-select', 'value'),
@@ -353,7 +353,6 @@ def select_pos_hyb(swap, position, hyb, dataset, user):
     marks = {a // 256: str(a) for a in range(0, 10000, 500)}
 
     return True, [
-        html.Hr(),
         html.B('Select Z slice'),
         component(
             'dd-z-select',
@@ -385,7 +384,6 @@ def select_pos_hyb(swap, position, hyb, dataset, user):
             ),
         ], id='dd-contrast-div'),
     ]
-
 
 
 @app.callback(
@@ -586,7 +584,9 @@ layout = html.Div([
             html.Div([
 
                 dbc.Collapse([
-                    *component_group('image-params', tolist=True)
+                    dbc.Spinner([
+                        *component_group('image-params', tolist=True)
+                    ], id='dd-image-params-loader')
                 ], is_open=False, id='dd-image-params-wrapper'),
 
             ], id='dd-image-params-div', style={'margin': '10px'})
