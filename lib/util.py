@@ -11,10 +11,12 @@ import base64
 
 
 def safe_imread(fname, is_ome=False, is_imagej=True):
+    imarr = np.array([])
+
     try:
-        imarr = ImageMeta(fname, is_ome=is_ome, is_imagej=is_imagej).asarray()
+        imarr = tif.imread(fname, is_ome=is_ome, is_imagej=is_imagej)
     except (AttributeError, RuntimeError):
-        imarr = ImageMeta(fname, is_ome=is_ome, is_imagej=False).asarray()
+        imarr = tif.imread(fname, is_ome=is_ome, is_imagej=False)
 
     return imarr
 
