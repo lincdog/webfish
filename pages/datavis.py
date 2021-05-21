@@ -324,32 +324,8 @@ def select_dataset(dataset, user):
             options=[{'label': i, 'value': i} for i in sorted(analyses)],
             value=None,
             placeholder='Select an analysis run',
-            clearable=False,
-            style={'width': '200px'}
+            clearable=False
         )
-    ]
-
-
-@app.callback(
-    Output('dv-dataset-select-div', 'children'),
-    Input('user-select', 'value')
-)
-def select_user(user):
-
-    if not user:
-        raise PreventUpdate
-
-    datasets = data_client.datasets.query('user==@user')['dataset'].unique()
-
-    return [
-        'Dataset select: ',
-        dcc.Dropdown(
-            id='dv-dataset-select',
-            options=[{'label': i, 'value': i} for i in sorted(datasets)],
-            value=None,
-            placeholder='Select dataset',
-            clearable=False,
-            style={'width': '200px',}),
     ]
 
 
@@ -403,21 +379,8 @@ layout = dbc.Container(dbc.Row([
                 className='mr-1',
                 n_clicks=0
             ), 'dv-s3-sync-div'),
-            html.Div([
-                'User select:',
-                dcc.Dropdown(
-                    id='dv-user-select',
-                    options=[{'label': i, 'value': i}
-                             for i in sorted(data_client.datasets['user'].unique())],
-                    placeholder='Select a user folder',
-                    style={'width': '200px'}
-                )], id='dv-user-select-div'
-            ),
-
-            html.Div(id='dv-dataset-select-div'),
             html.Div(id='dv-analysis-select-div')
-
-           ], id='dv-analysis-selectors-div'),
+        ], id='dv-analysis-selectors-div'),
 
         html.Hr(),
         html.Div([

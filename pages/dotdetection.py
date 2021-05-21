@@ -151,18 +151,6 @@ clear_components = {
             color='primary'
         ),
 
-    'dd-user-select':
-        dcc.Dropdown(
-            id='dd-user-select',
-            options=[{'label': u, 'value': u}
-                     for u in sorted(data_client.datasets['user'].unique())],
-            placeholder='Select a user'
-        ),
-    'dd-dataset-select':
-        dcc.Dropdown(
-            id='dd-dataset-select',
-            placeholder='Select a dataset'
-        ),
     'dd-analysis-select':
         dcc.Dropdown(
             id='dd-analysis-select',
@@ -202,9 +190,7 @@ clear_components = {
 component_groups = {
     's3-sync': ['dd-s3-sync-button'],
 
-    'dataset-info': ['dd-user-select',
-                     'dd-dataset-select',
-                     'dd-analysis-select'],
+    'dataset-info': ['dd-analysis-select'],
 
     'new-analysis': ['dd-new-analysis-name',
                      'dd-submit-new-analysis-provider',
@@ -306,8 +292,8 @@ def select_pos_hyb(swap, position, hyb, dataset, user):
     try:
         image = safe_imread(imagefile['hyb_fov'][0])
         assert image.ndim == 4, 'Must have 4 dimensions'
-    except (AssertionError, IndexError, RuntimeError):
-
+    except (AssertionError, IndexError, RuntimeError) as e:
+        print(e, type(e))
         return True, [
                    dbc.Alert(f'No image file for dataset {user}/{dataset} '
                              f'hyb {hyb} position {position} found!', color='warning')
@@ -413,24 +399,9 @@ def display_image_selectors(is_open, dataset, user):
 
 
 @app.callback(
-    Output('dd-dataset-select', 'value'),
-    Output('dd-dataset-select', 'options'),
-    Input('user-select', 'value')
-)
-def select_user(user):
-    if not user:
-        return None, []
-
-    datasets = data_client.datasets.query('user==@user')['dataset'].unique()
-
-    return None, [{'label': d, 'value': d} for d in sorted(datasets)]
-
-
-@app.callback(
     [Output('dd-new-analysis-div', 'children'),
      Output('dd-image-select-wrapper', 'is_open'),
      Output('dd-analysis-select', 'value'),
-
      ],
     [Input('dataset-select', 'value'),
      Input('user-select', 'value')

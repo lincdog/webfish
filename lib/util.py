@@ -12,9 +12,11 @@ import base64
 
 def safe_imread(fname, is_ome=False, is_imagej=True):
     try:
-        return tif.imread(fname, is_ome=is_ome, is_imagej=is_imagej)
-    except RuntimeError:
-        return tif.imread(fname, is_ome=is_ome, is_imagej=False)
+        imarr = ImageMeta(fname, is_ome=is_ome, is_imagej=is_imagej).asarray()
+    except (AttributeError, RuntimeError):
+        imarr = ImageMeta(fname, is_ome=is_ome, is_imagej=False).asarray()
+
+    return imarr
 
 
 def safe_imwrite(
@@ -70,7 +72,9 @@ class ImageMeta(tif.TiffFile):
         pixelsize_yx=None,
         pixelsize_z=None,
         slices_first=True,
-        max_channels=6
+        max_channels=6,
+        is_ome=False,
+        is_imagej=True
     ):
 
         if isinstance(tifffile, type(super())):
@@ -79,10 +83,10 @@ class ImageMeta(tif.TiffFile):
             try:
                 super().__init__(
                     tifffile,
-                    is_ome=False,
-                    is_imagej=True
+                    is_ome=is_ome,
+                    is_imagej=is_imagej
                 )
-            except RuntimeError:
+            except (AttributeError, RuntimeError):
                 super().__init__(
                     tifffile,
                     is_ome=False,
@@ -92,6 +96,9 @@ class ImageMeta(tif.TiffFile):
         self.shape = None
         self.channels = 1
         self.slices = 1
+
+        #self.is_ome = is_ome
+        #self.is_imagej = is_imagej
 
         self.channelnames = None
 

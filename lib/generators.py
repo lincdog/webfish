@@ -6,6 +6,7 @@ import json
 from matplotlib.pyplot import get_cmap
 from pathlib import Path
 from lib.util import safe_imread
+from tifffile import imread  # for segmentation images
 
 """
 generators.py
@@ -153,7 +154,7 @@ class DatavisProcessing:
         """
 
         # imagej=False because TiffFile throws a TypeError otherwise
-        im = safe_imread(imgfilename, is_imagej=False)
+        im = imread(imgfilename, is_imagej=False)
 
         if im.ndim == 2:
             im = np.array([im, im, im])
