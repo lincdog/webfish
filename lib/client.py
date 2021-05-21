@@ -8,7 +8,8 @@ from lib.util import (
     f2k,
     k2f,
     source_keys_conv,
-    process_requires
+    process_requires,
+    sanitize
 )
 
 client_logger = logging.getLogger(__name__)
@@ -30,7 +31,7 @@ class DataClient:
         pagename=None,
     ):
         self.pagenames = config['pages'].keys()
-        if pagename not in self.pagenames:
+        if pagename and pagename not in self.pagenames:
             raise ValueError(f'A page name (one of {self.pagenames}) is required.')
 
         self.config = config
@@ -51,15 +52,22 @@ class DataClient:
         # setter, passing a Page object.
         self.pagename = pagename
 
-        self.dataset_root = self.page.dataset_root
-        self.dataset_re = self.page.dataset_re
-        self.dataset_glob = self.page.dataset_glob
-        self.dataset_fields = self.page.dataset_fields
+        if self.page:
+            # TODO: we don't actually use any of these right now in the page files.
+            #   we *could* use the dataset_root and various source/raw/output fields
+            #   to automatically generate selectors for the various fields.
+            # e.g. user -> dataset -> analysis then position -> hyb -> ...
+            # though the config may not be enough to completely specify the
+            # structure and UI we want for each individual case.
+            self.dataset_root = self.page.dataset_root
+            self.dataset_re = self.page.dataset_re
+            self.dataset_glob = self.page.dataset_glob
+            self.dataset_fields = self.page.dataset_fields
 
-        self.raw_dataset_root = self.page.raw_dataset_root
-        self.raw_re = self.page.raw_re
-        self.raw_glob = self.page.raw_glob
-        self.raw_fields = self.page.raw_fields
+            self.raw_dataset_root = self.page.raw_dataset_root
+            self.raw_re = self.page.raw_re
+            self.raw_glob = self.page.raw_glob
+            self.raw_fields = self.page.raw_fields
 
         self.datafiles = None
         self.datasets = None
@@ -70,11 +78,14 @@ class DataClient:
 
     @pagename.setter
     def pagename(self, val):
-        if val not in self.pagenames:
+        if not val:
+            self._pagename = None
+            self.page = None
+        elif val in self.pagenames:
+            self._pagename = val
+            self.page = Page(self.config, val)
+        else:
             raise ValueError(f'A valid page name (one of {self.pagenames}) is required.')
-
-        self._pagename = val
-        self.page = Page(self.config, val)
 
     @property
     def page(self):
@@ -83,10 +94,13 @@ class DataClient:
     @page.setter
     def page(self, val):
         self._page = val
-        self._page.local_store.mkdir(parents=True, exist_ok=True)
+
+        if isinstance(val, Page):
+            self._page.local_store.mkdir(parents=True, exist_ok=True)
 
     def sync_with_s3(
-        self
+        self,
+        download=True
     ):
         """
         sync_with_s3
@@ -96,19 +110,29 @@ class DataClient:
         datasets are available and what files and fields are available within
         each dataset.
         """
-        error = self.client.download_s3_objects(
-            self.bucket_name,
-            f2k(self.sync_folder))
+        if download:
+            error = self.client.download_s3_objects(
+                self.bucket_name,
+                f2k(self.sync_folder))
 
-        if len(error) > 0:
-            raise FileNotFoundError(
-                f'sync_with_s3: errors downloading keys:',
-                error)
+            if len(error) > 0:
+                raise FileNotFoundError(
+                    f'sync_with_s3: errors downloading keys:',
+                    error)
 
-        self.datasets = pd.read_csv(
-            self.page.sync_file,
-            converters={'source_keys': source_keys_conv}).set_index(self.dataset_fields)
-        self.datafiles = pd.read_csv(self.page.file_table, dtype=str)
+        if self.page:
+            self.datasets = pd.read_csv(
+                self.page.sync_file,
+                converters={'source_keys': source_keys_conv})
+            self.datafiles = pd.read_csv(self.page.file_table, dtype=str)
+        else:
+            source_file = Path(self.sync_folder, 'all_datasets.csv')
+            raw_file = Path(self.sync_folder, 'all_raw_datasets.csv')
+
+            self.datasets = pd.concat([
+                pd.read_csv(source_file),
+                pd.read_csv(raw_file)
+            ]).reset_index(drop=True)
 
     def local(
         self,

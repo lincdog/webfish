@@ -155,7 +155,7 @@ clear_components = {
         dcc.Dropdown(
             id='dd-user-select',
             options=[{'label': u, 'value': u}
-                     for u in data_client.datasets.index.unique(level=0)],
+                     for u in sorted(data_client.datasets['user'].unique())],
             placeholder='Select a user'
         ),
     'dd-dataset-select':
@@ -235,8 +235,8 @@ cm = ComponentManager(clear_components, component_groups=component_groups)
     Input('dd-position-select', 'value'),
     Input('dd-hyb-select', 'value'),
     Input('dd-analysis-select', 'value'),
-    Input('dd-dataset-select', 'value'),
-    Input('dd-user-select', 'value'),
+    Input('dataset-select', 'value'),
+    Input('user-select', 'value'),
 )
 def update_image_params(
     is_open,
@@ -284,8 +284,8 @@ def update_image_params(
     Input('dd-swap-channels-slices', 'value'),
     Input('dd-position-select', 'value'),
     Input('dd-hyb-select', 'value'),
-    Input('dd-dataset-select', 'value'),
-    Input('dd-user-select', 'value')
+    Input('dataset-select', 'value'),
+    Input('user-select', 'value')
 )
 def select_pos_hyb(swap, position, hyb, dataset, user):
     # Note we test for None rather than truthiness because a position or hyb of 0
@@ -363,14 +363,15 @@ def select_pos_hyb(swap, position, hyb, dataset, user):
 
 @app.callback(
     Output('dd-analysis-select', 'options'),
-    Input('dd-dataset-select', 'value'),
-    State('dd-user-select', 'value')
+    Input('dataset-select', 'value'),
+    State('user-select', 'value')
 )
 def select_dataset_analysis(dataset, user):
     if not dataset:
         return []
 
-    analyses = data_client.datasets.loc[(user, dataset)].index.unique(level=0).dropna()
+    analyses = data_client.datasets.query(
+        'user==@user and dataset==@dataset')['analysis'].dropna().unique()
 
     return [{'label': '(new)', 'value': '__new__'}] +\
            [{'label': a, 'value': a} for a in analyses]
@@ -379,8 +380,8 @@ def select_dataset_analysis(dataset, user):
 @app.callback(
     Output('dd-image-select-wrapper', 'children'),
     Input('dd-image-select-wrapper', 'is_open'),
-    State('dd-dataset-select', 'value'),
-    State('dd-user-select', 'value')
+    State('dataset-select', 'value'),
+    State('user-select', 'value')
 )
 def display_image_selectors(is_open, dataset, user):
     if not is_open:
@@ -414,13 +415,13 @@ def display_image_selectors(is_open, dataset, user):
 @app.callback(
     Output('dd-dataset-select', 'value'),
     Output('dd-dataset-select', 'options'),
-    Input('dd-user-select', 'value')
+    Input('user-select', 'value')
 )
 def select_user(user):
     if not user:
         return None, []
 
-    datasets = data_client.datasets.loc[user].index.unique(level=0)
+    datasets = data_client.datasets.query('user==@user')['dataset'].unique()
 
     return None, [{'label': d, 'value': d} for d in sorted(datasets)]
 
@@ -431,8 +432,8 @@ def select_user(user):
      Output('dd-analysis-select', 'value'),
 
      ],
-    [Input('dd-dataset-select', 'value'),
-     Input('dd-user-select', 'value')
+    [Input('dataset-select', 'value'),
+     Input('user-select', 'value')
      ]
 )
 def reset_dependents(dataset, user):
@@ -452,8 +453,8 @@ def reset_dependents(dataset, user):
     Output('dd-new-analysis-text', 'children'),
     Input('dd-submit-new-analysis-provider', 'submit_n_clicks'),
     State('dd-new-analysis-name', 'value'),
-    State('dd-user-select', 'value'),
-    State('dd-dataset-select', 'value'),
+    State('user-select', 'value'),
+    State('dataset-select', 'value'),
     State('dd-analysis-select', 'options')
 )
 def submit_new_analysis(

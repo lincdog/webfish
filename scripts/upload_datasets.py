@@ -11,7 +11,6 @@ WF_HOME = os.environ.get('WF_HOME', '/home/lombelet/cron/webfish_sandbox/webfish
 sys.path.append(WF_HOME)
 from lib.server import DataServer
 from lib.core import S3Connect
-from lib.util import find_matching_files
 
 
 def process_args():

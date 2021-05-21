@@ -1,4 +1,12 @@
 from copy import copy
+import dash_bootstrap_components as dbc
+import dash_core_components as dcc
+import dash_html_components as html
+
+dataset_form = {
+    'user-select': dbc.Select(id='user-select'),
+    'dataset-select': dbc.Select(id='dataset-select')
+}
 
 
 class ComponentManager:
@@ -25,8 +33,10 @@ class ComponentManager:
         self,
         clear_components,
         id_prefix='',
-        component_groups=dict()
+        component_groups=None
     ):
+        component_groups = component_groups or {}
+
         self.clear_components = copy(clear_components)
         self.component_groups = copy(component_groups)
 

@@ -122,8 +122,8 @@ def gen_figure(selected_genes, active):
     Input('dv-gene-select', 'value'),
     State('dv-pos-select', 'value'),
     State('dv-analysis-select', 'value'),
-    State('dv-dataset-select', 'value'),
-    State('dv-user-select', 'value'),
+    State('dataset-select', 'value'),
+    State('user-select', 'value'),
     prevent_initial_call=True
 )
 def update_figure(selected_genes, pos, analysis, dataset, user):
@@ -167,8 +167,8 @@ def update_figure(selected_genes, pos, analysis, dataset, user):
     Output('dv-analytics-wrapper', 'children'),
     Input('dv-pos-select', 'value'),
     State('dv-analysis-select', 'value'),
-    State('dv-dataset-select', 'value'),
-    State('dv-user-select', 'value'),
+    State('dataset-select', 'value'),
+    State('user-select', 'value'),
     prevent_initial_call=True
 )
 def populate_analytics(pos, analysis, dataset, user):
@@ -236,8 +236,8 @@ def toggle_collapse(n, is_open):
     Output('dv-gene-wrapper', 'children'),
     Input('dv-pos-select', 'value'),
     State('dv-analysis-select', 'value'),
-    State('dv-dataset-select', 'value'),
-    State('dv-user-select', 'value'),
+    State('dataset-select', 'value'),
+    State('user-select', 'value'),
     prevent_initial_call=True
 )
 def select_pos(pos, analysis, dataset, user):
@@ -279,8 +279,8 @@ def select_pos(pos, analysis, dataset, user):
 @app.callback(
     Output('dv-pos-div', 'children'),
     Input('dv-analysis-select', 'value'),
-    State('dv-dataset-select', 'value'),
-    State('dv-user-select', 'value')
+    State('dataset-select', 'value'),
+    State('user-select', 'value')
 )
 def select_analysis(analysis, dataset, user):
     if not analysis:
@@ -306,15 +306,16 @@ def select_analysis(analysis, dataset, user):
 
 @app.callback(
     Output('dv-analysis-select-div', 'children'),
-    Input('dv-dataset-select', 'value'),
-    State('dv-user-select', 'value')
+    Input('dataset-select', 'value'),
+    State('user-select', 'value')
 )
 def select_dataset(dataset, user):
 
     if not dataset:
         raise PreventUpdate
 
-    analyses = data_client.datasets.loc[(user, dataset)].index.unique(level=0)
+    analyses = data_client.datasets.query(
+        'user==@user and dataset==@dataset')['analysis'].unique()
 
     return [
         'Analysis select: ',
@@ -331,14 +332,14 @@ def select_dataset(dataset, user):
 
 @app.callback(
     Output('dv-dataset-select-div', 'children'),
-    Input('dv-user-select', 'value')
+    Input('user-select', 'value')
 )
 def select_user(user):
 
     if not user:
         raise PreventUpdate
 
-    datasets = data_client.datasets.loc[user].index.unique(level=0)
+    datasets = data_client.datasets.query('user==@user')['dataset'].unique()
 
     return [
         'Dataset select: ',
@@ -407,7 +408,7 @@ layout = dbc.Container(dbc.Row([
                 dcc.Dropdown(
                     id='dv-user-select',
                     options=[{'label': i, 'value': i}
-                             for i in data_client.datasets.index.unique(level=0)],
+                             for i in sorted(data_client.datasets['user'].unique())],
                     placeholder='Select a user folder',
                     style={'width': '200px'}
                 )], id='dv-user-select-div'

@@ -51,6 +51,9 @@ local_store: webfish_data/
 pages:
 
   datavis:
+    title: "Data Visualization"
+    description: "Visualize decoded genes and segmentation"
+
     # Class from generators.py that contains methods for processing data files
     #   for this page
     generator_class: DatavisProcessing
@@ -96,6 +99,8 @@ pages:
         generator: "generate_dots"
 
   dotdetection:
+    title: "Dot Detection"
+    description: "Visualize and run dot detection and raw images"
 
     variables: [ "hyb", "position" ]
     # This page uses preuploaders, here specifying the class from preuploaders.py

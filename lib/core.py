@@ -27,6 +27,9 @@ class Page:
         self.name = name
         self.config = config['pages'][name].copy()
 
+        self.title = self.config.get('title', self.name)
+        self.description = self.config.get('description', '')
+
         self.bucket_name = config['bucket_name']
 
         self.local_store = Path(config.get('local_store', 'webfish_data/'), name)
