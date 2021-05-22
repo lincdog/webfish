@@ -306,7 +306,10 @@ class DataServer:
 
         # If this page doesn't require any files, just show all datasets
         if not self.pages[pagename].input_patterns:
-            page_datasets = self.all_datasets
+            self.pages[pagename].datasets = pd.concat([
+                self.all_datasets.copy(),
+                self.all_raw_datasets.copy()
+                ]).reset_index(drop=True)
 
         all_sourcefiles = [self.find_source_files(key, pattern, source_folders, since)
                            for key, pattern in self.pages[pagename].source_patterns.items()]

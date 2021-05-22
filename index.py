@@ -8,23 +8,26 @@ from dash.exceptions import PreventUpdate
 
 from lib.client import DataClient
 from app import app, config, s3_client
-from pages import datavis, dotdetection, splash
-from pages._common import ComponentManager, dataset_form
+from pages import datavis, dotdetection, submission, splash
+from pages._common import (
+    ComponentManager,
+    all_datasets,
+    page_index,
+    sync_with_s3
+)
 
-data_client = DataClient(config=config, s3_client=s3_client)
-
-# Sync with no pagename supplied, grabbing all datasets possible.
-data_client.sync_with_s3()
-
-# Save the dataset record to compare to individual pages
-all_datasets = data_client.datasets.copy()
-
-# Convenience dict with the page name (short), title (for display), and description
-# TODO: Put this into DataClient
-page_index = {k: {'title': v.get('title', k),
-                  'description': v.get('description', '')
-                 }
-              for k, v in config['pages'].items()}
+# The global user and dataset selectors, as well as the Sync with S3 button
+dataset_form = {
+    'user-select': dbc.Select(id='user-select'),
+    'dataset-select': dbc.Select(id='dataset-select'),
+    's3-sync-button':
+        dbc.Button(
+            'Sync with S3',
+            id='s3-sync-button',
+            n_clicks=0,
+            color='primary'
+        )
+}
 
 # The default "splash" or "home" page displayed on load
 splash_tab = {'tab-splash':
@@ -40,7 +43,7 @@ for k, v in page_index.items():
         id=f'tab-{k}',
         label=v['title'],
         value=k,
-        disabled=True
+        disabled=False
     )
 
     # Add a Tooltip with the page description to each page tab that has a
@@ -75,13 +78,41 @@ def select_page(pagename, user, dataset):
     Switch to a page in the DataClient and determine if it has content for
     the given user, dataset combination.
     """
-    data_client.pagename = pagename
-    data_client.sync_with_s3(download=False)
+    #data_client.pagename = pagename
+    #data_client.sync_with_s3(download=False)
 
-    page_dataset = data_client.datasets.query(
-        'user==@user and dataset==@dataset')
+    #page_dataset = data_client.datasets.query(
+     #   'user==@user and dataset==@dataset')
 
-    return not page_dataset.empty
+    return True #not page_dataset.empty
+
+
+@app.callback(
+    Output('s3-sync-div', 'children'),
+    Input('s3-sync-button', 'children'),
+    State('s3-sync-button', 'n_clicks')
+)
+def finish_client_s3_sync(contents, n_clicks):
+    if n_clicks != 1:
+        raise PreventUpdate
+
+    if 'Syncing...' not in contents:
+        raise PreventUpdate
+
+    sync_with_s3()
+
+    return index_cm.component('s3-sync-button')
+
+
+@app.callback(
+    Output('s3-sync-button', 'children'),
+    Input('s3-sync-button', 'n_clicks')
+)
+def init_client_s3_sync(n_clicks):
+    if n_clicks == 1:
+        return [dbc.Spinner(size='sm'), 'Syncing...']
+    else:
+        raise PreventUpdate
 
 
 app.layout = html.Div(
@@ -99,6 +130,7 @@ app.layout = html.Div(
                          for u in sorted(all_datasets['user'].unique())]
             ),
             index_cm.component('dataset-select', disabled=True),
+            html.Div(index_cm.component('s3-sync-button'), id='s3-sync-div'),
         ], style={'width': '500px'}),
 
         # Tabs container
@@ -168,6 +200,8 @@ def tab_handler(tabval):
         return datavis.layout
     elif tabval == 'dotdetection':
         return dotdetection.layout
+    elif tabval == 'analysis_submit':
+        return submission.layout
     else:
         return splash.layout
 

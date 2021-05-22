@@ -14,17 +14,11 @@ from dash import no_update
 import plotly.express as px
 import plotly.graph_objects as go
 
-from app import app, config, s3_client
+from app import app
 from lib.util import safe_imread
-from lib.client import DataClient
-from pages._common import ComponentManager
+from ._common import ComponentManager, data_clients
 
-data_client = DataClient(
-    config=config,
-    s3_client=s3_client,
-    pagename='dotdetection'
-)
-data_client.sync_with_s3()
+data_client = data_clients['dotdetection']
 
 
 # TODO: move this to DataClient
@@ -143,13 +137,6 @@ def gen_image_figure(
 
 
 clear_components = {
-    'dd-s3-sync-button':
-        dbc.Button(
-            'Sync with S3',
-            id='dd-s3-sync-button',
-            n_clicks=0,
-            color='primary'
-        ),
 
     'dd-analysis-select':
         dcc.Dropdown(
@@ -188,8 +175,6 @@ clear_components = {
 }
 
 component_groups = {
-    's3-sync': ['dd-s3-sync-button'],
-
     'dataset-info': ['dd-analysis-select'],
 
     'new-analysis': ['dd-new-analysis-name',
@@ -464,45 +449,10 @@ def submit_new_analysis(
         raise PreventUpdate
 
 
-@app.callback(
-    Output('dd-s3-sync-div', 'children'),
-    Input('dd-s3-sync-button', 'children'),
-    State('dd-s3-sync-button', 'n_clicks')
-)
-def finish_client_s3_sync(contents, n_clicks):
-    if n_clicks != 1:
-        raise PreventUpdate
-
-    if 'Syncing...' not in contents:
-        raise PreventUpdate
-
-    data_client.sync_with_s3()
-
-    return cm.component('dd-s3-sync-button')
-
-
-@app.callback(
-    Output('dd-s3-sync-button', 'children'),
-    Input('dd-s3-sync-button', 'n_clicks')
-)
-def init_client_s3_sync(n_clicks):
-    if n_clicks == 1:
-        return [dbc.Spinner(size='sm'), 'Syncing...']
-    else:
-        raise PreventUpdate
-
-
 layout = html.Div([
     dbc.Alert('In this tab you can preview the results of dot detection'
                   ' using various parameter settings. Data is synced from the'
                   ' HPC analyses folder every 10 minutes.', color='info'),
-
-    html.Div(dbc.Button(
-        'Sync with S3',
-        id='dd-s3-sync-button',
-        n_clicks=0,
-        color='primary'
-    ), id='dd-s3-sync-div'),
 
     dbc.Row([
 

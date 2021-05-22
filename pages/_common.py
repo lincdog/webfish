@@ -1,12 +1,36 @@
 from copy import copy
+from lib.client import DataClient
+from app import config, s3_client
 import dash_bootstrap_components as dbc
 import dash_core_components as dcc
 import dash_html_components as html
 
-dataset_form = {
-    'user-select': dbc.Select(id='user-select'),
-    'dataset-select': dbc.Select(id='dataset-select')
+
+# Convenience dict with the page name (short), title (for display), and description
+# TODO: Put this into DataClient
+page_index = {k: {'title': v.get('title', k),
+                  'description': v.get('description', '')
+                  }
+              for k, v in config['pages'].items()}
+
+data_clients = {
+    pagename: DataClient(pagename=pagename, config=config, s3_client=s3_client)
+    for pagename in page_index.keys()
 }
+data_clients['__all__'] = DataClient(pagename=None, config=config, s3_client=s3_client)
+
+
+def sync_with_s3():
+    data_clients['__all__'].sync_with_s3(download=True)
+
+    for cli in data_clients.values():
+        cli.sync_with_s3(download=False)
+
+
+sync_with_s3()
+
+# Save the dataset record to compare to individual pages
+all_datasets = data_clients['__all__'].datasets.copy()
 
 
 class ComponentManager:

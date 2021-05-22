@@ -8,16 +8,11 @@ import dash_bootstrap_components as dbc
 from dash.dependencies import Input, Output, State, MATCH, ALL
 from dash.exceptions import PreventUpdate
 
-from app import app, config, s3_client
+from app import app
 from lib.util import populate_mesh, base64_image, populate_genes, mesh_from_json
-from lib.client import DataClient
+from ._common import data_clients
 
-data_client = DataClient(
-    config=config,
-    s3_client=s3_client,
-    pagename='datavis'
-)
-data_client.sync_with_s3()
+data_client = data_clients['datavis']
 
 
 def query_df(df, selected_genes):
@@ -329,41 +324,6 @@ def select_dataset(dataset, user):
     ]
 
 
-@app.callback(
-    Output('dv-s3-sync-div', 'children'),
-    Input('dv-s3-sync-button', 'children'),
-    State('dv-s3-sync-button', 'n_clicks')
-)
-def finish_client_s3_sync(contents, n_clicks):
-    if n_clicks != 1:
-        raise PreventUpdate
-
-    if 'Syncing...' not in contents:
-        raise PreventUpdate
-
-    data_client.sync_with_s3()
-
-    return dbc.Button(
-                'Sync with S3',
-                id='dv-s3-sync-button',
-                color='primary',
-                className='mr-1',
-                n_clicks=0
-            )
-
-
-@app.callback(
-    Output('dv-s3-sync-button', 'children'),
-    Input('dv-s3-sync-button', 'n_clicks')
-)
-def init_client_s3_sync(n_clicks):
-    if n_clicks == 1:
-        return [dbc.Spinner(size='sm'), 'Syncing...']
-    else:
-        raise PreventUpdate
-
-
-
 ######## Layout ########
 
 
@@ -372,13 +332,6 @@ layout = dbc.Container(dbc.Row([
         html.Div([
             html.H2('Data selection'),
             html.Hr(),
-            html.Div(dbc.Button(
-                'Sync with S3',
-                id='dv-s3-sync-button',
-                color='primary',
-                className='mr-1',
-                n_clicks=0
-            ), 'dv-s3-sync-div'),
             html.Div(id='dv-analysis-select-div')
         ], id='dv-analysis-selectors-div'),
 

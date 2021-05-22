@@ -141,6 +141,14 @@ class Page:
         self.pending = None
         self.s3_diff = None
 
+        # Blank these out to tell Client that it should use the all_datasets
+        # files for this page.
+        # Alternatively, Server could make a sync for this page
+        # that is identical to the all_datasets one.
+        if not self.input_patterns and not self.output_patterns:
+            self.sync_file = None
+            self.file_table = None
+
 
 class S3Connect:
     """

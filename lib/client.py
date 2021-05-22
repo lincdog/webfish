@@ -120,10 +120,11 @@ class DataClient:
                     f'sync_with_s3: errors downloading keys:',
                     error)
 
-        if self.page:
+        if self.page and self.page.sync_file and self.page.file_table:
             self.datasets = pd.read_csv(
                 self.page.sync_file,
                 converters={'source_keys': source_keys_conv})
+
             self.datafiles = pd.read_csv(self.page.file_table, dtype=str)
         else:
             source_file = Path(self.sync_folder, 'all_datasets.csv')
