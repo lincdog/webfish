@@ -6,15 +6,27 @@ import dash_bootstrap_components as dbc
 from dash.dependencies import Input, Output, State
 from dash.exceptions import PreventUpdate
 
-from lib.client import DataClient
-from app import app, config, s3_client
-from pages import datavis, dotdetection, submission, splash
-from pages._common import (
+from app import app, config
+import pages
+from pages.common import (
     ComponentManager,
     all_datasets,
-    page_index,
     sync_with_s3
 )
+
+# Convenience dict with:
+# - key: shorthand page names, used as tab and URL values
+# - title: for display on tabs, headers etc
+# - description: longer information used in tooltips, etc
+# - module: the imported module object corresponding to this page file, from
+#   which we will get the layout for the page.
+
+# TODO: Put this into DataClient?
+page_index = {k: {'title': v.get('title', k),
+                  'description': v.get('description', ''),
+                  'module': pages.page_to_module.get(k, None)
+                  }
+              for k, v in config['pages'].items()}
 
 # The global user and dataset selectors, as well as the Sync with S3 button
 dataset_form = {
@@ -69,22 +81,6 @@ index_cm = ComponentManager(
         'page-tooltips': list(page_tooltips.keys())
     }
 )
-
-
-def select_page(pagename, user, dataset):
-    """
-    select_page
-    -----------
-    Switch to a page in the DataClient and determine if it has content for
-    the given user, dataset combination.
-    """
-    #data_client.pagename = pagename
-    #data_client.sync_with_s3(download=False)
-
-    #page_dataset = data_client.datasets.query(
-     #   'user==@user and dataset==@dataset')
-
-    return True #not page_dataset.empty
 
 
 @app.callback(
@@ -179,7 +175,7 @@ def select_dataset(dataset, user):
     if not dataset or not user:
         return tuple([True] * len(page_tabs.keys()))
 
-    return tuple([not select_page(p, user, dataset) for p in page_index.keys()])
+    return tuple([False] * len(page_index.keys()))
 
 
 @app.callback(
@@ -196,14 +192,17 @@ def tab_handler(tabval):
 
     If we get anything unrecognized, return the home page.
     """
-    if tabval == 'datavis':
-        return datavis.layout
-    elif tabval == 'dotdetection':
-        return dotdetection.layout
-    elif tabval == 'analysis_submit':
-        return submission.layout
+    home_entry = {
+        'name': 'home',
+        'title': 'Home',
+        'module': pages.page_to_module['home']
+    }
+    entry = page_index.get(tabval, home_entry)
+
+    if hasattr(entry['module'], 'layout'):
+        return entry['module'].layout
     else:
-        return splash.layout
+        return home_entry['module'].layout
 
 
 @app.callback(

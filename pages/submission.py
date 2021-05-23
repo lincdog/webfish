@@ -12,8 +12,9 @@ from dash.exceptions import PreventUpdate
 from dash import no_update
 
 from app import app
-from ._common import ComponentManager, data_clients
+from .common import ComponentManager, data_clients
 
+PAGENAME = 'submit_analysis'
 data_client = data_clients['__all__']
 
 clear_components = {

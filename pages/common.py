@@ -6,16 +6,9 @@ import dash_core_components as dcc
 import dash_html_components as html
 
 
-# Convenience dict with the page name (short), title (for display), and description
-# TODO: Put this into DataClient
-page_index = {k: {'title': v.get('title', k),
-                  'description': v.get('description', '')
-                  }
-              for k, v in config['pages'].items()}
-
 data_clients = {
     pagename: DataClient(pagename=pagename, config=config, s3_client=s3_client)
-    for pagename in page_index.keys()
+    for pagename in config['pages'].keys()
 }
 data_clients['__all__'] = DataClient(pagename=None, config=config, s3_client=s3_client)
 

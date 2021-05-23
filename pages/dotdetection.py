@@ -16,9 +16,10 @@ import plotly.graph_objects as go
 
 from app import app
 from lib.util import safe_imread
-from ._common import ComponentManager, data_clients
+from .common import ComponentManager, data_clients
 
-data_client = data_clients['dotdetection']
+PAGENAME = 'dotdetection'
+data_client = data_clients[PAGENAME]
 
 
 # TODO: move this to DataClient

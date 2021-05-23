@@ -156,6 +156,9 @@ class DatavisProcessing:
         # imagej=False because TiffFile throws a TypeError otherwise
         im = imread(imgfilename, is_imagej=False)
 
+        if im.shape[-1] == 3:
+            im = im[..., 0]
+
         if im.ndim == 2:
             im = np.array([im, im, im])
 

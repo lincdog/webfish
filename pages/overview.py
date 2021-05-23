@@ -16,11 +16,3 @@ import plotly.express as px
 import plotly.graph_objects as go
 
 from app import app, config, s3_client
-from lib import cloud
-
-data_client = cloud.DataClient(
-    config=config,
-    s3_client=s3_client,
-    pagename='overview'
-)
-data_client.sync_with_s3()

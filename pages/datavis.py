@@ -10,9 +10,10 @@ from dash.exceptions import PreventUpdate
 
 from app import app
 from lib.util import populate_mesh, base64_image, populate_genes, mesh_from_json
-from ._common import data_clients
+from .common import data_clients
 
-data_client = data_clients['datavis']
+PAGENAME = 'datavis'
+data_client = data_clients[PAGENAME]
 
 
 def query_df(df, selected_genes):
