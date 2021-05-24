@@ -449,49 +449,39 @@ def submit_new_analysis(
         raise PreventUpdate
 
 
-layout = html.Div([
-    dbc.Alert('In this tab you can preview the results of dot detection'
-                  ' using various parameter settings. Data is synced from the'
-                  ' HPC analyses folder every 10 minutes.', color='info'),
-
-    dbc.Row([
-
-        dbc.Col([
-
-            html.Div([
-
-                *cm.component_group('dataset-info', tolist=True),
-
-                html.Hr(),
-
-                html.Div([
-                    *cm.component_group('new-analysis', tolist=True)
-                ], id='dd-new-analysis-div'),
-
-                html.Hr(),
-
-                dbc.Collapse([
-                    *cm.component_group('image-select', tolist=True)
-                ], is_open=False, id='dd-image-select-wrapper'),
-
-            ], id='dd-dataset-select-div', style={'margin': '10px'}),
+layout = [
+    dbc.Col([
+        html.Div([
+            *cm.component_group('dataset-info', tolist=True),
 
             html.Hr(),
-
             html.Div([
+                *cm.component_group('new-analysis', tolist=True)
+            ], id='dd-new-analysis-div'),
 
-                dbc.Collapse([
-                    dbc.Spinner([
-                        *cm.component_group('image-params', tolist=True)
-                    ], id='dd-image-params-loader')
-                ], is_open=False, id='dd-image-params-wrapper'),
+            html.Hr(),
+            dbc.Collapse([
+                *cm.component_group('image-select', tolist=True)
+            ], is_open=False, id='dd-image-select-wrapper'),
 
-            ], id='dd-image-params-div', style={'margin': '10px'})
+        ], id='dd-dataset-select-div', style={'margin': '10px'}),
 
-        ], style={'border-right': '1px solid gray'}, width=4),
+        html.Hr(),
 
-        dbc.Col([
-            dcc.Loading(cm.component('dd-fig'), id='dd-graph-wrapper')
-        ], id='dd-fig-col')
-    ])
-])
+        html.Div([
+
+            dbc.Collapse([
+                dbc.Spinner([
+                    *cm.component_group('image-params', tolist=True)
+                ], id='dd-image-params-loader')
+            ], is_open=False, id='dd-image-params-wrapper'),
+
+        ], id='dd-image-params-div', style={'margin': '10px'})
+
+    ], style={'border-right': '1px solid gray'}, width=4),
+
+    dbc.Col([
+        dcc.Loading(cm.component('dd-fig'), id='dd-graph-wrapper')
+    ], id='dd-fig-col')
+]
+

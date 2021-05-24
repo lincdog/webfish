@@ -327,11 +327,10 @@ def select_dataset(dataset, user):
 ######## Layout ########
 
 
-layout = dbc.Container(dbc.Row([
+layout = [
     dbc.Col([
         html.Div([
             html.H2('Data selection'),
-            html.Hr(),
             html.Div(id='dv-analysis-select-div')
         ], id='dv-analysis-selectors-div'),
 
@@ -366,5 +365,5 @@ layout = dbc.Container(dbc.Row([
                 ), id='dv-graph-wrapper'
             )
         ])
-    ], width="auto")
-]), fluid=True)
+    ], width='auto')
+]

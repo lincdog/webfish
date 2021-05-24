@@ -46,6 +46,16 @@ class ComponentManager:
     In the future we could read the long dict of components from a file.
     """
 
+    # TODO: make ComponentManagers nestable, i.e. you can pass one instance
+    #   to the constructor, where the second level's "components" are the
+    #   groups of the first CM, and the groups are higher-order groups.
+    #   This could be useful for the hierarchical structure of containers
+    #   and their components.
+
+    # TODO: Keep track of `id` attributes separately, so that components can be
+    #   referred to either by their key in clear_components, or their id.
+    #   This might allow simpler names to be used in the keys while still
+    #   keeping track of the ids for things like callback definitions.
     def __init__(
         self,
         clear_components,

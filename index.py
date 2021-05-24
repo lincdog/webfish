@@ -45,8 +45,8 @@ for k, v in config['pages'].items():
 
 # The global user and dataset selectors, as well as the Sync with S3 button
 dataset_form = {
-    'user-select': dbc.Select(id='user-select'),
-    'dataset-select': dbc.Select(id='dataset-select'),
+    'user-select': dbc.Select(id='user-select', placeholder='Select a user'),
+    'dataset-select': dbc.Select(id='dataset-select', placeholder='Select a dataset'),
     's3-sync-button':
         dbc.Button(
             'Sync with S3',
@@ -120,39 +120,6 @@ def init_client_s3_sync(n_clicks):
         raise PreventUpdate
 
 
-app.layout = html.Div(
-    children=[
-        dcc.Location(id='url', refresh=False),
-        dcc.Store(id='wf-store', storage_type='session', data={}),
-
-        html.H1('webfish app'),
-
-        # Global user and dataset selectors
-        html.Div([
-            index_cm.component(
-                'user-select',
-                options=[{'label': u, 'value': u}
-                         for u in sorted(all_datasets['user'].unique())]
-            ),
-            index_cm.component('dataset-select', disabled=True),
-            html.Div(index_cm.component('s3-sync-button'), id='s3-sync-div'),
-        ], style={'width': '500px'}),
-
-        # Tabs container
-        dcc.Tabs(
-            id='all-tabs',
-            children=index_cm.component_group('main-tabs', tolist=True),
-            style={'width': '500px'}
-        ),
-
-        *index_cm.component_group('page-tooltips', tolist=True),
-
-        # The main Div that will be updated with the selected tab's content
-        html.Div(id='content-main', style={'width': '100%', 'height': '100%'})
-    ], style={'margin': 'auto'}
-)
-
-
 @app.callback(
     Output('dataset-select', 'options'),
     Output('dataset-select', 'value'),
@@ -218,6 +185,45 @@ def sync_tab_url(pathname, tabval):
         return '', ''
 
     return newval, newval
+
+
+app.layout = dbc.Container(
+    fluid=True,
+    children=[
+        dcc.Location(id='url', refresh=False),
+        dcc.Store(id='wf-store', storage_type='session', data={}),
+        dbc.Row(html.H1('webfish app')),
+
+        dbc.Row(
+            dbc.Col([
+                # Global user and dataset selectors
+                html.Div([
+                    index_cm.component(
+                        'user-select',
+                        options=[{'label': u, 'value': u}
+                                 for u in sorted(all_datasets['user'].unique())]
+                    ),
+                    index_cm.component('dataset-select', disabled=True),
+                    html.Div(index_cm.component('s3-sync-button'), id='s3-sync-div'),
+                ]),
+
+                # Tabs container
+                dcc.Tabs(
+                    id='all-tabs',
+                    children=index_cm.component_group('main-tabs', tolist=True),
+                ),
+
+                *index_cm.component_group('page-tooltips', tolist=True),
+            ], width=4),
+        ),
+
+        # This Row is populated by the page.layout of the selected tab.
+        # Note that dbc.Row only works properly if its children are
+        # dbc.Col objects. So each page.layout should be a list of these.
+        dbc.Row(id='content-main'),
+
+    ], style={'margin': 'auto'}
+)
 
 
 if __name__ == '__main__':

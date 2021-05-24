@@ -14,7 +14,8 @@ from dash import no_update
 from app import app
 from .common import ComponentManager, data_clients
 
-data_client = data_clients['__all__']
+
+data_client = data_clients['dotdetection']
 
 
 # TODO: move this to DataClient
@@ -226,7 +227,7 @@ clear_components = {
                 {'label': '2', 'value': '2'},
                 {'label': '3', 'value': '3'}
             ],
-            id='sb-channel-select',
+            id='sb-individual-channel-select',
             inline=True
         ),
 
@@ -258,42 +259,166 @@ component_groups = {
 
 }
 
+def _position_process(positions):
+    if not positions:
+        return {'positions': []}
+
+    return {'positions': ','.join([str(p) for p in positions])}
+
+def _checklist_process(checked):
+    return {k: "true" for k in checked}
+
+def _decoding_channel_process(arg):
+    if arg == 'across':
+        return {'decoding': 'across'}
+    elif arg == 'individual':
+        return {}
+    elif isinstance(arg, list):
+        return {'decoding': {
+            'individual': [str(a) for a in arg]
+        }}
+    else:
+        return {}
+
+id_to_json_key = {
+    'user-select': 'personal',
+    'dataset-select': 'experiment name',
+
+    'sb-position-select': _position_process,
+
+    'sb-alignment-select': 'alignment',
+
+    'sb-dot-detection-select': 'dot detection',
+    'sb-strictness-select': 'strictness',
+    'sb-threshold-select': 'threshold',
+    'sb-dot-detection-checklist': _checklist_process,
+
+    'sb-segmentation-select': 'segmentation',
+    'sb-segmentation-checklist': _checklist_process,
+    'sb-edge-deletion': 'edge deletion',
+    'sb-nuclei-distance': 'distance between nuclei',
+    'sb-cyto-channel': 'cyto channel number',
+    'sb-nuclei-radius': 'nuclei radius',
+    'sb-cell-prob-threshold': 'cell prob threshold',
+    'sb-flow-threshold': 'flow threshold',
+
+    'sb-decoding-select': _decoding_channel_process,
+    'sb-individual-channel-select': _decoding_channel_process
+}
+
+
+def form_to_json_output(form_status):
+    out = {}
+
+    for k, v in form_status.items():
+
+        if k in id_to_json_key.keys():
+            prekey = id_to_json_key[k]
+
+            if callable(prekey):
+                update = prekey(v)
+            else:
+                update = {prekey: v}
+
+            for uk, uv in update.items():
+                if uk not in out.keys():
+                    out[uk] = uv
+
+    return out
+
+
 cm = ComponentManager(clear_components, component_groups=component_groups)
 
-layout = html.Div([
-    html.Details(
-        [html.Summary('Basic information')] +
-        cm.component_group('basic-metadata', tolist=True),
-        open=True
-    ),
-    html.Hr(),
-    html.Details(
-        [html.Summary('Alignment options')] +
-        cm.component_group('alignment', tolist=True),
-        open=True
-    ),
-    html.Hr(),
-    html.Details(
-        [html.Summary('Dot detection options')] +
-        cm.component_group('dot-detection', tolist=True),
-        open=True
-    ),
-    html.Hr(),
-    html.Details(
-        [html.Summary('Segmentation options')] +
-        cm.component_group('segmentation', tolist=True),
-        open=True
-    ),
-    html.Hr(),
-    html.Details(
-        [html.Summary('Advanced segmentation options')] +
-        cm.component_group('segmentation-advanced', tolist=True),
-        open=False
-    ),
-    html.Hr(),
-    html.Details(
-        [html.Summary('Decoding options')] +
-        cm.component_group('decoding', tolist=True),
-    ),
-], style={'width': '500px'})
+
+@app.callback(
+    Output('sb-position-select', 'options'),
+    Input('user-select', 'value'),
+    Input('dataset-select', 'value')
+)
+def select_user_dataset(user, dataset):
+    if not user or not dataset:
+        raise PreventUpdate
+
+    query = 'user==@user and dataset==@dataset and source_key=="hyb_fov"'
+
+    positions = np.sort(data_client.datafiles.query(
+        query)['position'].unique().astype(int))
+
+    return [{'label': p, 'value': p} for p in list(positions)]
+
+    #analyses = data_client.datafiles.query(
+    #    'user==@user and dataset==@dataset')['analysis'].unique()
+
+
+@app.callback(
+    Output('sb-submission-json', 'children'),
+    Input('sb-submit-button', 'n_clicks'),
+    State('user-select', 'value'),
+    State('dataset-select', 'value'),
+    [State(comp, 'value') for comp in cm.clear_components.keys()]
+)
+def submit_new_analysis(n_clicks, user, dataset, *values):
+
+    if n_clicks:
+        status = {'user-select': user, 'dataset-select': dataset}
+        status.update({c: v for c, v in zip(cm.clear_components.keys(), values)})
+
+        return [
+            html.Summary('Generated JSON'),
+            html.Pre(json.dumps(
+                form_to_json_output(status), indent=2)),
+        ]
+    else:
+        raise PreventUpdate
+
+
+layout = [
+    dbc.Col([
+        html.Details(
+            [html.Summary('Basic information')] +
+            cm.component_group('basic-metadata', tolist=True),
+            open=True
+        ),
+        html.Hr(),
+        html.Details(
+            [html.Summary('Alignment options')] +
+            cm.component_group('alignment', tolist=True),
+            open=True
+        ),
+        html.Hr(),
+        html.Details(
+            [html.Summary('Dot detection options')] +
+            cm.component_group('dot-detection', tolist=True),
+            open=True
+        ),
+    ], width=4),
+    dbc.Col([
+        html.Details(
+            [html.Summary('Segmentation options')] +
+            cm.component_group('segmentation', tolist=True),
+            open=True
+        ),
+        html.Hr(),
+        html.Details(
+            [html.Summary('Advanced segmentation options')] +
+            cm.component_group('segmentation-advanced', tolist=True),
+            open=False
+        ),
+        html.Hr(),
+        html.Details(
+            [html.Summary('Decoding options')] +
+            cm.component_group('decoding', tolist=True),
+            open=True
+        ),
+        dbc.Card([
+            dbc.CardHeader('Submission'),
+            dbc.CardBody([
+                dbc.Button('Submit', id='sb-submit-button', color='primary', size='lg'),
+                dbc.Button('Reset to defaults', id='sb-reset-button', color='warning', size='lg'),
+                html.Details(html.Summary('Generated JSON'), id='sb-submission-json'),
+            ]),
+        ]),
+    ], width=4),
+]
+
 
