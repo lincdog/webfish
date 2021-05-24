@@ -7,7 +7,7 @@ from dash.dependencies import Input, Output, State
 from dash.exceptions import PreventUpdate
 
 from app import app, config
-import pages
+import importlib
 from pages.common import (
     ComponentManager,
     all_datasets,
@@ -22,11 +22,26 @@ from pages.common import (
 #   which we will get the layout for the page.
 
 # TODO: Put this into DataClient?
-page_index = {k: {'title': v.get('title', k),
-                  'description': v.get('description', ''),
-                  'module': pages.page_to_module.get(k, None)
-                  }
-              for k, v in config['pages'].items()}
+page_index = {
+    'home': {
+        'title': 'Home',
+        'description': '',
+        'module': importlib.import_module('pages.splash')
+    }
+}
+
+for k, v in config['pages'].items():
+    try:
+        modname = v.get('file', '').removesuffix('.py')
+        fullname = f'pages.{modname}'
+
+        page_index[k] = {
+            'title': v.get('title', k),
+            'description': v.get('description', ''),
+            'module': importlib.import_module(fullname)
+        }
+    except (ImportError, ModuleNotFoundError) as e:
+        print(f'Import error: {e}')
 
 # The global user and dataset selectors, as well as the Sync with S3 button
 dataset_form = {
@@ -40,10 +55,6 @@ dataset_form = {
             color='primary'
         )
 }
-
-# The default "splash" or "home" page displayed on load
-splash_tab = {'tab-splash':
-                  dcc.Tab(id='tab-splash', label='Home', value='home')}
 
 page_tabs = {}
 page_tooltips = {}
@@ -68,15 +79,13 @@ for k, v in page_index.items():
         )
 
 # Combine the splash tab and the page tabs dicts
-all_tabs = splash_tab | page_tabs
-tabs_and_tooltips = all_tabs | page_tooltips
+tabs_and_tooltips = page_tabs | page_tooltips
 
 # Our components are the global user, dataset selectors plus the tab machinery
 # Set up a component group for all tabs and one with just the non-splash tabs
 index_cm = ComponentManager(
     dataset_form | tabs_and_tooltips,
     component_groups={
-        'all-tabs': list(all_tabs.keys()),
         'main-tabs': list(page_tabs.keys()),
         'page-tooltips': list(page_tooltips.keys())
     }
@@ -132,7 +141,7 @@ app.layout = html.Div(
         # Tabs container
         dcc.Tabs(
             id='all-tabs',
-            children=index_cm.component_group('all-tabs', tolist=True),
+            children=index_cm.component_group('main-tabs', tolist=True),
             style={'width': '500px'}
         ),
 
@@ -157,28 +166,6 @@ def select_user(user):
 
 
 @app.callback(
-    [Output(k, 'disabled') for k in page_tabs.keys()],
-    Input('dataset-select', 'value'),
-    State('user-select', 'value')
-)
-def select_dataset(dataset, user):
-    """
-    select_dataset
-    --------------
-    Updates the page tabs' disabled state according to whether each one
-    is able to display content for the selected user and dataset.
-
-    We only operate on `page_tabs` because the splash/home tab should
-    always be active.
-    """
-
-    if not dataset or not user:
-        return tuple([True] * len(page_tabs.keys()))
-
-    return tuple([False] * len(page_index.keys()))
-
-
-@app.callback(
     Output('content-main', 'children'),
     Input('all-tabs', 'value'),
 )
@@ -192,17 +179,12 @@ def tab_handler(tabval):
 
     If we get anything unrecognized, return the home page.
     """
-    home_entry = {
-        'name': 'home',
-        'title': 'Home',
-        'module': pages.page_to_module['home']
-    }
-    entry = page_index.get(tabval, home_entry)
+    entry = page_index.get(tabval, page_index['home'])
 
     if hasattr(entry['module'], 'layout'):
         return entry['module'].layout
     else:
-        return home_entry['module'].layout
+        return page_index['home']['module'].layout
 
 
 @app.callback(

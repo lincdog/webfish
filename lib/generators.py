@@ -156,9 +156,11 @@ class DatavisProcessing:
         # imagej=False because TiffFile throws a TypeError otherwise
         im = imread(imgfilename, is_imagej=False)
 
+        # RGB images seem to be present for some 2D segmentations
         if im.shape[-1] == 3:
             im = im[..., 0]
 
+        # For a 2D image, make it a 3-slice copy of itself
         if im.ndim == 2:
             im = np.array([im, im, im])
 

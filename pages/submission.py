@@ -14,8 +14,51 @@ from dash import no_update
 from app import app
 from .common import ComponentManager, data_clients
 
-PAGENAME = 'submit_analysis'
 data_client = data_clients['__all__']
+
+
+# TODO: move this to DataClient
+def put_analysis_request(
+    user,
+    dataset,
+    analysis_name,
+    dot_detection='biggest jump 3d'
+):
+    analysis_dict = {
+        'personal': user,
+        'experiment_name': dataset,
+        'dot detection': dot_detection,
+        'dot detection test': 'true',
+        'visualize dot detection': 'true',
+        'strictness': 'multiple',
+        'clusters': {
+            'ntasks': '1',
+            'mem-per-cpu': '10G',
+            'email': 'nrezaee@caltech.edu'
+        }
+    }
+
+    dict_bytes = io.BytesIO(json.dumps(analysis_dict).encode())
+    # These are "characters to avoid" in keys according to AWS docs
+    # \, {, }, ^, [, ], %, `, <, >, ~, #, |
+    # TODO: Sanitize filenames on server side before uploading too; mostly
+    #   potential problem for user-defined dataset/analysis names
+    analysis_sanitized = re.sub('[\\\\{^}%` \\[\\]>~<#|]', '', analysis_name)
+    keyname = f'json_analyses/{analysis_sanitized}.json'
+
+    try:
+        data_client.client.client.upload_fileobj(
+            dict_bytes,
+            Bucket=data_client.bucket_name,
+            Key=keyname
+        )
+    except Exception as e:
+        return str(e)
+
+    print(f'analysis_dict: {json.dumps(analysis_dict, indent=2)}')
+
+    return analysis_sanitized
+
 
 clear_components = {
     'sb-analysis-name':

@@ -18,8 +18,7 @@ from app import app
 from lib.util import safe_imread
 from .common import ComponentManager, data_clients
 
-PAGENAME = 'dotdetection'
-data_client = data_clients[PAGENAME]
+data_client = data_clients['dotdetection']
 
 
 # TODO: move this to DataClient

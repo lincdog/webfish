@@ -12,8 +12,7 @@ from app import app
 from lib.util import populate_mesh, base64_image, populate_genes, mesh_from_json
 from .common import data_clients
 
-PAGENAME = 'datavis'
-data_client = data_clients[PAGENAME]
+data_client = data_clients['datavis']
 
 
 def query_df(df, selected_genes):
