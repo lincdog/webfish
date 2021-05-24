@@ -61,11 +61,20 @@ def put_analysis_request(
 
 
 clear_components = {
+    # basic-metadata
     'sb-analysis-name':
         dbc.Input(
             id='sb-analysis-name',
             placeholder='Type a name for the analysis'
         ),
+    'sb-position-select':
+        dcc.Dropdown(
+            id='sb-position-select',
+            multi=True,
+            placeholder='Select one or more positions (blank for all)'
+        ),
+
+    # alignment
     'sb-alignment-select':
         dbc.Select(
             id='sb-alignment-select',
@@ -73,31 +82,26 @@ clear_components = {
             options=[{'label': 'Mean Squares 2D', 'value': 'mean squares 2d'}],
             disabled=True
         ),
+
+    # dot-detection
     'sb-dot-detection-select':
         dbc.Select(
             id='sb-dot-detection-select',
+            options=[
+                {'label': 'Biggest Jump 3D', 'value': 'biggest jump 3d'},
+                {'label': 'ADCG 2D', 'value': 'adcg 2d'}
+            ],
             value='biggest jump 3d',
-            options=[{'label': 'Biggest Jump 3D', 'value':'biggest jump 3d'}],
             disabled=True
         ),
     'sb-strictness-select':
-        dbc.Input(
+        dcc.Slider(
             id='sb-strictness-select',
-            type='number',
-            min=-10,
+            min=-15,
             max=15,
             step=1,
-            value=2
-        ),
-    'sb-channel-select':
-        dbc.Checklist(
-            options=[
-                {'label': '1', 'value': '1'},
-                {'label': '2', 'value': '2'},
-                {'label': '3', 'value': '3'}
-            ],
-            id='sb-channel-select',
-            inline=True
+            value=2,
+            marks={i: str(i) for i in range(-15, 16, 2)}
         ),
     'sb-threshold-select':
         dbc.Input(
@@ -109,24 +113,187 @@ clear_components = {
             value=0.0005,
             disabled=True
         ),
-    'sb-checklist-options':
+    'sb-dotdetection-checklist':
         dbc.Checklist(
             options=[
                 {'label': 'Visualize dot detection',
-                 'value': 'vis_dot_det', 'disabled': True},
-                {'label': 'Only decode dots in cells',
-                 'value': 'decode_cells_only', 'disabled': True},
-                {'label': 'All post-analyses', 'value': 'all_post', 'disabled': True},
-                {'label': 'Nuclei labeled image', 'value': 'nuc_label', 'disabled': True},
+                 'value': 'visualize dot detection', 'disabled': True},
             ],
-            value=['vis_dot_det', 'decode_cells_only', 'all_post', 'nuc_label'],
-            id='sb-checklist-options',
+            value=['visualize dot detection'],
+            id='sb-dotdetection-checklist',
             switch=True
         ),
+
+    # segmentation
+    'sb-segmentation-select':
+        dbc.RadioItems(
+            id='sb-segmentation-select',
+            options=[
+                {'label': 'Cellpose', 'value': 'cellpose'}
+            ],
+            value='cellpose'
+        ),
+    'sb-segmentation-checklist':
+        dbc.Checklist(
+            id='sb-segmentation-checklist',
+            options=[
+                {'label': 'Only decode dots in cells',
+                 'value': 'only decode dots in cells'},
+                {'label': 'All post-analyses',
+                 'value': 'all post analyses', 'disabled': True},
+                {'label': 'Nuclei labeled image',
+                 'value': 'nuclei labeled image'},
+                {'label': 'Cytoplasm labeled image',
+                 'value': 'cyto labeled image'},
+            ],
+            value=['only decode dots in cells',
+                   'all post analyses',
+                   'nuclei labeled image'],
+            switch=True
+        ),
+    # segmentation-advanced
+    'sb-edge-deletion':
+        dbc.Input(
+            id='sb-edge-deletion',
+            type='number',
+            min=0,
+            max=20,
+            step=1,
+            value=8
+        ),
+    'sb-nuclei-distance':
+        dbc.Input(
+            id='sb-nuclei-distance',
+            type='number',
+            min=0,
+            max=10,
+            step=1,
+            value=2
+        ),
+    'sb-cyto-channel':
+        dbc.RadioItems(
+            id='sb-cyto-channel',
+            options=[{'label': '1', 'value': '1'},
+                     {'label': '2', 'value': '2'},
+                     {'label': '3', 'value': '3'}
+                     ],
+            value='3',
+            inline=True
+        ),
+    'sb-nuclei-radius':
+        dbc.Input(
+            id='sb-nuclei-radius',
+            type='number',
+            min=0,
+            max=100,
+            step=1,
+            value=10
+        ),
+    'sb-cell-prob-threshold':
+        dcc.Slider(
+            id='sb-cell-prob-threshold',
+            min=-6,
+            max=6,
+            step=1,
+            value=-4,
+            marks={i: str(i) for i in range(-6, 7, 1)}
+        ),
+    'sb-flow-threshold':
+        dcc.Slider(
+            id='sb-flow-threshold',
+            min=0,
+            max=1,
+            step=0.01,
+            value=0.8,
+            marks={i: f'{i:0.2f}' for i in np.linspace(0, 1, 11)}
+        ),
+
+    # Decoding
+    'sb-decoding-select':
+        dbc.RadioItems(
+            id='sb-decoding-select',
+            options=[
+                {'label': 'Across channels', 'value': 'across'},
+                {'label': 'Individual channel(s)', 'value': 'individual'}
+            ],
+            value='individual',
+            inline=True
+        ),
+    'sb-individual-channel-select':
+        dbc.Checklist(
+            options=[
+                {'label': '1', 'value': '1'},
+                {'label': '2', 'value': '2'},
+                {'label': '3', 'value': '3'}
+            ],
+            id='sb-channel-select',
+            inline=True
+        ),
+
 }
 
-cm = ComponentManager(clear_components)
+component_groups = {
+    'basic-metadata': ['sb-analysis-name',
+                       'sb-position-select'],
+
+    'alignment': ['sb-alignment-select'],
+
+    'dot-detection': ['sb-dot-detection-select',
+                      'sb-strictness-select',
+                      'sb-threshold-select',
+                      'sb-dotdetection-checklist'],
+
+    'segmentation': ['sb-segmentation-select',
+                     'sb-segmentation-checklist'],
+
+    'segmentation-advanced': ['sb-edge-deletion',
+                              'sb-nuclei-distance',
+                              'sb-cyto-channel',
+                              'sb-nuclei-radius',
+                              'sb-cell-prob-threshold',
+                              'sb-flow-threshold'],
+
+    'decoding': ['sb-decoding-select',
+                 'sb-individual-channel-select']
+
+}
+
+cm = ComponentManager(clear_components, component_groups=component_groups)
 
 layout = html.Div([
-    *[cm.component(k) for k in clear_components.keys()]
+    html.Details(
+        [html.Summary('Basic information')] +
+        cm.component_group('basic-metadata', tolist=True),
+        open=True
+    ),
+    html.Hr(),
+    html.Details(
+        [html.Summary('Alignment options')] +
+        cm.component_group('alignment', tolist=True),
+        open=True
+    ),
+    html.Hr(),
+    html.Details(
+        [html.Summary('Dot detection options')] +
+        cm.component_group('dot-detection', tolist=True),
+        open=True
+    ),
+    html.Hr(),
+    html.Details(
+        [html.Summary('Segmentation options')] +
+        cm.component_group('segmentation', tolist=True),
+        open=True
+    ),
+    html.Hr(),
+    html.Details(
+        [html.Summary('Advanced segmentation options')] +
+        cm.component_group('segmentation-advanced', tolist=True),
+        open=False
+    ),
+    html.Hr(),
+    html.Details(
+        [html.Summary('Decoding options')] +
+        cm.component_group('decoding', tolist=True),
+    ),
 ], style={'width': '500px'})
+
