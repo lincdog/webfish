@@ -1,4 +1,4 @@
-theme: COSMO
+theme: SPACELAB
 
 # Environment variable specifying location of AWS key file
 credentials: WEBFISH_CREDS

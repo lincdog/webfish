@@ -139,7 +139,7 @@ def gen_image_figure(
 clear_components = {
 
     'dd-analysis-select':
-        dcc.Dropdown(
+        dbc.Select(
             id='dd-analysis-select',
             placeholder='Select an analysis'
         ),
@@ -154,11 +154,11 @@ clear_components = {
     'dd-new-analysis-text': html.Div(id='dd-new-analysis-text'),
 
     'dd-hyb-select':
-        dcc.Dropdown(id='dd-hyb-select', placeholder='Select a hyb round'),
+        dbc.Select(id='dd-hyb-select', placeholder='Select a hyb round'),
     'dd-position-select':
-        dcc.Dropdown(id='dd-position-select', placeholder='Select a position'),
+        dbc.Select(id='dd-position-select', placeholder='Select a position'),
     'dd-swap-channels-slices':
-        dcc.Checklist(
+        dbc.Checklist(
             id='dd-swap-channels-slices',
             options=[{'label': 'Swap channels and slices', 'value': 'swap'}],
             value=[]
@@ -168,7 +168,7 @@ clear_components = {
     'dd-chan-cap': html.B('Select a channel'),
     'dd-contrast-cap': html.B('Adjust contrast'),
     'dd-z-select': dcc.Slider(id='dd-z-select'),
-    'dd-chan-select': dcc.Dropdown(id='dd-chan-select'),
+    'dd-chan-select': dbc.Select(id='dd-chan-select'),
     'dd-contrast-slider': dcc.RangeSlider(id='dd-contrast-slider'),
 
     'dd-fig': dcc.Graph(id='dd-fig')

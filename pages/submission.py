@@ -12,7 +12,8 @@ from dash.exceptions import PreventUpdate
 from dash import no_update
 
 from app import app
-from .common import ComponentManager, data_clients
+from lib.util import sanitize
+from .common import ComponentManager, data_clients, all_datasets
 
 
 data_client = data_clients['dotdetection']
@@ -261,7 +262,7 @@ component_groups = {
 
 def _position_process(positions):
     if not positions:
-        return {'positions': []}
+        return {'positions': ''}
 
     return {'positions': ','.join([str(p) for p in positions])}
 
@@ -308,11 +309,21 @@ id_to_json_key = {
 
 
 def form_to_json_output(form_status):
-    out = {}
+    out = {
+        "clusters": {
+            "ntasks": "1",
+            "mem-per-cpu": "10G",
+            "email": "nrezaee@caltech.edu"
+        }
+    }
+
+    analysis_name = ''
 
     for k, v in form_status.items():
 
-        if k in id_to_json_key.keys():
+        if k == 'sb-analysis-name' and v:
+            analysis_name = sanitize(v, delimiter_allowed=False)
+        elif k in id_to_json_key.keys():
             prekey = id_to_json_key[k]
 
             if callable(prekey):
@@ -324,7 +335,7 @@ def form_to_json_output(form_status):
                 if uk not in out.keys():
                     out[uk] = uv
 
-    return out
+    return analysis_name, out
 
 
 cm = ComponentManager(clear_components, component_groups=component_groups)
@@ -358,18 +369,39 @@ def select_user_dataset(user, dataset):
     [State(comp, 'value') for comp in cm.clear_components.keys()]
 )
 def submit_new_analysis(n_clicks, user, dataset, *values):
-
-    if n_clicks:
-        status = {'user-select': user, 'dataset-select': dataset}
-        status.update({c: v for c, v in zip(cm.clear_components.keys(), values)})
-
-        return [
-            html.Summary('Generated JSON'),
-            html.Pre(json.dumps(
-                form_to_json_output(status), indent=2)),
-        ]
-    else:
+    if not n_clicks:
         raise PreventUpdate
+
+    status = {'user-select': user, 'dataset-select': dataset}
+    status.update({c: v for c, v in zip(cm.clear_components.keys(), values)})
+
+    analysis_name, submission = form_to_json_output(status)
+
+    analyses = all_datasets.query(
+        'user==@user and dataset==@dataset')['analysis'].unique()
+
+    alerts = []
+
+    if not all((analysis_name, user, dataset)):
+        alerts.append(dbc.Alert('Please choose a user and dataset, and specify'
+                                ' a new analysis name.', color='danger'))
+
+    if analysis_name:
+        if analysis_name in analyses:
+            alerts.append(
+                dbc.Alert(dcc.Markdown(f'An analysis named `{analysis_name}` '
+                          f'already exists for the chosen dataset.'), color='danger'))
+    else:
+        analysis_name = '<none supplied>'
+
+    return [
+        *alerts,
+        dcc.Markdown(f'New analysis name: `{analysis_name}`'),
+        html.Summary('Generated JSON'),
+        html.Pre(json.dumps(
+            submission, indent=2)),
+    ]
+
 
 
 @app.callback(
@@ -383,7 +415,7 @@ def reset_to_defaults(n_clicks):
         return None, col1_clear, col2_clear
     else:
         raise PreventUpdate
-    
+
 
 col1_clear = [
     html.Details(

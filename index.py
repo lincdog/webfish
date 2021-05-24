@@ -62,10 +62,11 @@ page_tooltips = {}
 for k, v in page_index.items():
     # Generate a Tab object for each page besides the splash,
     # disabled by default
-    page_tabs[f'tab-{k}'] = dcc.Tab(
+    page_tabs[f'tab-{k}'] = dbc.Tab(
+        tab_id=k,
         id=f'tab-{k}',
         label=v['title'],
-        value=k,
+        #value=k,
         disabled=False
     )
 
@@ -134,7 +135,7 @@ def select_user(user):
 
 @app.callback(
     Output('content-main', 'children'),
-    Input('all-tabs', 'value'),
+    Input('all-tabs', 'active_tab'),
 )
 def tab_handler(tabval):
     """
@@ -156,9 +157,9 @@ def tab_handler(tabval):
 
 @app.callback(
     Output('url', 'pathname'),
-    Output('all-tabs', 'value'),
+    Output('all-tabs', 'active_tab'),
     Input('url', 'pathname'),
-    Input('all-tabs', 'value')
+    Input('all-tabs', 'active_tab')
 )
 def sync_tab_url(pathname, tabval):
     """
@@ -208,7 +209,7 @@ app.layout = dbc.Container(
                 ]),
 
                 # Tabs container
-                dcc.Tabs(
+                dbc.Tabs(
                     id='all-tabs',
                     children=index_cm.component_group('main-tabs', tolist=True),
                 ),
