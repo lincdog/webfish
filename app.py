@@ -17,6 +17,7 @@ s3_client = S3Connect(config=config, wait_for_creds=True, wait_timeout=120)
 THEME = getattr(dbc.themes, config.get('theme', 'MINTY').upper())
 app = dash.Dash(
     __name__,
+    title='Webfish',
     external_stylesheets=[THEME],
     suppress_callback_exceptions=True,
     #update_title=None,

@@ -7,6 +7,7 @@ from dash.dependencies import Input, Output, State
 from dash.exceptions import PreventUpdate
 
 from app import app, config
+from lib.util import empty_or_false
 import importlib
 from pages.common import (
     ComponentManager,
@@ -66,7 +67,6 @@ for k, v in page_index.items():
         tab_id=k,
         id=f'tab-{k}',
         label=v['title'],
-        #value=k,
         disabled=False
     )
 
@@ -102,7 +102,7 @@ def finish_client_s3_sync(contents, n_clicks):
     if n_clicks != 1:
         raise PreventUpdate
 
-    if 'Syncing...' not in contents:
+    if ' Syncing...' not in contents:
         raise PreventUpdate
 
     sync_with_s3()
@@ -116,7 +116,7 @@ def finish_client_s3_sync(contents, n_clicks):
 )
 def init_client_s3_sync(n_clicks):
     if n_clicks == 1:
-        return [dbc.Spinner(size='sm'), 'Syncing...']
+        return [dbc.Spinner(size='sm'), ' Syncing...']
     else:
         raise PreventUpdate
 
@@ -130,7 +130,11 @@ def init_client_s3_sync(n_clicks):
 def select_user(user):
     datasets = all_datasets.query('user==@user')['dataset'].unique()
 
-    return [{'label': d, 'value': d} for d in sorted(datasets)], None, False
+    return (
+        [{'label': d, 'value': d} for d in sorted(datasets)],
+        None,
+        len(datasets) == 0
+    )
 
 
 @app.callback(
@@ -193,7 +197,27 @@ app.layout = dbc.Container(
     children=[
         dcc.Location(id='url', refresh=False),
         dcc.Store(id='wf-store', storage_type='session', data={}),
-        dbc.Row(html.H1('webfish app')),
+
+        dbc.Row([
+            dbc.Col([
+                dbc.NavbarSimple(
+                    [
+                        dbc.NavItem(dbc.NavLink(
+                            'View on GitHub',
+                            href='https://github.com/lincdog/webfish'
+                        )),
+                        dbc.NavItem(dbc.NavLink(
+                            'Cai Lab home',
+                            href='https://spatial.caltech.edu'
+                        ))
+                    ],
+                    brand='Webfish',
+                    brand_href='/home',
+                    color='primary',
+                    dark=True
+                )
+            ]),
+        ]),
 
         dbc.Row(
             dbc.Col([
@@ -206,7 +230,7 @@ app.layout = dbc.Container(
                     ),
                     index_cm.component('dataset-select', disabled=True),
                     html.Div(index_cm.component('s3-sync-button'), id='s3-sync-div'),
-                ]),
+                ], style={'padding': '20px'}),
 
                 # Tabs container
                 dbc.Tabs(
