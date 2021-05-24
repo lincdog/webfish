@@ -318,7 +318,7 @@ def form_to_json_output(form_status):
             if callable(prekey):
                 update = prekey(v)
             else:
-                update = {prekey: v}
+                update = {prekey: str(v)}
 
             for uk, uv in update.items():
                 if uk not in out.keys():
@@ -372,53 +372,70 @@ def submit_new_analysis(n_clicks, user, dataset, *values):
         raise PreventUpdate
 
 
-layout = [
-    dbc.Col([
-        html.Details(
-            [html.Summary('Basic information')] +
-            cm.component_group('basic-metadata', tolist=True),
-            open=True
-        ),
-        html.Hr(),
-        html.Details(
-            [html.Summary('Alignment options')] +
-            cm.component_group('alignment', tolist=True),
-            open=True
-        ),
-        html.Hr(),
-        html.Details(
-            [html.Summary('Dot detection options')] +
-            cm.component_group('dot-detection', tolist=True),
-            open=True
-        ),
-    ], width=4),
-    dbc.Col([
-        html.Details(
-            [html.Summary('Segmentation options')] +
-            cm.component_group('segmentation', tolist=True),
-            open=True
-        ),
-        html.Hr(),
-        html.Details(
-            [html.Summary('Advanced segmentation options')] +
-            cm.component_group('segmentation-advanced', tolist=True),
-            open=False
-        ),
-        html.Hr(),
-        html.Details(
-            [html.Summary('Decoding options')] +
-            cm.component_group('decoding', tolist=True),
-            open=True
-        ),
-        dbc.Card([
-            dbc.CardHeader('Submission'),
-            dbc.CardBody([
-                dbc.Button('Submit', id='sb-submit-button', color='primary', size='lg'),
-                dbc.Button('Reset to defaults', id='sb-reset-button', color='warning', size='lg'),
-                html.Details(html.Summary('Generated JSON'), id='sb-submission-json'),
-            ]),
+@app.callback(
+    [Output('user-select', 'value'),
+     Output('sb-col-1', 'children'),
+     Output('sb-col-2', 'children')],
+    Input('sb-reset-button', 'n_clicks')
+)
+def reset_to_defaults(n_clicks):
+    if n_clicks:
+        return None, col1_clear, col2_clear
+    else:
+        raise PreventUpdate
+    
+
+col1_clear = [
+    html.Details(
+        [html.Summary('Basic information')] +
+        cm.component_group('basic-metadata', tolist=True),
+        open=True
+    ),
+    html.Hr(),
+    html.Details(
+        [html.Summary('Alignment options')] +
+        cm.component_group('alignment', tolist=True),
+        open=True
+    ),
+    html.Hr(),
+    html.Details(
+        [html.Summary('Dot detection options')] +
+        cm.component_group('dot-detection', tolist=True),
+        open=True
+    ),
+]
+
+col2_clear = [
+    html.Details(
+        [html.Summary('Segmentation options')] +
+        cm.component_group('segmentation', tolist=True),
+        open=True
+    ),
+    html.Hr(),
+    html.Details(
+        [html.Summary('Advanced segmentation options')] +
+        cm.component_group('segmentation-advanced', tolist=True),
+        open=False
+    ),
+    html.Hr(),
+    html.Details(
+        [html.Summary('Decoding options')] +
+        cm.component_group('decoding', tolist=True),
+        open=True
+    ),
+    dbc.Card([
+        dbc.CardHeader('Submission'),
+        dbc.CardBody([
+            dbc.Button('Submit', id='sb-submit-button', color='primary', size='lg'),
+            dbc.Button('Reset to defaults', id='sb-reset-button', color='warning', size='lg'),
+            html.Details(html.Summary('Generated JSON'), id='sb-submission-json'),
         ]),
-    ], width=4),
+    ]),
+]
+
+layout = [
+    dbc.Col(col1_clear, id='sb-col-1', width=4),
+    dbc.Col(col2_clear, id='sb-col-2', width=4)
 ]
 
 
