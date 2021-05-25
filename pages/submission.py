@@ -65,56 +65,78 @@ def put_analysis_request(
 clear_components = {
     # basic-metadata
     'sb-analysis-name':
-        dbc.Input(
-            id='sb-analysis-name',
-            placeholder='Type a name for the analysis'
-        ),
+        dbc.FormGroup([
+            dbc.Label('Analysis Name', html_for='sb-analysis-name'),
+            dbc.Input(
+                id='sb-analysis-name',
+                placeholder='Type a name for the analysis'
+            )
+        ]),
     'sb-position-select':
-        dcc.Dropdown(
-            id='sb-position-select',
-            multi=True,
-            placeholder='Select one or more positions (blank for all)'
-        ),
+        dbc.FormGroup([
+            dbc.Label('Position Select', html_for='sb-position-select'),
+            dcc.Dropdown(
+                id='sb-position-select',
+                multi=True,
+                placeholder='Select one or more positions (blank for all)'
+            ),
+            dbc.FormText('Select one or more positions, or leave blank to process all.')
+        ]),
 
     # alignment
     'sb-alignment-select':
-        dbc.Select(
-            id='sb-alignment-select',
-            value='mean squares 2d',
-            options=[{'label': 'Mean Squares 2D', 'value': 'mean squares 2d'}],
-            disabled=True
-        ),
+        dbc.FormGroup([
+            dbc.Label('Alignment Algorithm', html_for='sb-alignment-select'),
+            dbc.Select(
+                id='sb-alignment-select',
+                value='mean squares 2d',
+                options=[{'label': 'Mean Squares 2D', 'value': 'mean squares 2d'}],
+                disabled=True
+            ),
+        ]),
 
     # dot-detection
     'sb-dot-detection-select':
-        dbc.Select(
-            id='sb-dot-detection-select',
-            options=[
-                {'label': 'Biggest Jump 3D', 'value': 'biggest jump 3d'},
-                {'label': 'ADCG 2D', 'value': 'adcg 2d'}
-            ],
-            value='biggest jump 3d',
-            disabled=True
-        ),
+        dbc.FormGroup([
+            dbc.Label('Dot Detection Algorithm', html_for='sb-dot-detection-select'),
+            dbc.Select(
+                id='sb-dot-detection-select',
+                options=[
+                    {'label': 'Biggest Jump 3D', 'value': 'biggest jump 3d'},
+                    {'label': 'ADCG 2D', 'value': 'adcg 2d'}
+                ],
+                value='biggest jump 3d',
+                disabled=True
+            ),
+        ]),
     'sb-strictness-select':
-        dcc.Slider(
-            id='sb-strictness-select',
-            min=-15,
-            max=15,
-            step=1,
-            value=2,
-            marks={i: str(i) for i in range(-15, 16, 2)}
-        ),
+        dbc.FormGroup([
+            dbc.Label('Strictness parameter', html_for='sb-strictness-select'),
+            dcc.Slider(
+                id='sb-strictness-select',
+                min=-15,
+                max=15,
+                step=1,
+                value=2,
+                marks={i: str(i) for i in range(-15, 16, 2)}
+            ),
+            dbc.FormText('Higher strictness sets a '
+                         'higher minimum intensity threshold for dot detection.')
+        ]),
     'sb-threshold-select':
-        dbc.Input(
-            id='sb-threshold-select',
-            type='number',
-            min=0,
-            max=0.05,
-            step=0.0001,
-            value=0.0005,
-            disabled=True
-        ),
+        dbc.FormGroup([
+            dbc.Label('Laplacian Threshold (advanced)', html_for='sb-threshold-select'),
+            dbc.Input(
+                id='sb-threshold-select',
+                type='number',
+                min=0,
+                max=0.05,
+                step=0.0001,
+                value=0.0005,
+                disabled=True
+            ),
+            dbc.FormText('Set a threshold of the LoG filter. Default is usually fine.')
+        ]),
     'sb-dotdetection-checklist':
         dbc.Checklist(
             options=[
@@ -128,24 +150,28 @@ clear_components = {
 
     # segmentation
     'sb-segmentation-select':
-        dbc.RadioItems(
-            id='sb-segmentation-select',
-            options=[
-                {'label': 'Cellpose', 'value': 'cellpose'}
-            ],
-            value='cellpose'
-        ),
+        dbc.FormGroup([
+            dbc.Label('Segmentation Algorithm', html_for='sb-segmentation-select'),
+            dbc.RadioItems(
+                id='sb-segmentation-select',
+                options=[
+                    {'label': 'Cellpose', 'value': 'cellpose'},
+                    {'label': 'No segmentation', 'value': 'none'}
+                ],
+                value='cellpose'
+            ),
+        ]),
     'sb-segmentation-checklist':
         dbc.Checklist(
             id='sb-segmentation-checklist',
             options=[
                 {'label': 'Only decode dots in cells',
                  'value': 'only decode dots in cells'},
-                {'label': 'All post-analyses',
+                {'label': 'Run all post-analyses',
                  'value': 'all post analyses', 'disabled': True},
-                {'label': 'Nuclei labeled image',
+                {'label': 'Segment nuclei',
                  'value': 'nuclei labeled image'},
-                {'label': 'Cytoplasm labeled image',
+                {'label': 'Segment cytoplasm',
                  'value': 'cyto labeled image'},
             ],
             value=['only decode dots in cells',
@@ -155,82 +181,112 @@ clear_components = {
         ),
     # segmentation-advanced
     'sb-edge-deletion':
-        dbc.Input(
-            id='sb-edge-deletion',
-            type='number',
-            min=0,
-            max=20,
-            step=1,
-            value=8
-        ),
+        dbc.FormGroup([
+            dbc.Label('Edge Deletion', html_for='sb-edge-deletion'),
+            dbc.Input(
+                id='sb-edge-deletion',
+                type='number',
+                min=0,
+                max=20,
+                step=1,
+                value=8
+            ),
+            dbc.FormText('Set the number of pixels to be deleted between neighboring '
+                         'cells in the labeled image.')
+        ]),
     'sb-nuclei-distance':
-        dbc.Input(
-            id='sb-nuclei-distance',
-            type='number',
-            min=0,
-            max=10,
-            step=1,
-            value=2
-        ),
+        dbc.FormGroup([
+            dbc.Label('Nuclei Distance', html_for='sb-nuclei-distance'),
+            dbc.Input(
+                id='sb-nuclei-distance',
+                type='number',
+                min=0,
+                max=10,
+                step=1,
+                value=2
+            ),
+        ]),
     'sb-cyto-channel':
-        dbc.RadioItems(
-            id='sb-cyto-channel',
-            options=[{'label': '1', 'value': '1'},
-                     {'label': '2', 'value': '2'},
-                     {'label': '3', 'value': '3'}
-                     ],
-            value='3',
-            inline=True
-        ),
+        dbc.FormGroup([
+            dbc.Label('Cytoplasm Channel', html_for='sb-cyto-channel'),
+            dbc.RadioItems(
+                id='sb-cyto-channel',
+                options=[{'label': '1', 'value': '1'},
+                         {'label': '2', 'value': '2'},
+                         {'label': '3', 'value': '3'}
+                         ],
+                value='3',
+                inline=True
+            ),
+            dbc.FormText('Select which channel to use for cytoplasm segmentation')
+        ]),
     'sb-nuclei-radius':
-        dbc.Input(
-            id='sb-nuclei-radius',
-            type='number',
-            min=0,
-            max=100,
-            step=1,
-            value=10
-        ),
+        dbc.FormGroup([
+            dbc.Label('Select Nuclear Radius', html_for='sb-nuclei-radius'),
+            dbc.Input(
+                id='sb-nuclei-radius',
+                type='number',
+                min=0,
+                max=100,
+                step=1,
+                value=10
+            ),
+        ]),
     'sb-cell-prob-threshold':
-        dcc.Slider(
-            id='sb-cell-prob-threshold',
-            min=-6,
-            max=6,
-            step=1,
-            value=-4,
-            marks={i: str(i) for i in range(-6, 7, 1)}
-        ),
+        dbc.FormGroup([
+            dbc.Label('Set Cell Probability Threshold', html_for='sb-cell-prob-threshold'),
+            dcc.Slider(
+                id='sb-cell-prob-threshold',
+                min=-6,
+                max=6,
+                step=1,
+                value=-4,
+                marks={i: str(i) for i in range(-6, 7, 1)}
+            ),
+        ]),
     'sb-flow-threshold':
-        dcc.Slider(
-            id='sb-flow-threshold',
-            min=0,
-            max=1,
-            step=0.01,
-            value=0.8,
-            marks={i: f'{i:0.2f}' for i in np.linspace(0, 1, 11)}
-        ),
+        dbc.FormGroup([
+            dbc.Label('Set Flow Threshold Parameter', html_for='sb-flow-threshold'),
+            dcc.Slider(
+                id='sb-flow-threshold',
+                min=0,
+                max=1,
+                step=0.01,
+                value=0.8,
+                marks={i: f'{i:0.2f}' for i in np.linspace(0, 1, 11)}
+            )
+        ]),
 
     # Decoding
     'sb-decoding-select':
-        dbc.RadioItems(
-            id='sb-decoding-select',
-            options=[
-                {'label': 'Across channels', 'value': 'across'},
-                {'label': 'Individual channel(s)', 'value': 'individual'}
-            ],
-            value='individual',
-            inline=True
-        ),
+        dbc.FormGroup([
+            dbc.Label('Select Decoding Algorithm', html_for='sb-decoding-select'),
+            dbc.RadioItems(
+                id='sb-decoding-select',
+                options=[
+                    {'label': 'Across channels', 'value': 'across'},
+                    {'label': 'Individual channel(s)', 'value': 'individual'}
+                ],
+                value='individual',
+                inline=True
+            ),
+            dbc.FormText('If "Individual" is selected, also select which channels, below.')
+        ]),
     'sb-individual-channel-select':
-        dbc.Checklist(
-            options=[
-                {'label': '1', 'value': '1'},
-                {'label': '2', 'value': '2'},
-                {'label': '3', 'value': '3'}
-            ],
-            id='sb-individual-channel-select',
-            inline=True
-        ),
+        dbc.FormGroup([
+            dbc.Label('Select Channels for Individual Decoding',
+                      html_for='sb-individual-channel-select'),
+            dbc.Checklist(
+                options=[
+                    {'label': '1', 'value': '1'},
+                    {'label': '2', 'value': '2'},
+                    {'label': '3', 'value': '3'}
+                ],
+                id='sb-individual-channel-select',
+                inline=True
+            ),
+            dbc.FormText('This only has an effect if "Individual" is selected above.')
+        ]),
 
 }
 
@@ -401,7 +457,6 @@ def submit_new_analysis(n_clicks, user, dataset, *values):
         html.Pre(json.dumps(
             submission, indent=2)),
     ]
-
 
 
 @app.callback(
