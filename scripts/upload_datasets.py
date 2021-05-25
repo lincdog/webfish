@@ -9,8 +9,8 @@ from pathlib import Path, PurePath
 from argparse import ArgumentParser
 WF_HOME = os.environ.get('WF_HOME', '/home/lombelet/cron/webfish_sandbox/webfish')
 sys.path.append(WF_HOME)
-from lib import cloud
-from lib.util import find_matching_files
+from lib.server import DataServer
+from lib.core import S3Connect
 
 
 def process_args():
@@ -41,9 +41,9 @@ def process_args():
 def init_server():
     config = yaml.load(open('./consts.yml'), Loader=yaml.Loader)
 
-    s3c = cloud.S3Connect(config=config)
+    s3c = S3Connect(config=config)
 
-    dm = cloud.DataServer(config=config, s3_client=s3c)
+    dm = DataServer(config=config, s3_client=s3c)
     dm.read_local_sync()
 
     return dm
@@ -134,7 +134,7 @@ if __name__ == '__main__':
     os.chdir(WF_HOME)
     LOCKFILE = f'upload_datasets.lck'
 
-    logger = logging.getLogger('lib.cloud.server')
+    logger = logging.getLogger('lib.server')
     logger.setLevel(logging.DEBUG)
 
     rth = RotatingFileHandler('upload_datasets.log', maxBytes=2 ** 16, backupCount=4)

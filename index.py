@@ -1,35 +1,256 @@
 import os
-
+import dash
 import dash_core_components as dcc
 import dash_html_components as html
+import dash_bootstrap_components as dbc
 from dash.dependencies import Input, Output, State
+from dash.exceptions import PreventUpdate
 
-from app import app, config, s3_client
-from pages import datavis, dotdetection
+from app import app, config
+from lib.util import empty_or_false
+import importlib
+from pages.common import (
+    ComponentManager,
+    all_datasets,
+    sync_with_s3
+)
 
-app.layout = html.Div(children=[
-    dcc.Location(id='url', refresh=False),
-    dcc.Store(id='wf-store', storage_type='session', data={}),
-    html.H1('webfish app'),
-    dcc.Tabs(id='main-tabs', value='datavis', children=[
-        dcc.Tab(label='Data Visualization', value='datavis'),
-        dcc.Tab(label='Dot detection preview', value='dotdetection')
-    ], style={'width': '500px'}),
-    html.Div(id='content-main', style={'width': '100%', 'height': '100%'})
-], style={'margin': 'auto'})
+# Convenience dict with:
+# - key: shorthand page names, used as tab and URL values
+# - title: for display on tabs, headers etc
+# - description: longer information used in tooltips, etc
+# - module: the imported module object corresponding to this page file, from
+#   which we will get the layout for the page.
+
+# TODO: Put this into DataClient?
+page_index = {
+    'home': {
+        'title': 'Home',
+        'description': '',
+        'module': importlib.import_module('pages.splash')
+    }
+}
+
+for k, v in config['pages'].items():
+    try:
+        modname = v.get('file', '').removesuffix('.py')
+        fullname = f'pages.{modname}'
+
+        page_index[k] = {
+            'title': v.get('title', k),
+            'description': v.get('description', ''),
+            'module': importlib.import_module(fullname)
+        }
+    except (ImportError, ModuleNotFoundError) as e:
+        print(f'Import error: {e}')
+
+# The global user and dataset selectors, as well as the Sync with S3 button
+dataset_form = {
+    'user-select': dbc.Select(id='user-select', placeholder='Select a user'),
+    'dataset-select': dbc.Select(id='dataset-select', placeholder='Select a dataset'),
+    's3-sync-button':
+        dbc.Button(
+            'Sync with S3',
+            id='s3-sync-button',
+            n_clicks=0,
+            color='primary'
+        )
+}
+
+page_tabs = {}
+page_tooltips = {}
+
+for k, v in page_index.items():
+    # Generate a Tab object for each page besides the splash,
+    # disabled by default
+    page_tabs[f'tab-{k}'] = dbc.Tab(
+        tab_id=k,
+        id=f'tab-{k}',
+        label=v['title'],
+        disabled=False
+    )
+
+    # Add a Tooltip with the page description to each page tab that has a
+    # description entry.
+    if v['description']:
+        page_tooltips[f'tooltip-{k}'] = dbc.Tooltip(
+            v['description'],
+            target=f'tab-{k}',
+            placement='bottom'
+        )
+
+# Combine the splash tab and the page tabs dicts
+tabs_and_tooltips = page_tabs | page_tooltips
+
+# Our components are the global user, dataset selectors plus the tab machinery
+# Set up a component group for all tabs and one with just the non-splash tabs
+index_cm = ComponentManager(
+    dataset_form | tabs_and_tooltips,
+    component_groups={
+        'main-tabs': list(page_tabs.keys()),
+        'page-tooltips': list(page_tooltips.keys())
+    }
+)
+
+
+@app.callback(
+    Output('s3-sync-div', 'children'),
+    Input('s3-sync-button', 'children'),
+    State('s3-sync-button', 'n_clicks')
+)
+def finish_client_s3_sync(contents, n_clicks):
+    if n_clicks != 1:
+        raise PreventUpdate
+
+    if ' Syncing...' not in contents:
+        raise PreventUpdate
+
+    sync_with_s3()
+
+    return index_cm.component('s3-sync-button')
+
+
+@app.callback(
+    Output('s3-sync-button', 'children'),
+    Input('s3-sync-button', 'n_clicks')
+)
+def init_client_s3_sync(n_clicks):
+    if n_clicks == 1:
+        return [dbc.Spinner(size='sm'), ' Syncing...']
+    else:
+        raise PreventUpdate
+
+
+@app.callback(
+    Output('dataset-select', 'options'),
+    Output('dataset-select', 'value'),
+    Output('dataset-select', 'disabled'),
+    Input('user-select', 'value')
+)
+def select_user(user):
+    datasets = all_datasets.query('user==@user')['dataset'].unique()
+
+    return (
+        [{'label': d, 'value': d} for d in sorted(datasets)],
+        None,
+        len(datasets) == 0
+    )
 
 
 @app.callback(
     Output('content-main', 'children'),
-    Input('main-tabs', 'value')
+    Input('all-tabs', 'active_tab'),
 )
 def tab_handler(tabval):
-    if tabval == 'datavis':
-        return datavis.layout
-    elif tabval == 'dotdetection':
-        return dotdetection.layout
+    """
+    tab_handler
+    -----------
+    Actually handle the selected tab name by populating the main
+    content Div with the appropriate layout variable, defined in
+    each individual page file.
+
+    If we get anything unrecognized, return the home page.
+    """
+    entry = page_index.get(tabval, page_index['home'])
+
+    if hasattr(entry['module'], 'layout'):
+        return entry['module'].layout
     else:
-        return html.H1('404!!!!')
+        return page_index['home']['module'].layout
+
+
+@app.callback(
+    Output('url', 'pathname'),
+    Output('all-tabs', 'active_tab'),
+    Input('url', 'pathname'),
+    Input('all-tabs', 'active_tab')
+)
+def sync_tab_url(pathname, tabval):
+    """
+    sync_tab_url
+    ------------
+    Two-way syncing of the relative path in the URL bar and the selected
+    tab.
+    """
+    ctx = dash.callback_context
+    trigger_id = ctx.triggered[0]['prop_id'].split('.')[0]
+
+    print(f'triggered by {trigger_id} with pathname {pathname} and tabval {tabval}')
+
+    pathname = pathname.strip('/')
+
+    tabs_and_splash = ['home'] + list(page_index.keys())
+
+    if trigger_id == 'url' or tabval not in tabs_and_splash:
+        newval = pathname
+    else:
+        newval = tabval
+
+    if newval not in tabs_and_splash:
+        return '', ''
+
+    return newval, newval
+
+
+app.layout = dbc.Container(
+    fluid=True,
+    children=[
+        dcc.Location(id='url', refresh=False),
+        dcc.Store(id='wf-store', storage_type='session', data={}),
+
+        dbc.Row([
+            dbc.Col([
+                dbc.NavbarSimple(
+                    [
+                        dbc.NavItem(dbc.NavLink(
+                            'View on GitHub',
+                            href='https://github.com/lincdog/webfish'
+                        )),
+                        dbc.NavItem(dbc.NavLink(
+                            'Cai Lab home',
+                            href='https://spatial.caltech.edu'
+                        ))
+                    ],
+                    brand='Webfish',
+                    brand_href='/home',
+                    color='primary',
+                    dark=True
+                )
+            ]),
+        ]),
+
+        dbc.Row([
+            dbc.Col([
+                # Tabs container
+                dbc.Tabs(
+                    id='all-tabs',
+                    children=index_cm.component_group('main-tabs', tolist=True),
+                ),
+
+                *index_cm.component_group('page-tooltips', tolist=True),
+            ], style={'margin-top': '20px'}, width=6),
+            dbc.Col([
+                # Global user and dataset selectors
+                html.Div([
+                    index_cm.component(
+                        'user-select',
+                        options=[{'label': u, 'value': u}
+                                 for u in sorted(all_datasets['user'].unique())]
+                    ),
+                    index_cm.component('dataset-select', disabled=True),
+                    html.Div(index_cm.component('s3-sync-button'), id='s3-sync-div'),
+                ]),
+            ], width=4),
+            html.Hr()
+        ]),
+
+        # This Row is populated by the page.layout of the selected tab.
+        # Note that dbc.Row only works properly if its children are
+        # dbc.Col objects. So each page.layout should be a list of these.
+        dbc.Row(id='content-main'),
+
+    ], style={'margin': 'auto'}
+)
 
 
 if __name__ == '__main__':

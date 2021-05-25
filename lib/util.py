@@ -1,26 +1,24 @@
 import tifffile as tif
-import skimage.measure as skim
-import skimage.transform as skit
-import skimage.util as skiu
 import numpy as np
 import pandas as pd
 import json
 import re
 import os
-import gc
 import string
 import numbers
 from pathlib import Path, PurePath
 import base64
-from matplotlib.pyplot import get_cmap
-import plotly.graph_objects as go
 
 
 def safe_imread(fname, is_ome=False, is_imagej=True):
+    imarr = np.array([])
+
     try:
-        return tif.imread(fname, is_ome=is_ome, is_imagej=is_imagej)
-    except RuntimeError:
-        return tif.imread(fname, is_ome=is_ome, is_imagej=False)
+        imarr = tif.imread(fname, is_ome=is_ome, is_imagej=is_imagej)
+    except (AttributeError, RuntimeError):
+        imarr = tif.imread(fname, is_ome=is_ome, is_imagej=False)
+
+    return imarr
 
 
 def safe_imwrite(
@@ -76,7 +74,9 @@ class ImageMeta(tif.TiffFile):
         pixelsize_yx=None,
         pixelsize_z=None,
         slices_first=True,
-        max_channels=6
+        max_channels=6,
+        is_ome=False,
+        is_imagej=True
     ):
 
         if isinstance(tifffile, type(super())):
@@ -85,10 +85,10 @@ class ImageMeta(tif.TiffFile):
             try:
                 super().__init__(
                     tifffile,
-                    is_ome=False,
-                    is_imagej=True
+                    is_ome=is_ome,
+                    is_imagej=is_imagej
                 )
-            except RuntimeError:
+            except (AttributeError, RuntimeError):
                 super().__init__(
                     tifffile,
                     is_ome=False,
@@ -98,6 +98,9 @@ class ImageMeta(tif.TiffFile):
         self.shape = None
         self.channels = 1
         self.slices = 1
+
+        #self.is_ome = is_ome
+        #self.is_imagej = is_imagej
 
         self.channelnames = None
 
@@ -364,238 +367,6 @@ class ImageMeta(tif.TiffFile):
         return self.array
 
 
-def compress_8bit(
-    imgfilename,
-    compression='DEFLATE',
-    outfile=None
-):
-    err = None
-    im = None
-    imarr = None
-
-    try:
-        im = ImageMeta(imgfilename)
-        imarr = im.asarray()
-
-        safe_imwrite(
-            skiu.img_as_ubyte(imarr),
-            outfile,
-            compression=compression
-        )
-    except (PermissionError, IOError, OSError) as e:
-        err = e
-    finally:
-        del imarr
-        gc.collect()
-        im.close()
-
-    if err:
-        raise err
-
-    return outfile
-
-
-def gen_mesh(
-    imgfilename,
-    px_size=(0.5, 0.11, 0.11),
-    scale_factor=(1., 1. / 16, 1. / 16),
-    separate_regions=False,
-    region_data=None,
-    outfile=None
-):
-    """
-    gen_mesh
-    ---------
-    Takes an image along with pixel size and scale factor, and generates
-    a triangular mesh from a scaled-down version of the image.
-
-    If `separate_regions` is True, triangulates each labeled region (identified by
-    skimage.measure.regionprops) separately, and optionally associates data
-    `region_data` with each region. `region_data` should be an iterable that
-    yields a datum for each label in the image.
-
-    Returns: JSON structure as follows:
-        {
-          "verts": <2D list of vertex coordinates, shape Nx3>,
-          "faces": <2D list of vertex indices forming triangles, shape Tx3>,
-          "data": <null or list of data for each face, length T>
-        }
-    """
-
-    # imagej=False because TiffFile throws a TypeError otherwise
-    im = safe_imread(imgfilename, is_imagej=False)
-
-    if im.ndim == 2:
-        im = np.array([im, im, im])
-
-    px_scaled = tuple(a / b for a, b in zip(px_size, scale_factor))
-
-    im_small = skit.rescale(
-        im,
-        scale_factor,
-        order=0,
-        mode='constant',
-        cval=0,
-        clip=True,
-        preserve_range=True,
-        anti_aliasing=False,
-        anti_aliasing_sigma=None
-    ).astype(np.uint8)
-
-    del im
-
-    def triangulate_bin(
-            binim,
-            spacing=px_scaled,
-            data=None,
-            corner=(0, 0, 0)
-    ):
-        tris = skim.marching_cubes(
-            np.pad(binim, ((1, 1), (1, 1), (1, 1))),
-            level=0.5,
-            spacing=spacing,
-            step_size=1
-        )
-
-        # get the real coordinates of the top left corner
-        corner_real = np.multiply(spacing, corner)
-        # Offset all coords to the corner coord
-        # then subtract 1 voxel due to previous pad operation
-        new_pts = tris[0] + corner_real - np.array(spacing)
-
-        if data is not None:
-            tridata = [data] * len(tris[1])
-        else:
-            tridata = []
-
-        return new_pts, tris[1], tridata
-
-    from itertools import zip_longest
-
-    comb_pts = []
-    comb_tris = []
-    comb_data = []
-
-    if separate_regions:
-
-        maxpt = 0
-
-        for r, d in zip_longest(
-                skim.regionprops(im_small),
-                region_data,
-                fill_value=None
-        ):
-            rtris = triangulate_bin(r.image, px_scaled, r.bbox[:3], d)
-
-            comb_pts.extend(rtris[0])
-            comb_tris.extend(rtris[1] + maxpt)
-            comb_data.extend(rtris[2])
-            maxpt += len(rtris[0])
-    else:
-        # make the whole image binary
-        comb_pts, comb_tris, _ = triangulate_bin(im_small > 0, px_scaled)
-
-    assert len(comb_tris) == len(comb_data) or len(comb_data) == 0, \
-        "Something went wrong in the mesh processing..."
-
-    mesh = {
-        'verts': comb_pts.tolist(),
-        'faces': comb_tris.tolist(),
-        'data': comb_data
-    }
-
-    if outfile is not None:
-        with open(outfile, 'w') as fp:
-            json.dump(mesh, fp)
-
-    return mesh
-
-
-def make_simple_figure(filename):
-
-    figdata = []
-
-    mesh = gen_mesh(filename)
-
-    x, y, z, i, j, k = populate_mesh(mesh)
-
-    figdata.append(
-        go.Mesh3d(
-            x=x, y=y, z=z,
-            i=i, j=j, k=k,
-            color='lightgray',
-            opacity=0.7,
-            hoverinfo='skip',
-        )
-    )
-
-    figscene = go.layout.Scene(
-        aspectmode='manual',
-        aspectratio=dict(x=1, y=1, z=0.07),
-    )
-
-    figlayout = go.Layout(
-        height=800,
-        width=800,
-        #plot_bgcolor='black',
-        #paper_bgcolor='white',
-        margin=dict(b=10, l=10, r=10, t=10),
-        scene=figscene
-    )
-
-    fig = go.Figure(data=figdata, layout=figlayout)
-
-    return fig
-
-
-def gen_pcd_df(
-        csv,
-        px_size=(0.5, 0.11, 0.11),
-        cmap='tab20',
-        genecol='gene',
-        outfile=None
-):
-    """
-    gen_pcd_df
-    ----------
-    Takes a CSV file of dot locations and genes and converts pixel units to
-    real space units as well as adding hex colors to differentiate each gene
-    in a plot.
-
-    Returns: Pandas DataFrame
-    """
-
-    if isinstance(csv, str):
-        dots = pd.read_csv(csv)
-    elif isinstance(csv, pd.DataFrame):
-        dots = csv.copy()
-    else:
-        raise TypeError
-
-    dots['geneInd'] = dots[genecol].factorize()[0] % 20
-
-    def cmap2hex(cmap):
-        return '#{:02X}{:02X}{:02X}'.format(cmap[0], cmap[1], cmap[2])
-
-    cm = get_cmap(cmap).colors
-    cm = (255 * np.array(cm)).astype(np.uint8)  # convert to bytes
-
-    dots['geneColor'] = [cmap2hex(cm[c]) for c in dots['geneInd']]
-
-    # adjust Z to start from 0
-    dots[['z', 'y', 'x']] -= np.array([1, 0, 0])
-    # convert to real units
-    dots[['z', 'y', 'x']] *= np.array(px_size)
-
-    if genecol != 'gene':
-        dots = dots.rename(columns={genecol: 'gene'})
-
-    if outfile is not None:
-        dots.to_csv(outfile, index=False)
-
-    return dots
-
-
 ##### Helper functions ######
 
 def mesh_from_json(jsonfile):
@@ -793,7 +564,7 @@ def fmt2regex(fmt, delim=os.path.sep):
     return reg, globstr
 
 
-def find_matching_files(base, fmt, paths=None, modified_since=0):
+def find_matching_files(base, fmt, paths=None):
     """
     findAllMatchingFiles: Starting within a base directory,
     find all files that match format `fmt` with named fields.
@@ -851,6 +622,38 @@ def f2k(
     delimiter='/'
 ):
     return str(f).replace(os.sep, delimiter)
+
+
+def sanitize(
+    k,
+    delimiter='/',
+    delimiter_allowed=True,
+    raiseonfailure=False
+):
+    badchars = '\\[]{}^%#` <>~|'
+
+    if raiseonfailure:
+        err = delimiter in badchars or (delimiter in k and not delimiter_allowed)
+        if err:
+            raise ValueError(f'Delimiter:  {delimiter}  is not allowed.')
+
+    if delimiter and delimiter_allowed:
+        parts = k.split(delimiter)
+    else:
+        parts = [k]
+
+    # put it in the middle so there's less chance of it messing up
+    # the exp
+    # Note: I added unix shell special characters like $, &, ;, *, ! because
+    # the analysis names will be used as folder names
+    exp = '[\\\\{^}%$&*@!/?;` ' + re.escape(delimiter) + '\\[\\]>~<#|]'
+    parts_sanitized = [re.sub(exp, '', part) for part in parts]
+
+    if any([len(part) == 0 for part in parts_sanitized]):
+        raise ValueError(f'After sanitizing, a part of the string "{k}"'
+                         f' disappeared completely.')
+
+    return delimiter.join(parts_sanitized)
 
 
 def ls_recursive(root='.', level=1, ignore=[], dirsonly=True, flat=False):
