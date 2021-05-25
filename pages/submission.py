@@ -3,6 +3,7 @@ import pandas as pd
 import io
 import json
 import re
+from pathlib import Path
 
 import dash_core_components as dcc
 import dash_html_components as html
@@ -12,7 +13,7 @@ from dash.exceptions import PreventUpdate
 from dash import no_update
 
 from app import app
-from lib.util import sanitize
+from lib.util import sanitize, f2k
 from .common import ComponentManager, data_clients, all_datasets
 
 
@@ -339,7 +340,7 @@ def _decoding_channel_process(arg):
 
 id_to_json_key = {
     'user-select': 'personal',
-    'dataset-select': 'experiment name',
+    'dataset-select': 'experiment_name',
 
     'sb-position-select': _position_process,
 
@@ -356,8 +357,8 @@ id_to_json_key = {
     'sb-nuclei-distance': 'distance between nuclei',
     'sb-cyto-channel': 'cyto channel number',
     'sb-nuclei-radius': 'nuclei radius',
-    'sb-cell-prob-threshold': 'cell prob threshold',
-    'sb-flow-threshold': 'flow threshold',
+    'sb-cell-prob-threshold': 'cell_prob_threshold',
+    'sb-flow-threshold': 'flow_threshold',
 
     'sb-decoding-select': _decoding_channel_process,
     'sb-individual-channel-select': _decoding_channel_process
@@ -428,6 +429,8 @@ def submit_new_analysis(n_clicks, user, dataset, *values):
     if not n_clicks:
         raise PreventUpdate
 
+    upload = True
+
     status = {'user-select': user, 'dataset-select': dataset}
     status.update({c: v for c, v in zip(cm.clear_components.keys(), values)})
 
@@ -439,16 +442,32 @@ def submit_new_analysis(n_clicks, user, dataset, *values):
     alerts = []
 
     if not all((analysis_name, user, dataset)):
+        upload = False
         alerts.append(dbc.Alert('Please choose a user and dataset, and specify'
                                 ' a new analysis name.', color='danger'))
 
-    if analysis_name:
-        if analysis_name in analyses:
-            alerts.append(
-                dbc.Alert(dcc.Markdown(f'An analysis named `{analysis_name}` '
-                          f'already exists for the chosen dataset.'), color='danger'))
+    if analysis_name in analyses:
+        upload = False
+        alerts.append(
+            dbc.Alert(dcc.Markdown(f'An analysis named `{analysis_name}` '
+                      f'already exists for the chosen dataset.'), color='danger'))
+
+    submission_bytes = io.BytesIO(json.dumps(submission).encode())
+
+    if upload:
+        try:
+            data_client.client.client.upload_fileobj(
+                submission_bytes,
+                Bucket=data_client.bucket_name,
+                Key=f2k(Path('json_analyses', analysis_name + '.json'))
+            )
+            alerts.append(dbc.Alert(dcc.Markdown(f'Successfully uploaded new analysis `{analysis_name}`!'
+                                    f' The full path will be: `{user}/{dataset}/{analysis_name}`'),
+                                    color='success'))
+        except Exception as e:
+            alerts.append(dbc.Alert('Error uploading JSON to S3: ', e, color='danger'))
     else:
-        analysis_name = '<none supplied>'
+        alerts.append(dbc.Alert('Did not upload JSON to S3 due to errors', color='danger'))
 
     return [
         *alerts,
@@ -515,7 +534,7 @@ col2_clear = [
         dbc.CardBody([
             dbc.Button('Submit', id='sb-submit-button', color='primary', size='lg'),
             dbc.Button('Reset to defaults', id='sb-reset-button', color='warning', size='lg'),
-            html.Details(html.Summary('Generated JSON'), id='sb-submission-json'),
+            html.Details(html.Summary('Generated JSON'), id='sb-submission-json', open=True),
         ]),
     ]),
 ]
