@@ -219,7 +219,16 @@ app.layout = dbc.Container(
             ]),
         ]),
 
-        dbc.Row(
+        dbc.Row([
+            dbc.Col([
+                # Tabs container
+                dbc.Tabs(
+                    id='all-tabs',
+                    children=index_cm.component_group('main-tabs', tolist=True),
+                ),
+
+                *index_cm.component_group('page-tooltips', tolist=True),
+            ], style={'margin-top': '20px'}, width=6),
             dbc.Col([
                 # Global user and dataset selectors
                 html.Div([
@@ -230,17 +239,10 @@ app.layout = dbc.Container(
                     ),
                     index_cm.component('dataset-select', disabled=True),
                     html.Div(index_cm.component('s3-sync-button'), id='s3-sync-div'),
-                ], style={'padding': '20px'}),
-
-                # Tabs container
-                dbc.Tabs(
-                    id='all-tabs',
-                    children=index_cm.component_group('main-tabs', tolist=True),
-                ),
-
-                *index_cm.component_group('page-tooltips', tolist=True),
+                ]),
             ], width=4),
-        ),
+            html.Hr()
+        ]),
 
         # This Row is populated by the page.layout of the selected tab.
         # Note that dbc.Row only works properly if its children are
