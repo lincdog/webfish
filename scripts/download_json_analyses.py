@@ -234,7 +234,7 @@ if __name__ == '__main__':
         print('Lockfile exists, exiting')
         sys.exit(0)
 
-    with open(lock) as lf:
+    with open(lock, 'w') as lf:
         lf.write('BUSY!\n')
 
     main(10)
