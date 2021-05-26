@@ -400,7 +400,6 @@ class DataServer:
             str(self.master_root),
             str(Path(self.dataset_root, pattern)),
             paths=paths,
-            modified_since=since
         )
 
         if filenames:
@@ -433,7 +432,6 @@ class DataServer:
             str(self.raw_master_root),
             str(Path(self.raw_dataset_root, pattern)),
             paths=paths,
-            modified_since=since
         )
 
         if filenames:
