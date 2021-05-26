@@ -88,12 +88,12 @@ def download_s3_analysis_requests(dm):
     for f in s3_files_filt:
         error = dm.client.download_s3_objects(
             dm.bucket_name,
-            f.name,
+            str(f.name),
             local_dir=HISTORY_DIR,
             prefix=S3_PREFIX
         )
 
-        dm.client.client.delete_object(Bucket=dm.bucket_name, Key=f)
+        dm.client.client.delete_object(Bucket=dm.bucket_name, Key=str(f))
 
         if len(error) > 0:
             logger.error(f'Error downloading key {f}: {error}')
