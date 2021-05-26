@@ -148,11 +148,12 @@ def validate_json(fname, history_df, dm):
     assert new_analysis not in possible_analyses, \
         f'Analysis {new_analysis} already exists for this dataset and user.'
 
-    relevant_history = history_df.query(
-        'personal==@new_personal and experiment_name==@new_dataset')
+    if len(history_df) > 0:
+        relevant_history = history_df.query(
+            'personal==@new_personal and experiment_name==@new_dataset')
 
-    assert new_analysis not in relevant_history['analysis_name'], \
-        f'Analysis {new_analysis} already exists for this dataset and user.'
+        assert new_analysis not in relevant_history['analysis_name'], \
+            f'Analysis {new_analysis} already exists for this dataset and user.'
 
     encoded_channels = convert_channel_entry(new_json['decoding'])
     new_json['decoding'] = encoded_channels
