@@ -170,9 +170,12 @@ class DataServer:
             self.all_raw_datasets = self.local_sync['all_raw_datasets'].copy()
 
             for name in pagenames:
-                self.pages[name].datasets = self.local_sync[name]['sync_file'].copy()
-                self.pages[name].datafiles = self.local_sync[name]['file_table'].copy()
-                self.pages[name].pending = self.local_sync[name]['pending_uploads'].copy()
+                self.pages[name].datasets = self.local_sync[name].get(
+                    'sync_file', pd.DataFrame()).copy()
+                self.pages[name].datafiles = self.local_sync[name].get(
+                    'file_table', pd.DataFrame()).copy()
+                self.pages[name].pending = self.local_sync[name].get(
+                    'pending_uploads', pd.DataFrame()).copy()
 
     def check_s3_contents(
         self,
