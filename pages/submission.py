@@ -107,17 +107,21 @@ clear_components = {
 
     # stage selection
     'sb-stage-select':
-        dbc.Checklist(
-            id='sb-stage-select',
-            options=[
-                {'label': 'Alignment', 'value': 'alignment'},
-                {'label': 'Dot Detection', 'value': 'dot detection'},
-                {'label': 'Segmentation', 'value': 'segmentation'},
-                {'label': 'Decoding', 'value': 'decoding'}
-            ],
-            value=['alignment', 'dot detection', 'segmentation', 'decoding'],
-            switch=True
-        ),
+        dbc.FormGroup([
+            dbc.Label('Select pipeline stages to run', html_for='sb-stage-select'),
+            dbc.Checklist(
+                id='sb-stage-select',
+                options=[
+                    {'label': 'Alignment', 'value': 'alignment'},
+                    {'label': 'Dot Detection', 'value': 'dot detection'},
+                    {'label': 'Segmentation', 'value': 'segmentation'},
+                    {'label': 'Decoding', 'value': 'decoding'}
+                ],
+                value=['alignment', 'dot detection', 'segmentation', 'decoding'],
+                switch=True
+            ),
+            dbc.FormText('Select which stage(s) of the pipeline you want to run. ')
+        ]),
 
     # alignment
     'sb-alignment-select':
@@ -126,8 +130,8 @@ clear_components = {
             dbc.Select(
                 id='sb-alignment-select',
                 value='mean squares 2d',
-                options=[{'label': 'Mean Squares 2D', 'value': 'mean squares 2d'}],
-                disabled=True
+                options=[{'label': 'DAPI Alignment', 'value': 'mean squares 2d'}],
+                disabled=False
             ),
         ]),
 
@@ -168,8 +172,8 @@ clear_components = {
                 min=0,
                 max=0.05,
                 step=0.0001,
-                value=0.0005,
-                disabled=True
+                value=0.0001,
+                disabled=False
             ),
             dbc.FormText('Set a threshold of the LoG filter. Default is usually fine.')
         ]),
@@ -489,7 +493,10 @@ def select_pipeline_stages(stages):
 
 
 @app.callback(
-    Output('sb-submission-json', 'children'),
+    Output('sb-final-analysis-name', 'children'),
+    Output('sb-generated-json', 'children'),
+    Output('sb-confirm-modal', 'is_open'),
+    Output('sb-submission-alerts', 'children'),
     Input('sb-submit-button', 'n_clicks'),
     State('user-select', 'value'),
     State('dataset-select', 'value'),
@@ -510,7 +517,6 @@ def submit_new_analysis(n_clicks, user, dataset, stage_select, *values):
 
     analysis_name, submission = form_to_json_output(status)
 
-    print(stage_select, submission)
     for stage in set(pipeline_stages):
         if stage not in stage_select:
             submission.pop(stage, None)
@@ -531,41 +537,66 @@ def submit_new_analysis(n_clicks, user, dataset, stage_select, *values):
             dbc.Alert(dcc.Markdown(f'An analysis named `{analysis_name}` '
                       f'already exists for the chosen dataset.'), color='danger'))
 
-    submission_bytes = io.BytesIO(json.dumps(submission).encode())
-
-    if upload:
-        try:
-            data_client.client.client.upload_fileobj(
-                submission_bytes,
-                Bucket=data_client.bucket_name,
-                Key=f2k(Path('json_analyses', analysis_name + '.json'))
-            )
-            alerts.append(dbc.Alert(dcc.Markdown(f'Successfully uploaded new analysis `{analysis_name}`!'
-                                    f' The full path will be: `{user}/{dataset}/{analysis_name}`'),
-                                    color='success'))
-        except Exception as e:
-            alerts.append(dbc.Alert('Error uploading JSON to S3: ', e, color='danger'))
-    else:
+    if not upload:
         alerts.append(dbc.Alert('Did not upload JSON to S3 due to errors', color='danger'))
 
-    return [
-        *alerts,
-        dcc.Markdown(f'New analysis name: `{analysis_name}`'),
-        html.Summary('Generated JSON'),
-        html.Pre(json.dumps(
-            submission, indent=2)),
-    ]
+    return (analysis_name,
+            json.dumps(submission, indent=2),
+            upload,
+            alerts)
 
 
 @app.callback(
-    [Output('user-select', 'value'),
-     Output('sb-col-1', 'children'),
+    Output('sb-submission-json', 'children'),
+    Input('sb-confirm-modal', 'is_open'),
+    State('sb-generated-json', 'children'),
+    State('user-select', 'value'),
+    State('dataset-select', 'value'),
+    State('sb-final-analysis-name', 'children'),
+)
+def upload_generated_json(modal_state, new_json, user, dataset, analysis_name):
+    error = None
+    alerts = []
+
+    if not modal_state:
+        raise PreventUpdate
+
+    try:
+        new_dict = json.loads(new_json, parse_int=str, parse_float=str)
+    except Exception as e:
+        error = e
+
+    try:
+        submission_bytes = io.BytesIO(json.dumps(new_dict).encode())
+
+        data_client.client.client.upload_fileobj(
+            submission_bytes,
+            Bucket=data_client.bucket_name,
+            Key=f2k(Path('json_analyses', analysis_name + '.json'))
+        )
+        alerts.append(
+            dbc.Alert(
+                dcc.Markdown(f'Successfully uploaded new analysis `{analysis_name}`!'
+                             f' The full path will be: '
+                             f'`{user}/{dataset}/{analysis_name}`'),
+                color='success'))
+
+    except Exception as e:
+        alerts.append(dbc.Alert('Error uploading JSON to S3: ', e, color='danger'))
+
+
+
+
+
+
+@app.callback(
+    [Output('sb-col-1', 'children'),
      Output('sb-col-2', 'children')],
     Input('sb-reset-button', 'n_clicks')
 )
 def reset_to_defaults(n_clicks):
     if n_clicks:
-        return None, col1_clear, col2_clear
+        return col1_clear, col2_clear
     else:
         raise PreventUpdate
 
@@ -613,12 +644,24 @@ col2_clear = [
         dbc.CardBody([
             dbc.Button('Submit', id='sb-submit-button', color='primary', size='lg'),
             dbc.Button('Reset to defaults', id='sb-reset-button', color='warning', size='lg'),
-            html.Details(html.Summary('Generated JSON'), id='sb-submission-json', open=True),
+            html.Div(id='sb-submission-alerts')
         ]),
     ]),
 ]
 
 layout = [
+    dbc.Modal([
+        dbc.ModalHeader('Confirm Submission'),
+        dbc.ModalBody([
+            'Press "submit" to send the analysis request, '
+            'or "cancel" to go back and make changes.',
+            html.Code(id='sb-final-analysis-name'),
+            html.Details([
+                html.Summary('Generated JSON'),
+                html.Pre(id='sb-generated-json')
+                ], id='sb-submission-json', open=True)
+        ])
+    ], id='sb-confirm-modal', centered=True, is_open=False),
     dbc.Col(col1_clear, id='sb-col-1', width=4),
     dbc.Col(col2_clear, id='sb-col-2', width=4)
 ]

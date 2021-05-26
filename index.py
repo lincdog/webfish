@@ -57,6 +57,12 @@ dataset_form = {
         )
 }
 
+
+def get_users():
+    return [{'label': u, 'value': u}
+                 for u in sorted(all_datasets['user'].unique())]
+
+
 page_tabs = {}
 page_tooltips = {}
 
@@ -83,7 +89,6 @@ for k, v in page_index.items():
 tabs_and_tooltips = page_tabs | page_tooltips
 
 # Our components are the global user, dataset selectors plus the tab machinery
-# Set up a component group for all tabs and one with just the non-splash tabs
 index_cm = ComponentManager(
     dataset_form | tabs_and_tooltips,
     component_groups={
@@ -95,6 +100,8 @@ index_cm = ComponentManager(
 
 @app.callback(
     Output('s3-sync-div', 'children'),
+    Output('user-select', 'value'),
+    Output('user-select', 'options'),
     Input('s3-sync-button', 'children'),
     State('s3-sync-button', 'n_clicks')
 )
@@ -107,7 +114,7 @@ def finish_client_s3_sync(contents, n_clicks):
 
     sync_with_s3()
 
-    return index_cm.component('s3-sync-button')
+    return index_cm.component('s3-sync-button'), None, get_users()
 
 
 @app.callback(
@@ -187,7 +194,7 @@ def sync_tab_url(pathname, tabval):
         newval = tabval
 
     if newval not in tabs_and_splash:
-        return '', ''
+        return '', 'home'
 
     return newval, newval
 
@@ -222,25 +229,22 @@ app.layout = dbc.Container(
         dbc.Row([
             dbc.Col([
                 # Global user and dataset selectors
-                html.Div([
-                    index_cm.component(
-                        'user-select',
-                        options=[{'label': u, 'value': u}
-                                 for u in sorted(all_datasets['user'].unique())]
-                    ),
+                dbc.Card(dbc.CardBody([
+                    index_cm.component('user-select', options=get_users()),
                     index_cm.component('dataset-select', disabled=True),
                     html.Div(index_cm.component('s3-sync-button'), id='s3-sync-div'),
-                ]),
+                ]), style={'margin-top': '10px'}),
             ], width=4),
             dbc.Col([
                 # Tabs container
                 dbc.Tabs(
                     id='all-tabs',
+                    active_tab='home',
                     children=index_cm.component_group('main-tabs', tolist=True),
                 ),
 
                 *index_cm.component_group('page-tooltips', tolist=True),
-            ], style={'margin-top': '20px'}, width=6),
+            ], style={'margin-top': '20px'}, align='end'),
 
             html.Hr()
         ]),
