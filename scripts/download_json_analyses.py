@@ -6,6 +6,7 @@ import pandas as pd
 import numpy as np
 import time
 import logging
+import shutil
 import atexit
 from logging.handlers import RotatingFileHandler
 from pathlib import Path, PurePath
@@ -124,7 +125,7 @@ def validate_json(fname, history_df, dm):
 
     cluster_info = new_json.pop('clusters')
 
-    assert cluster_info['ntasks'] < 4, 'only 1 task allowed'
+    assert int(cluster_info['ntasks']) < 4, 'only 1 task allowed'
     assert cluster_info['mem-per-cpu'] == '10G', 'something other than 10G per cpu?'
 
     existing_datasets = pd.concat([
@@ -215,7 +216,7 @@ def main(max_copy=10):
 
     for file in to_copy[:max_copy]:
         try:
-            file.rename(Path(MASTER_ANALYSES, file.name))
+            shutil.copy(Path(file), Path(MASTER_ANALYSES, file.name))
             successful_copies.append(file)
         except (PermissionError, OSError) as e:
             logger.error(f'Unable to move file {file} to '
@@ -231,8 +232,6 @@ def main(max_copy=10):
 
 if __name__ == '__main__':
     lock = Path(LOCKFILE)
-
-    breakpoint()
 
     if lock.exists():
         print('Lockfile exists, exiting')
