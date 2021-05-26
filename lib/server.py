@@ -150,9 +150,16 @@ class DataServer:
             elif isinstance(item, dict):
                 if name in pagenames:
                     self.local_sync[name] = defaultdict(pd.DataFrame)
+
+                    def read_or_empty(fname, **kwargs):
+                        try:
+                            d = pd.read_csv(fname, **kwargs)
+                        except pd.errors.EmptyDataError:
+                            d = pd.DataFrame()
+                        return d
                     # noinspection PyTypeChecker
                     self.local_sync[name] = {
-                        k: pd.read_csv(v, dtype=str)
+                        k: read_or_empty(v, dtype=str)
                         for k, v in item.items() if v in sync_folder_contents
                     }
             else:
