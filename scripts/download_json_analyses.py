@@ -12,6 +12,7 @@ from logging.handlers import RotatingFileHandler
 from pathlib import Path, PurePath
 from argparse import ArgumentParser
 WF_HOME = os.environ.get('WF_HOME', '/home/lombelet/cron/webfish_sandbox/webfish')
+os.chdir(WF_HOME)
 
 HISTORY_DIR = os.environ.get('WF_HISTORY_DIR', 'json_analyses')
 HISTORY_FILE = os.environ.get('WF_ANALYSIS_HISTORY',
