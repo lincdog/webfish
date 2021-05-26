@@ -3,6 +3,7 @@ import sys
 import yaml
 import json
 import pandas as pd
+import numpy as np
 import time
 import logging
 import atexit
@@ -169,13 +170,14 @@ def validate_json(fname, history_df, dm):
         raise ValueError(f'Analyses {dups} uses the same parameters '
                          f'as request {new_analysis}.')
 
-    return new_history
+    return new_history.reset_index(drop=True)
 
 
 def main(max_copy=10):
     dm = init_server()
 
-    history_df = read_history_file(Path(HISTORY_DIR, HISTORY_FILE))
+    history_file = Path(HISTORY_DIR, HISTORY_FILE)
+    history_df = read_history_file(history_file)
 
     new_success, new_fail = download_s3_analysis_requests(dm)
 
@@ -199,6 +201,12 @@ def main(max_copy=10):
                      f'files (max set to {max_copy}) - ignoring '
                      f'these files: ', to_copy[max_copy:])
 
+        history_df.drop(
+            history_df.loc[np.isin(
+                history_df['analysis_name'],
+                [t.stem for t in to_copy[max_copy:]]
+            )].index, inplace=True)
+
     successful_copies = []
 
     for file in to_copy[:max_copy]:
@@ -209,8 +217,12 @@ def main(max_copy=10):
             logger.error(f'Unable to move file {file} to '
                          f'{Path(MASTER_ANALYSES, file.name)}:', e)
 
+        time.sleep(0.25)
+
     logger.info(f'Successfully submitted {len(successful_copies)} '
                 f'analyses: ', successful_copies)
+
+    history_df.to_csv(history_file, index=False)
 
 
 if __name__ == '__main__':
@@ -226,5 +238,6 @@ if __name__ == '__main__':
         lf.write('BUSY!\n')
 
     main(10)
+
 
     lock.unlink(missing_ok=True)
