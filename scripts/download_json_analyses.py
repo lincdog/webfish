@@ -39,8 +39,6 @@ from lib.util import sanitize
 # * Optional/future: Report on progress or maybe accept email to notify user
 #   on starting/failure/completion
 
-logger = logging.getLogger('download_json_analyses')
-
 
 def init_server():
     config = yaml.load(open('./consts.yml'), Loader=yaml.Loader)
@@ -243,7 +241,9 @@ if __name__ == '__main__':
     with open(lock, 'w') as lf:
         lf.write('BUSY!\n')
 
-    main(10)
+    logger = logging.getLogger('download_json_analyses')
+    logger.setLevel(logging.DEBUG)
 
+    main(10)
 
     lock.unlink(missing_ok=True)
