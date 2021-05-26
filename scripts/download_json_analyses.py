@@ -192,7 +192,7 @@ def main(max_copy=10):
         try:
             history_df = validate_json(new_file, history_df, dm)
             to_copy.append(new_file)
-        except (AssertionError, ValueError) as e:
+        except (KeyError, AssertionError, ValueError) as e:
             logger.error(f'JSON file {new_file} was invalid for '
                          f'the following reason: ', e)
 
