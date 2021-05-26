@@ -124,6 +124,11 @@ def validate_json(fname, history_df, dm):
     with open(fname) as f:
         new_json = json.load(f, parse_int=str, parse_float=str)
 
+    cluster_info = new_json.pop('clusters')
+
+    assert cluster_info['ntasks'] < 4, 'only 1 task allowed'
+    assert cluster_info['mem-per-cpu'] == '10G', 'something other than 10G per cpu?'
+
     existing_datasets = pd.concat([
         dm.all_datasets,
         dm.all_raw_datasets
