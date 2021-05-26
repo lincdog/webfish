@@ -19,7 +19,6 @@ from .common import ComponentManager, data_clients, all_datasets
 
 data_client = data_clients['dotdetection']
 
-
 # TODO: move this to DataClient
 def put_analysis_request(
     user,
@@ -63,6 +62,28 @@ def put_analysis_request(
     return analysis_sanitized
 
 
+pipeline_stages = [
+    'alignment',
+    'dot detection',
+    'segmentation',
+    'decoding',
+    'segmentation'
+]
+stage_ids = [
+    'alignment',
+    'dot-detection',
+    'segmentation',
+    'decoding',
+    'segmentation-advanced'
+]
+stage_headers = [
+    'Alignment Options',
+    'Dot Detection Options',
+    'Segmentation Options',
+    'Decoding Options',
+    'Advanced Segmentation Options',
+]
+
 clear_components = {
     # basic-metadata
     'sb-analysis-name':
@@ -83,6 +104,20 @@ clear_components = {
             ),
             dbc.FormText('Select one or more positions, or leave blank to process all.')
         ]),
+
+    # stage selection
+    'sb-stage-select':
+        dbc.Checklist(
+            id='sb-stage-select',
+            options=[
+                {'label': 'Alignment', 'value': 'alignment'},
+                {'label': 'Dot Detection', 'value': 'dot detection'},
+                {'label': 'Segmentation', 'value': 'segmentation'},
+                {'label': 'Decoding', 'value': 'decoding'}
+            ],
+            value=['alignment', 'dot detection', 'segmentation', 'decoding'],
+            switch=True
+        ),
 
     # alignment
     'sb-alignment-select':
@@ -157,7 +192,6 @@ clear_components = {
                 id='sb-segmentation-select',
                 options=[
                     {'label': 'Cellpose', 'value': 'cellpose'},
-                    {'label': 'No segmentation', 'value': 'none'}
                 ],
                 value='cellpose'
             ),
@@ -293,7 +327,8 @@ clear_components = {
 
 component_groups = {
     'basic-metadata': ['sb-analysis-name',
-                       'sb-position-select'],
+                       'sb-position-select',
+                       'sb-stage-select'],
 
     'alignment': ['sb-alignment-select'],
 
@@ -419,22 +454,66 @@ def select_user_dataset(user, dataset):
 
 
 @app.callback(
+    [Output(f'sb-{stage}-wrapper', 'open')
+     for stage in stage_ids],
+    [Output(f'sb-{stage}-wrapper', 'children')
+     for stage in stage_ids],
+    Input('sb-stage-select', 'value')
+)
+def select_pipeline_stages(stages):
+    if stages is None:
+        raise PreventUpdate
+
+    if 'segmentation' in stages:
+        stages.append('segmentation')
+
+    selected_ids = [
+        stage_id
+        for stage, stage_id
+        in zip(pipeline_stages, stage_ids)
+        if stage in stages
+    ]
+
+    print(selected_ids)
+
+    open_res = [i in selected_ids for i in stage_ids]
+    open_res[-1] = False  # advanced segmentation
+
+    children_res = [
+        [html.Summary(header),
+         *cm.component_group(group_id, tolist=True, options=dict(disabled=open))]
+        for header, group_id, open in zip(stage_headers, stage_ids, open_res)
+    ]
+
+    return tuple(open_res + children_res)
+
+
+@app.callback(
     Output('sb-submission-json', 'children'),
     Input('sb-submit-button', 'n_clicks'),
     State('user-select', 'value'),
     State('dataset-select', 'value'),
-    [State(comp, 'value') for comp in cm.clear_components.keys()]
+    State('sb-stage-select', 'value'),
+    [State(comp, 'value') for comp in cm.clear_components.keys()
+     if comp != 'sb-stage-select']
 )
-def submit_new_analysis(n_clicks, user, dataset, *values):
+def submit_new_analysis(n_clicks, user, dataset, stage_select, *values):
     if not n_clicks:
         raise PreventUpdate
 
     upload = True
 
+    relevant_comps = [c for c in cm.clear_components.keys() if c != 'sb-stage-select']
+
     status = {'user-select': user, 'dataset-select': dataset}
-    status.update({c: v for c, v in zip(cm.clear_components.keys(), values)})
+    status.update({c: v for c, v in zip(relevant_comps, values)})
 
     analysis_name, submission = form_to_json_output(status)
+
+    print(stage_select, submission)
+    for stage in set(pipeline_stages):
+        if stage not in stage_select:
+            submission.pop(stage, None)
 
     analyses = all_datasets.query(
         'user==@user and dataset==@dataset')['analysis'].unique()
@@ -495,19 +574,19 @@ col1_clear = [
     html.Details(
         [html.Summary('Basic information')] +
         cm.component_group('basic-metadata', tolist=True),
-        open=True
+        open=True, id='sb-basic-metadata-wrapper'
     ),
     html.Hr(),
     html.Details(
         [html.Summary('Alignment options')] +
         cm.component_group('alignment', tolist=True),
-        open=True
+        open=True, id='sb-alignment-wrapper'
     ),
     html.Hr(),
     html.Details(
         [html.Summary('Dot detection options')] +
         cm.component_group('dot-detection', tolist=True),
-        open=True
+        open=True, id='sb-dot-detection-wrapper'
     ),
 ]
 
@@ -515,19 +594,19 @@ col2_clear = [
     html.Details(
         [html.Summary('Segmentation options')] +
         cm.component_group('segmentation', tolist=True),
-        open=True
+        open=True, id='sb-segmentation-wrapper'
     ),
     html.Hr(),
     html.Details(
         [html.Summary('Advanced segmentation options')] +
         cm.component_group('segmentation-advanced', tolist=True),
-        open=False
+        open=False, id='sb-segmentation-advanced-wrapper'
     ),
     html.Hr(),
     html.Details(
         [html.Summary('Decoding options')] +
         cm.component_group('decoding', tolist=True),
-        open=True
+        open=True, id='sb-decoding-wrapper'
     ),
     dbc.Card([
         dbc.CardHeader('Submission'),

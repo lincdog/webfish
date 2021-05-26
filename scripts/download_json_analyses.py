@@ -41,6 +41,16 @@ from lib.util import sanitize
 #   on starting/failure/completion
 
 
+def process_args():
+    parser = ArgumentParser()
+    parser.add_argument('--allow-duplicates', action='store_true',
+                        help='Permit JSON analyses which are identical in '
+                             'all given parameters to one in the history file'
+                             ' to still run')
+
+    return parser.parse_args()
+
+
 def init_server():
     config = yaml.load(open('./consts.yml'), Loader=yaml.Loader)
 
@@ -119,7 +129,7 @@ def convert_channel_entry(ent):
     raise TypeError(f'Bad decoding specification {ent}')
 
 
-def validate_json(fname, history_df, dm):
+def validate_json(fname, history_df, dm, allow_duplicates=False):
     with open(fname) as f:
         new_json = json.load(f, parse_int=str, parse_float=str)
 
@@ -159,8 +169,10 @@ def validate_json(fname, history_df, dm):
         assert new_analysis not in relevant_history['analysis_name'], \
             f'Analysis {new_analysis} already exists for this dataset and user.'
 
-    encoded_channels = convert_channel_entry(new_json['decoding'])
-    new_json['decoding'] = encoded_channels
+    if 'decoding' in new_json.keys():
+        encoded_channels = convert_channel_entry(new_json['decoding'])
+        new_json['decoding'] = encoded_channels
+
     new_json['analysis_name'] = new_analysis
 
     new_history = pd.concat([history_df,
@@ -170,7 +182,7 @@ def validate_json(fname, history_df, dm):
         'personal', 'experiment_name', 'analysis_name'])
 
     duplicates = new_history.duplicated(subset=columns_considered)
-    if any(duplicates):
+    if any(duplicates) and not allow_duplicates:
         dups = new_history.loc[duplicates, 'analysis_name'].values
         raise ValueError(f'Analyses {dups} uses the same parameters '
                          f'as request {new_analysis}.')
@@ -178,7 +190,7 @@ def validate_json(fname, history_df, dm):
     return new_history.reset_index(drop=True)
 
 
-def main(max_copy=10):
+def main(max_copy=10, allow_duplicates=False):
     dm = init_server()
 
     history_file = Path(HISTORY_DIR, HISTORY_FILE)
@@ -195,8 +207,15 @@ def main(max_copy=10):
 
     for new_file in new_success:
         try:
-            history_df = validate_json(new_file, history_df, dm)
+            history_df = validate_json(
+                new_file,
+                history_df,
+                dm,
+                allow_duplicates=allow_duplicates
+            )
+
             to_copy.append(new_file)
+
         except (KeyError, AssertionError, ValueError) as e:
             logger.error(f'JSON file {new_file} was invalid for '
                          f'the following reason: ', e)
@@ -231,6 +250,8 @@ def main(max_copy=10):
 
 
 if __name__ == '__main__':
+    os.chdir(WF_HOME)
+
     lock = Path(LOCKFILE)
 
     if lock.exists():
@@ -243,6 +264,8 @@ if __name__ == '__main__':
     logger = logging.getLogger('download_json_analyses')
     logger.setLevel(logging.DEBUG)
 
-    main(10)
+    args = process_args()
+
+    main(10, args.allow_duplicates)
 
     lock.unlink(missing_ok=True)
