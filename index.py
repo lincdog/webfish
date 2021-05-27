@@ -11,7 +11,7 @@ from lib.util import empty_or_false
 import importlib
 from pages.common import (
     ComponentManager,
-    all_datasets,
+    get_all_datasets,
     sync_with_s3
 )
 
@@ -60,7 +60,7 @@ dataset_form = {
 
 def get_users():
     return [{'label': u, 'value': u}
-                 for u in sorted(all_datasets['user'].unique())]
+                 for u in sorted(get_all_datasets()['user'].unique())]
 
 
 page_tabs = {}
@@ -135,7 +135,7 @@ def init_client_s3_sync(n_clicks):
     Input('user-select', 'value')
 )
 def select_user(user):
-    datasets = all_datasets.query('user==@user')['dataset'].unique()
+    datasets = get_all_datasets().query('user==@user')['dataset'].unique()
 
     return (
         [{'label': d, 'value': d} for d in sorted(datasets)],
@@ -253,7 +253,7 @@ app.layout = dbc.Container(
         # Note that dbc.Row only works properly if its children are
         # dbc.Col objects. So each page.layout should be a list of these.
         dbc.Row(id='content-main',
-                style={'border-top': '1px solid #888', 'margin': '10px'}),
+                style={'margin': '10px'}),
 
     ], style={'margin': 'auto'}
 )

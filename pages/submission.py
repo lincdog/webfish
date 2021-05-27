@@ -14,10 +14,11 @@ from dash import no_update
 
 from app import app
 from lib.util import sanitize, f2k
-from .common import ComponentManager, data_clients, all_datasets
+from .common import ComponentManager, data_clients, get_all_datasets
 
 
 data_client = data_clients['dotdetection']
+all_datasets = get_all_datasets()
 
 # TODO: move this to DataClient
 def put_analysis_request(
@@ -146,7 +147,7 @@ clear_components = {
                     {'label': 'ADCG 2D', 'value': 'adcg 2d'}
                 ],
                 value='biggest jump 3d',
-                disabled=True
+                disabled=False
             ),
         ]),
     'sb-strictness-select':
@@ -181,7 +182,7 @@ clear_components = {
         dbc.Checklist(
             options=[
                 {'label': 'Visualize dot detection',
-                 'value': 'visualize dot detection', 'disabled': True},
+                 'value': 'visualize dot detection'},
             ],
             value=['visualize dot detection'],
             id='sb-dotdetection-checklist',
@@ -207,7 +208,7 @@ clear_components = {
                 {'label': 'Only decode dots in cells',
                  'value': 'only decode dots in cells'},
                 {'label': 'Run all post-analyses',
-                 'value': 'all post analyses', 'disabled': True},
+                 'value': 'all post analyses'},
                 {'label': 'Segment nuclei',
                  'value': 'nuclei labeled image'},
                 {'label': 'Segment cytoplasm',
@@ -493,10 +494,7 @@ def select_pipeline_stages(stages):
 
 
 @app.callback(
-    Output('sb-final-analysis-name', 'children'),
-    Output('sb-generated-json', 'children'),
-    Output('sb-confirm-modal', 'is_open'),
-    Output('sb-submission-alerts', 'children'),
+    Output('sb-modal-container', 'children'),
     Input('sb-submit-button', 'n_clicks'),
     State('user-select', 'value'),
     State('dataset-select', 'value'),
@@ -540,31 +538,80 @@ def submit_new_analysis(n_clicks, user, dataset, stage_select, *values):
     if not upload:
         alerts.append(dbc.Alert('Did not upload JSON to S3 due to errors', color='danger'))
 
-    return (analysis_name,
-            json.dumps(submission, indent=2),
-            upload,
-            alerts)
+    modal = dbc.Modal([
+        dbc.ModalHeader('Confirm Submission'),
+        dbc.ModalBody([
+            'Press "Confirm and Submit" to send the analysis request, '
+            'or "Go back" to go back and make changes.',
+            html.H4(html.Code(analysis_name, id='sb-final-analysis-name')),
+            html.Details([
+                html.Summary('Generated JSON'),
+                html.Pre(json.dumps(submission, indent=2), id='sb-generated-json')
+                ], id='sb-submission-json', open=True),
+            dbc.Button('Confirm and Submit',
+                       id='sb-confirm-submit-button',
+                       color='success',
+                       n_clicks=0,
+                       style={'margin': '5px'}),
+            dbc.Button('Go back',
+                       id='sb-go-back-button',
+                       color='secondary',
+                       n_clicks=0,
+                       style={'margin': '5px'})
+        ])
+    ], id='sb-confirm-modal',
+        backdrop='static',
+        centered=True,
+        is_open=True,
+        scrollable=True
+    )
+
+    if upload:
+        return modal
+    else:
+        return alerts
 
 
 @app.callback(
-    Output('sb-submission-json', 'children'),
-    Input('sb-confirm-modal', 'is_open'),
+    Output('sb-submission-alerts', 'children'),
+    Output('sb-confirm-modal', 'is_open'),
+    Input('sb-confirm-submit-button', 'n_clicks'),
+    Input('sb-go-back-button', 'n_clicks'),
+    State('sb-confirm-modal', 'is_open'),
     State('sb-generated-json', 'children'),
     State('user-select', 'value'),
     State('dataset-select', 'value'),
     State('sb-final-analysis-name', 'children'),
 )
-def upload_generated_json(modal_state, new_json, user, dataset, analysis_name):
+def upload_generated_json(
+    n_submit_clicks,
+    n_go_back_clicks,
+    modal_state,
+    new_json,
+    user,
+    dataset,
+    analysis_name
+):
     error = None
     alerts = []
 
-    if not modal_state:
+    if not modal_state and (n_submit_clicks or n_go_back_clicks):
+        raise PreventUpdate
+
+    if n_go_back_clicks > 0:
+        return [], False
+
+    if n_submit_clicks == 0:
         raise PreventUpdate
 
     try:
         new_dict = json.loads(new_json, parse_int=str, parse_float=str)
     except Exception as e:
         error = e
+        alerts.append(dbc.Alert(f'There was a problem reading the generated JSON '
+                                f'from the DOM: {error}', color='danger'))
+
+        return alerts, False
 
     try:
         submission_bytes = io.BytesIO(json.dumps(new_dict).encode())
@@ -584,9 +631,7 @@ def upload_generated_json(modal_state, new_json, user, dataset, analysis_name):
     except Exception as e:
         alerts.append(dbc.Alert('Error uploading JSON to S3: ', e, color='danger'))
 
-
-
-
+    return alerts, False
 
 
 @app.callback(
@@ -623,7 +668,7 @@ col1_clear = [
 
 col2_clear = [
     html.Details(
-        [html.Summary('Segmentation options')] +
+        [html.Summary('Segmentation Options')] +
         cm.component_group('segmentation', tolist=True),
         open=True, id='sb-segmentation-wrapper'
     ),
@@ -644,24 +689,13 @@ col2_clear = [
         dbc.CardBody([
             dbc.Button('Submit', id='sb-submit-button', color='primary', size='lg'),
             dbc.Button('Reset to defaults', id='sb-reset-button', color='warning', size='lg'),
-            html.Div(id='sb-submission-alerts')
+            html.Div(id='sb-submission-alerts', style={'margin': '10px'}),
+            html.Div(id='sb-modal-container', style={'margin': '10px'}),
         ]),
     ]),
 ]
 
 layout = [
-    dbc.Modal([
-        dbc.ModalHeader('Confirm Submission'),
-        dbc.ModalBody([
-            'Press "submit" to send the analysis request, '
-            'or "cancel" to go back and make changes.',
-            html.Code(id='sb-final-analysis-name'),
-            html.Details([
-                html.Summary('Generated JSON'),
-                html.Pre(id='sb-generated-json')
-                ], id='sb-submission-json', open=True)
-        ])
-    ], id='sb-confirm-modal', centered=True, is_open=False),
     dbc.Col(col1_clear, id='sb-col-1', width=4),
     dbc.Col(col2_clear, id='sb-col-2', width=4)
 ]
