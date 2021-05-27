@@ -178,16 +178,6 @@ clear_components = {
             ),
             dbc.FormText('Set a threshold of the LoG filter. Default is usually fine.')
         ]),
-    'sb-dotdetection-checklist':
-        dbc.Checklist(
-            options=[
-                {'label': 'Visualize dot detection',
-                 'value': 'visualize dot detection'},
-            ],
-            value=['visualize dot detection'],
-            id='sb-dotdetection-checklist',
-            switch=True
-        ),
 
     # segmentation
     'sb-segmentation-select':
@@ -339,8 +329,7 @@ component_groups = {
 
     'dot-detection': ['sb-dot-detection-select',
                       'sb-strictness-select',
-                      'sb-threshold-select',
-                      'sb-dotdetection-checklist'],
+                      'sb-threshold-select'],
 
     'segmentation': ['sb-segmentation-select',
                      'sb-segmentation-checklist'],
@@ -389,7 +378,6 @@ id_to_json_key = {
     'sb-dot-detection-select': 'dot detection',
     'sb-strictness-select': 'strictness',
     'sb-threshold-select': 'threshold',
-    'sb-dot-detection-checklist': _checklist_process,
 
     'sb-segmentation-select': 'segmentation',
     'sb-segmentation-checklist': _checklist_process,
