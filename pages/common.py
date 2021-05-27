@@ -20,10 +20,12 @@ def sync_with_s3():
         cli.sync_with_s3(download=False)
 
 
-sync_with_s3()
+def get_all_datasets():
+    # Save the dataset record to compare to individual pages
+    return data_clients['__all__'].datasets.copy()
 
-# Save the dataset record to compare to individual pages
-all_datasets = data_clients['__all__'].datasets.copy()
+
+sync_with_s3()
 
 
 class ComponentManager:
