@@ -81,6 +81,8 @@ pages:
         "MMStack_Pos{position}/On_Off_Barcode_Plot/Channel_{channel}/On_Off_Sorted_Barcode_Plot.png"
       falsepositive_txt:
         "MMStack_Pos{position}/False_Positive_Rate_Analysis/Channel_{channel}/false_positives_after_segmentation.txt"
+      offsets_json:
+        "MMStack_Pos{position}/offsets.json"
 
     # Listing of output files generated from the source files
     # - "pattern" is the format string pattern for the output file,
@@ -126,7 +128,7 @@ pages:
     raw_files:
       hyb_fov:
         pattern: "HybCycle_{hyb}/MMStack_Pos{position}.ome.tif"
-        preupload: "compress_raw_im"
+        preupload: "compress_raw_im_2"
 
   submit_analysis:
     title: "Submit New Analysis"

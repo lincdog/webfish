@@ -1,5 +1,7 @@
 import gc
+import numpy as np
 import skimage.util as skiu
+import skimage.exposure as skie
 from pathlib import Path
 from lib.util import ImageMeta, safe_imwrite
 
@@ -31,11 +33,26 @@ updates the filenames as the preupload jobs succeed, to point to this new locati
 class DotDetectionPreupload:
 
     @classmethod
-    def compress_raw_im(
+    def compress_raw_im(cls, *args):
+        return cls._compress_raw_im(
+            *args,
+            rescaler=None
+        )
+
+    @classmethod
+    def compress_raw_im_2(cls, *args):
+        return cls._compress_raw_im(
+            *args,
+            rescaler=cls.rescale_using_percentile
+        )
+
+    @classmethod
+    def _compress_raw_im(
         cls,
         inrow,
         outpattern,
-        savedir
+        savedir,
+        rescaler=None
     ):
         gc.enable()
         if not inrow:
@@ -48,7 +65,7 @@ class DotDetectionPreupload:
             return outfile.relative_to(savedir), False
 
         try:
-            cls.compress_8bit(im, 'DEFLATE', outfile)
+            cls.compress_8bit(im, 'DEFLATE', outfile, rescaler=rescaler)
             gc.collect()
         except Exception as e:
             return im, e
@@ -59,18 +76,32 @@ class DotDetectionPreupload:
     def compress_8bit(
         imgfilename,
         compression='DEFLATE',
-        outfile=None
+        outfile=None,
+        rescaler=None
     ):
+        """
+        compress_8bit
+        -------------
+        Opens an image file and saves it to outfile after optional
+        rescaling, conversion to 8 bits, and compression.
+
+        rescaler should be a function that takes the numpy array of the image
+        and returns a numpy array of the same shape.
+        """
         err = None
         im = None
         imarr = None
+
+        if not callable(rescaler):
+            def rescaler(arr):
+                return arr
 
         try:
             im = ImageMeta(imgfilename)
             imarr = im.asarray()
 
             safe_imwrite(
-                skiu.img_as_ubyte(imarr),
+                skiu.img_as_ubyte(rescaler(imarr)),
                 outfile,
                 compression=compression
             )
@@ -85,3 +116,48 @@ class DotDetectionPreupload:
             raise err
 
         return outfile
+
+    @staticmethod
+    def rescale_using_percentile(
+        imarr,
+        q=99.999,
+        in_start=0.0,
+        out_range='dtype'
+    ):
+        """
+        rescale_using_percentile
+        -----------------------
+        Rescales an image linearly to the (by default) full range of its
+        dtype by using a reasonable guess as to what the "relevant" pixel values
+        in it are to start. That is, instead of rescaling its min and max to
+        the dtype range, we take a high percentile of the pixel values -
+        99.999 seems to work decently - as the maximum and rescale that to the
+        dtype maximum.
+
+        Performs this separately if the image array is 4D, assuming the first
+        axis is channels.
+        """
+        if imarr.ndim == 4:
+            # Loop through each channel **assuming first axis**
+            # Find quantile in each one and rescale separately
+
+            in_stops = [np.percentile(imc, q)
+                        for imc in imarr]
+
+            return np.array([
+                skie.rescale_intensity(
+                    imc,
+                    in_range=(in_start, in_stop),
+                    out_range=out_range
+                ) for imc, in_stop in zip(imarr, in_stops)
+            ], dtype=imarr.dtype)
+        else:
+            # Single channel image case
+            in_stop = np.percentile(imarr, q)
+
+            return skie.rescale_intensity(
+                imarr,
+                in_range=(in_start, in_stop),
+                out_range=out_range
+            )
+
