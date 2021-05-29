@@ -6,8 +6,9 @@ from time import sleep
 
 import boto3
 import botocore.exceptions as boto3_exc
+import jmespath
 
-from lib.util import process_file_entries, fmt2regex
+from lib.util import process_file_entries, process_file_locations, fmt2regex
 import lib.generators as generators
 import lib.preuploaders as preuploaders
 
@@ -49,63 +50,24 @@ class FilePatterns:
     ):
         self.config = config
 
-        dr = config.get('dataset_root', '')
-        self.dataset_root = dr
-        # How many levels do we have to fetch to reach the datasets?
-        self.dataset_nest = len(Path(dr).parts) - 1
+        self.file_locations = process_file_locations(
+            config.get('file_locations', {}))
+        self.file_cats = self.file_locations.keys()
 
-        dre, drglob = fmt2regex(dr)
-        self.dataset_re = dre
-        self.dataset_glob = drglob
+        self.all_fields = sum([c['dataset_format_fields']
+                               for c in self.file_locations.values()])
 
-        self.dataset_fields = list(dre.groupindex.keys())
+        self.file_patterns = {
+            k: process_file_entries(v)
+            for k, v in config.get('file_patterns', {})
+        }
 
-        rr = config.get('raw_dataset_root', '')
-        self.raw_dataset_root = rr
-        self.raw_nest = len(Path(rr).parts) - 1
-
-        rre, rrglob = fmt2regex(rr)
-        self.raw_re = rre
-        self.raw_glob = rrglob
-
-        self.raw_fields = list(rre.groupindex.keys())
-
-        self.all_fields = self.dataset_fields + self.raw_fields
-
-        self.source_files = process_file_entries(
-            self.config.get('source_files', {}))
-
-        self.raw_files = process_file_entries(
-            self.config.get('raw_files', {}))
-
-        self.output_files = process_file_entries(
-            self.config.get('output_files', {}))
-
-        self.file_keys = list(self.source_files.keys()) + \
-                         list(self.output_files.keys()) + \
-                         list(self.raw_files.keys())
+        self.file_keys = sum([list(v.keys())
+                              for v in self.file_patterns.values()])
 
         if len(set(self.file_keys)) != len(self.file_keys):
             raise ValueError('File keys must be unique across all '
                              'file classes (source, raw, output, global')
-
-        # Make convenience dicts for the different fields of each file type
-        # source files and preupload functions
-        self.source_patterns = {
-            k: v['pattern']
-            for k, v in self.source_files.items()
-        }
-        self.raw_patterns = {
-            k: v['pattern']
-            for k, v in self.raw_files.items()
-        }
-
-        self.input_patterns = self.source_patterns | self.raw_patterns
-
-        self.output_patterns = {
-            k: v['pattern']
-            for k, v in self.output_files.items()
-        }
 
 
 class S3Connect:

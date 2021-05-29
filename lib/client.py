@@ -38,8 +38,6 @@ class DataClient(FilePatterns):
 
         self.local_store = Path(config.get('local_store', 'webfish_data/'))
 
-        self.analysis_folder = config.get('analysis_folder', 'analyses/')
-        self.raw_folder = config.get('raw_folder', 'raw/')
         self.bucket_name = config['bucket_name']
 
         self.sync_file = Path(self.sync_folder, 'sync.csv')
@@ -55,7 +53,7 @@ class DataClient(FilePatterns):
 
         # Output files and generators
         self.output_generators = {}
-        for k, v in self.output_files.items():
+        for k, v in self.file_patterns['output'].items():
             if v['generator']:
                 generator = getattr(lib.generators, v['generator'])
             else:
