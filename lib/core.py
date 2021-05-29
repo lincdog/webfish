@@ -30,12 +30,24 @@ class Page:
         self.title = self.config.get('title', self.name)
         self.description = self.config.get('description', '')
 
-        self.bucket_name = config['bucket_name']
+        self.file_fields = self.config.get('variables')
 
-        self.local_store = Path(config.get('local_store', 'webfish_data/'), name)
+        # Blank these out to tell Client that it should use the all_datasets
+        # files for this page.
+        # Alternatively, Server could make a sync for this page
+        # that is identical to the all_datasets one.
+        if not self.input_patterns and not self.output_patterns:
+            self.sync_file = None
+            self.file_table = None
 
-        self.sync_file = Path(config.get('sync_folder'), f'{name}_sync.csv')
-        self.file_table = Path(config.get('sync_folder'), f'{name}_files.csv')
+
+class FilePatterns:
+
+    def __init__(
+        self,
+        config
+    ):
+        self.config = config
 
         dr = config.get('dataset_root', '')
         self.dataset_root = dr
@@ -46,6 +58,8 @@ class Page:
         self.dataset_re = dre
         self.dataset_glob = drglob
 
+        self.dataset_fields = list(dre.groupindex.keys())
+
         rr = config.get('raw_dataset_root', '')
         self.raw_dataset_root = rr
         self.raw_nest = len(Path(rr).parts) - 1
@@ -54,100 +68,44 @@ class Page:
         self.raw_re = rre
         self.raw_glob = rrglob
 
-        self.dataset_fields = list(dre.groupindex.keys())
         self.raw_fields = list(rre.groupindex.keys())
 
-        self.file_fields = self.config.get('variables')
+        self.all_fields = self.dataset_fields + self.raw_fields
 
         self.source_files = process_file_entries(
             self.config.get('source_files', {}))
 
-        self.output_files = process_file_entries(
-            self.config.get('output_files', {}))
-
-        self.global_files = process_file_entries(
-            self.config.get('global_files', {}))
-
         self.raw_files = process_file_entries(
             self.config.get('raw_files', {}))
 
+        self.output_files = process_file_entries(
+            self.config.get('output_files', {}))
+
         self.file_keys = list(self.source_files.keys()) + \
-            list(self.output_files.keys()) + \
-            list(self.global_files.keys()) + \
-            list(self.raw_files.keys())
+                         list(self.output_files.keys()) + \
+                         list(self.raw_files.keys())
 
-        if len(np.unique(self.file_keys)) != len(self.file_keys):
+        if len(set(self.file_keys)) != len(self.file_keys):
             raise ValueError('File keys must be unique across all '
-                             'file classes (source, raw, output, global'
-                             ' in one Page object.')
-
-        # Try to grab the generator class object from this module
-        self.generator_class = None
-        if 'generator_class' in self.config.keys():
-            self.generator_class = getattr(generators,
-                                           self.config['generator_class'])
-        # Same for the preupload function class
-        self.preupload_class = None
-        if 'preupload_class' in self.config.keys():
-            self.preupload_class = getattr(preuploaders,
-                                           self.config['preupload_class'])
+                             'file classes (source, raw, output, global')
 
         # Make convenience dicts for the different fields of each file type
         # source files and preupload functions
-        self.source_patterns = {}
-        self.source_preuploads = {}
-        for k, v in self.source_files.items():
-            self.source_patterns[k] = v['pattern']
+        self.source_patterns = {
+            k: v['pattern']
+            for k, v in self.source_files.items()
+        }
+        self.raw_patterns = {
+            k: v['pattern']
+            for k, v in self.raw_files.items()
+        }
 
-            if v['preupload']:
-                preupload = getattr(self.preupload_class, v['preupload'])
-            else:
-                preupload = None
-            self.source_preuploads[k] = preupload
-
-        # Raw files and preupload functions
-        self.raw_patterns = {}
-        self.raw_preuploads = {}
-        for k, v in self.raw_files.items():
-            self.raw_patterns[k] = v['pattern']
-
-            if v['preupload']:
-                preupload = getattr(self.preupload_class, v['preupload'])
-            else:
-                preupload = None
-            self.raw_preuploads[k] = preupload
-
-        # Make combined source+raw dicts, because when searching for files
-        # to upload we want to go through both of these
         self.input_patterns = self.source_patterns | self.raw_patterns
-        self.input_preuploads = self.source_preuploads | self.raw_preuploads
-        self.has_preupload = [k for k, v in self.input_preuploads.items() if v]
-        self.have_run_preuploads = False
 
-        # Output files and generators
-        self.output_patterns = {}
-        self.output_generators = {}
-        for k, v in self.output_files.items():
-            self.output_patterns[k] = v['pattern']
-
-            if v['generator']:
-                generator = getattr(self.generator_class, v['generator'])
-            else:
-                generator = None
-            self.output_generators[k] = generator
-
-        self.datafiles = None
-        self.datasets = None
-        self.pending = None
-        self.s3_diff = None
-
-        # Blank these out to tell Client that it should use the all_datasets
-        # files for this page.
-        # Alternatively, Server could make a sync for this page
-        # that is identical to the all_datasets one.
-        if not self.input_patterns and not self.output_patterns:
-            self.sync_file = None
-            self.file_table = None
+        self.output_patterns = {
+            k: v['pattern']
+            for k, v in self.output_files.items()
+        }
 
 
 class S3Connect:
