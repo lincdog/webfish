@@ -42,8 +42,8 @@ class DataClient(FilePatterns):
         self.raw_folder = config.get('raw_folder', 'raw/')
         self.bucket_name = config['bucket_name']
 
-        self.sync_file = Path(self.sync_folder, f'sync.csv'),
-        self.file_table = Path(self.sync_folder, f'files.csv'),
+        self.sync_file = Path(self.sync_folder, f'sync.csv')
+        self.file_table = Path(self.sync_folder, f'files.csv')
         self.pending = Path(self.sync_folder, f'pending.csv')
 
         self.datafiles = None
