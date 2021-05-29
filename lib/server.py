@@ -57,9 +57,6 @@ class DataServer(FilePatterns):
         self.sync_folder = config.get('sync_folder', 'monitoring/')
         Path(self.sync_folder).mkdir(parents=True, exist_ok=True)
 
-        self.analysis_folder = config.get('analysis_folder', 'analyses/')
-        self.raw_folder = config.get('raw_folder', 'raw/')
-
         self.preupload_root = config.get('preupload_root')
 
         self.all_datasets = pd.DataFrame()
@@ -70,7 +67,7 @@ class DataServer(FilePatterns):
         # Make convenience dicts for the different fields of each file type
         # source files and preupload functions
         self.source_preuploads = {}
-        for k, v in self.source_files.items():
+        for k, v in self.file_patterns['source'].items():
             if v['preupload']:
                 preupload = getattr(lib.preuploaders, v['preupload'])
             else:
@@ -103,7 +100,7 @@ class DataServer(FilePatterns):
         }
 
         self.local_sync = dict.fromkeys(self.sync_contents.keys(), None)
-        self.s3_keys = {'raw': [], 'source': []}
+        self.s3_keys = defaultdict(list)
         self.s3_diff = pd.DataFrame()
         self.new_source_keys = []
 

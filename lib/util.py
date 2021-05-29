@@ -750,6 +750,32 @@ def process_file_entries(entries):
     return result
 
 
+def process_file_locations(locs):
+    result = {}
+
+    for key, value in locs.items():
+        info = dict.fromkeys([
+            'root',
+            'dataset_format',
+            'local_prefix',
+            'dataset_format_re',
+            'dataset_format_glob',
+            'dataset_format_fields',
+            'dataset_format_nest'
+        ], None)
+
+        dfr, dfg = fmt2regex(locs.get('dataset_format', ''))
+        fields = list(dfr.groupindex.keys())
+
+        info['dataset_format_re'] = dfr
+        info['dataset_format_glob'] = dfg
+        info['dataset_format_fields'] = fields
+        info['dataset_format_nest'] = len(Path(dfr).parts) - 1
+
+        result[key] = info
+
+    return result
+
 def empty_or_false(thing):
     if isinstance(thing, pd.DataFrame):
         return thing.empty
