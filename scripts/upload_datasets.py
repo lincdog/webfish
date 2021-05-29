@@ -53,31 +53,26 @@ def search_and_upload(dm, mtime, use_s3_only=False, check_s3=False, dryrun=False
 
     results = {}
 
-    for pagename in dm.pagenames:
-        tmp, _ = dm.find_page_files(
-            pagename=pagename,
-        )
-        results[pagename] = dict(all_files=len(tmp))
-        del tmp
+    tmp, _ = dm.find_files()
+    results['all_files'] = len(tmp)
+    del tmp
 
     # read in the s3 keys, unless --check-s3 is specified, from the local
     # cached listing.
     dm.check_s3_contents(use_local=(not check_s3))
 
-    for pagename in dm.pagenames:
-        pending, uploaded = dm.upload_to_s3(
-            pagename,
-            since=mtime,
-            do_pending=True,
-            run_preuploads=True,
-            do_s3_diff=True,
-            use_s3_only=use_s3_only,
-            progress=100,
-            dryrun=dryrun
-        )
+    pending, uploaded = dm.upload_to_s3(
+        since=mtime,
+        do_pending=True,
+        run_preuploads=True,
+        do_s3_diff=True,
+        use_s3_only=use_s3_only,
+        progress=100,
+        dryrun=dryrun
+    )
 
-        results[pagename].update(dict(pending_count=len(pending),
-                                      uploaded_count=uploaded))
+    results.update(dict(pending_count=len(pending),
+                        uploaded_count=uploaded))
 
     return results
 
@@ -121,7 +116,6 @@ def main(args):
     logger.info(f'Results: {results}')
 
     dm.save_and_sync(
-        pagenames=None,
         timestamp=True,
         patterns=True,
         upload=(not args.dryrun)
