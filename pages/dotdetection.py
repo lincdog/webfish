@@ -16,9 +16,7 @@ import plotly.graph_objects as go
 
 from app import app
 from lib.util import safe_imread
-from .common import ComponentManager, data_clients
-
-data_client = data_clients['dotdetection']
+from .common import ComponentManager, data_client
 
 
 # TODO: move this to DataClient
@@ -296,7 +294,7 @@ def select_pos_hyb(swap, position, hyb, dataset, user):
     z_range = list(range(image.shape[z_ind]))
     chan_range = list(range(image.shape[c_ind]))
 
-    marks = {a // 256: str(a) for a in range(0, 10000, 500)}
+    marks = {a // 256: str(a) for a in range(0, 2**16, 5000)}
 
     return True, [
         html.B('Select Z slice'),
@@ -322,10 +320,10 @@ def select_pos_hyb(swap, position, hyb, dataset, user):
             cm.component(
                 'dd-contrast-slider',
                 min=0,
-                max=10000 // 256,
+                max=255,
                 step=1,
                 marks=marks,
-                value=[0, 10],
+                value=[0, 200],
                 allowCross=False
             ),
         ], id='dd-contrast-div'),
@@ -454,12 +452,13 @@ layout = [
         html.Div([
             *cm.component_group('dataset-info', tolist=True),
 
-            html.Hr(),
-            html.Div([
-                *cm.component_group('new-analysis', tolist=True)
-            ], id='dd-new-analysis-div'),
+            html.Details([
+                html.Summary('Submit new preview run'),
+                html.Div([
+                    *cm.component_group('new-analysis', tolist=True)
+                ], id='dd-new-analysis-div')
+            ]),
 
-            html.Hr(),
             dbc.Collapse([
                 *cm.component_group('image-select', tolist=True)
             ], is_open=False, id='dd-image-select-wrapper'),
@@ -478,10 +477,10 @@ layout = [
 
         ], id='dd-image-params-div', style={'margin': '10px'})
 
-    ], style={'border-right': '1px solid gray'}, width=4),
+    ], width=4),
 
     dbc.Col([
         dcc.Loading(cm.component('dd-fig'), id='dd-graph-wrapper')
-    ], id='dd-fig-col')
+    ], id='dd-fig-col', width='auto')
 ]
 

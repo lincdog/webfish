@@ -14,10 +14,10 @@ from dash import no_update
 
 from app import app
 from lib.util import sanitize, f2k
-from .common import ComponentManager, data_clients, get_all_datasets
+from .common import ComponentManager, data_client, get_all_datasets
 
 
-data_client = data_clients['dotdetection']
+data_client = data_client
 all_datasets = get_all_datasets()
 
 # TODO: move this to DataClient
