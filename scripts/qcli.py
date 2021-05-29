@@ -20,13 +20,13 @@ server_logger.setLevel(logging.DEBUG)
 server_logger.addHandler(sh)
 
 
-def qclient(pagename='datavis'):
+def qclient():
     lib.core = reload(lib.core)
     lib.client = reload(lib.client)
 
     config = yaml.load(open('./consts.yml'), Loader=yaml.Loader)
     s3c = lib.core.S3Connect(config=config)
-    client = lib.client.DataClient(config=config, s3_client=s3c, pagename=pagename)
+    client = lib.client.DataClient(config=config, s3_client=s3c)
 
     return config, s3c, client
 
