@@ -42,12 +42,16 @@ class DataClient(FilePatterns):
         self.raw_folder = config.get('raw_folder', 'raw/')
         self.bucket_name = config['bucket_name']
 
-        self.sync_file = Path(self.sync_folder, f'sync.csv')
-        self.file_table = Path(self.sync_folder, f'files.csv')
-        self.pending = Path(self.sync_folder, f'pending.csv')
+        self.sync_file = Path(self.sync_folder, 'sync.csv')
+        self.file_table = Path(self.sync_folder, 'files.csv')
+        self.pending = Path(self.sync_folder, 'pending.csv')
+
+        self.all_datasets_file = Path(self.sync_folder, 'all_datasets.csv')
+        self.all_raw_datasets_file = Path(self.sync_folder, 'all_raw_datasets.csv')
 
         self.datafiles = None
         self.datasets = None
+        self.all_datasets = None
 
         # Output files and generators
         self.output_generators = {}
@@ -89,6 +93,12 @@ class DataClient(FilePatterns):
         else:
             self.datasets = pd.DataFrame()
             self.datafiles = pd.DataFrame()
+
+        if self.all_datasets_file.exists() and self.all_raw_datasets_file.exists():
+            self.all_datasets = pd.concat([
+                pd.read_csv(self.all_datasets_file),
+                pd.read_csv(self.all_raw_datasets_file)
+            ]).reset_index(drop=True)
 
     def local(
         self,

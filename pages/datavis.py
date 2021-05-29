@@ -10,9 +10,7 @@ from dash.exceptions import PreventUpdate
 
 from app import app
 from lib.util import populate_mesh, base64_image, populate_genes, mesh_from_json
-from .common import data_clients
-
-data_client = data_clients['datavis']
+from .common import data_client
 
 
 def query_df(df, selected_genes):
@@ -310,7 +308,8 @@ def select_dataset(dataset, user):
         raise PreventUpdate
 
     analyses = data_client.datasets.query(
-        'user==@user and dataset==@dataset')['analysis'].unique()
+        'user==@user and dataset==@dataset')['analysis'].dropna().unique()
+    print(analyses)
 
     return [
         'Analysis select: ',
@@ -355,7 +354,7 @@ layout = [
             ], id='dv-analytics-wrapper')
         ])
 
-    ], width=4, style={'border-right': '1px solid gray'}),
+    ], width=4),
 
     dbc.Col([
         html.Div([
