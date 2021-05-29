@@ -33,14 +33,6 @@ class Page:
 
         self.file_fields = self.config.get('variables')
 
-        # Blank these out to tell Client that it should use the all_datasets
-        # files for this page.
-        # Alternatively, Server could make a sync for this page
-        # that is identical to the all_datasets one.
-        if not self.input_patterns and not self.output_patterns:
-            self.sync_file = None
-            self.file_table = None
-
 
 class FilePatterns:
 
@@ -49,25 +41,39 @@ class FilePatterns:
         config
     ):
         self.config = config
-
+        breakpoint()
         self.file_locations = process_file_locations(
             config.get('file_locations', {}))
-        self.file_cats = self.file_locations.keys()
+        self.file_cats = list(self.file_locations.keys())
 
-        self.all_fields = sum([c['dataset_format_fields']
-                               for c in self.file_locations.values()])
+        self.all_fields = set(jmespath.search(
+            '*.dataset_format_fields[]',
+            self.file_locations
+        ))
 
-        self.file_patterns = {
+        self.file_entries = {
             k: process_file_entries(v)
-            for k, v in config.get('file_patterns', {})
+            for k, v in config.get('file_patterns', {}).items()
         }
 
-        self.file_keys = sum([list(v.keys())
-                              for v in self.file_patterns.values()])
+        self.file_keys = jmespath.search('map(&keys(@), values(@))[]', self.file_entries)
 
         if len(set(self.file_keys)) != len(self.file_keys):
             raise ValueError('File keys must be unique across all '
                              'file classes (source, raw, output, global')
+
+    @property
+    def file_patterns(self):
+        return {c: {k: v['pattern'] for k, v in entry.items()}
+                for c, entry in self.file_entries.items()}
+
+    @property
+    def input_patterns(self):
+        return {k: v for k, v in self.file_patterns.items()
+                if k in self.file_cats}
+
+    def category_patterns(self, cat):
+        return self.file_patterns[cat]
 
 
 class S3Connect:
