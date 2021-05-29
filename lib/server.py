@@ -60,14 +60,13 @@ class DataServer(FilePatterns):
         self.preupload_root = config.get('preupload_root')
 
         self.all_datasets = pd.DataFrame()
-        self.all_raw_datasets = pd.DataFrame()
 
         self.bucket_name = config.get('bucket_name')
 
         # Make convenience dicts for the different fields of each file type
         # source files and preupload functions
         self.source_preuploads = {}
-        for k, v in self.file_patterns['source'].items():
+        for k, v in self.file_entries['source'].items():
             if v['preupload']:
                 preupload = getattr(lib.preuploaders, v['preupload'])
             else:
@@ -90,7 +89,6 @@ class DataServer(FilePatterns):
 
         self.sync_contents = {
             'all_datasets': Path(self.sync_folder, 'all_datasets.csv'),
-            'all_raw_datasets': Path(self.sync_folder, 'all_raw_datasets.csv'),
             'input_patterns': Path(self.sync_folder, 'input_patterns.json'),
             'timestamp': Path(self.sync_folder, 'TIMESTAMP'),
             's3_keys': Path(self.sync_folder, 's3_keys.json'),
@@ -153,7 +151,6 @@ class DataServer(FilePatterns):
 
         if replace:
             self.all_datasets = self.local_sync['all_datasets'].copy()
-            self.all_raw_datasets = self.local_sync['all_raw_datasets'].copy()
 
             self.datasets = self.local_sync.get(
                 'sync_file', pd.DataFrame()).copy()
@@ -221,13 +218,20 @@ class DataServer(FilePatterns):
 
         self.s3_diff = self.datafiles.query('filename in @s3_diff').copy()
 
-    def get_source_datasets(
+    def get_datasets(
         self,
+        category,
         folders=None,
     ):
+        if category not in self.file_cats:
+            raise ValueError(f'category {category} unrecognized, one of '
+                             f'{self.file_cats} required')
+
+        location = self.file_locations[category]
+
         possible_folders, fields, mtimes = find_matching_files(
-            self.master_root,
-            self.dataset_root)
+            location['root'],
+            location['dataset_format'])
         fields['folder'] = possible_folders
 
         all_datasets = pd.DataFrame(fields)
@@ -236,29 +240,12 @@ class DataServer(FilePatterns):
             folders = [Path(f) for f in folders]
             all_datasets = all_datasets.query('folder in @folders').copy()
 
-        self.all_datasets = all_datasets
+        self.all_datasets = pd.concat([
+            self.all_datasets,
+            all_datasets
+        ]).reset_index(drop=True)
 
         return self.all_datasets
-
-    def get_raw_datasets(
-        self,
-        folders=None,
-    ):
-
-        possible_folders, fields, mtimes = find_matching_files(
-            self.raw_master_root,
-            self.raw_dataset_root)
-        fields['folder'] = possible_folders
-
-        all_raw_datasets = pd.DataFrame(fields)
-
-        if folders:
-            folders = [Path(f) for f in folders]
-            all_raw_datasets = all_raw_datasets.query('folder in @folders').copy()
-
-        self.all_raw_datasets = all_raw_datasets
-
-        return self.all_raw_datasets
 
     def find_files(
         self,
@@ -355,12 +342,19 @@ class DataServer(FilePatterns):
 
         return results
 
-    def find_source_files(
+    def find_category_files(
         self,
+        category,
         key,
         pattern,
         folders,
     ):
+        if category not in self.file_cats:
+            raise ValueError(f'category {category} unrecognized, '
+                             f'must be one of {self.file_cats}')
+
+        location = self.file_locations[category]
+
         paths = None
         if folders:
             paths = []
@@ -368,51 +362,20 @@ class DataServer(FilePatterns):
             # datasets to look in. This makes a list of glob results looking for
             # pattern from each supplied folder.
             _, glob = fmt2regex(pattern)
-            [paths.extend(Path(self.master_root, f).glob(glob)) for f in folders]
+            [paths.extend(Path(location['root'], f).glob(glob)) for f in folders]
         elif folders == []:
             return pd.DataFrame()
 
         filenames, fields, mtimes = find_matching_files(
-            str(self.master_root),
-            str(Path(self.dataset_root, pattern)),
+            str(location['root']),
+            str(Path(location['dataset_format'], pattern)),
             paths=paths,
         )
 
         if filenames:
             fields['source_key'] = key
             fields['mtime'] = mtimes
-            fields['filename'] = [f.relative_to(self.master_root) for f in filenames]
-            return pd.DataFrame(fields, dtype=str)
-        else:
-            return pd.DataFrame()
-
-    def find_raw_files(
-        self,
-        key,
-        pattern,
-        folders,
-    ):
-        paths = None
-        if folders:
-            paths = []
-            # We are assuming folders is a list up to dataset_root nesting - potential
-            # datasets to look in. This makes a list of glob results looking for
-            # pattern from each supplied folder.
-            _, glob = fmt2regex(pattern)
-            [paths.extend(Path(self.raw_master_root, f).glob(glob)) for f in folders]
-        elif folders == []:
-            return pd.DataFrame()
-
-        filenames, fields, mtimes = find_matching_files(
-            str(self.raw_master_root),
-            str(Path(self.raw_dataset_root, pattern)),
-            paths=paths,
-        )
-
-        if filenames:
-            fields['source_key'] = key
-            fields['mtime'] = mtimes
-            fields['filename'] = [f.relative_to(self.raw_master_root) for f in filenames]
+            fields['filename'] = [f.relative_to(location['root']) for f in filenames]
             return pd.DataFrame(fields, dtype=str)
         else:
             return pd.DataFrame()
