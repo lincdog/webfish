@@ -220,7 +220,7 @@ class DataServer(FilePatterns):
         else:
             local_filenames = self.datafiles['filename'].values
 
-        s3__diff = set(local_filenames) - set(all_keys)
+        s3_diff = set(local_filenames) - set(all_keys)
 
         self.s3_diff = self.datafiles.query('filename in @s3_diff').copy()
 
@@ -291,10 +291,10 @@ class DataServer(FilePatterns):
         rawfile_df = pd.DataFrame(columns=self.raw_fields +
                                   ['folder', 'source_key'])
 
-        all_sourcefiles = [self.find_source_files(key, pattern, source_folders, since)
+        all_sourcefiles = [self.find_source_files(key, pattern, source_folders)
                            for key, pattern in self.source_patterns.items()]
 
-        all_rawfiles = [self.find_raw_files(key, pattern, raw_folders, since)
+        all_rawfiles = [self.find_raw_files(key, pattern, raw_folders)
                         for key, pattern in self.raw_patterns.items()]
 
         if any(notempty(all_sourcefiles)):
