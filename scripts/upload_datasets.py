@@ -13,6 +13,42 @@ from lib.server import DataServer
 from lib.core import S3Connect
 
 
+"""
+upload_datasets.py
+------------------
+This script is intended to be run as a cron job on the HPC or other master
+data repository location. It scans the master data directories for files that
+match any of the patterns given in the config file for Webfish ('consts.yml'),
+as well as optionally checking S3 to compare with this list. It then chooses files
+to upload to S3 on these conditions:
+
+ - It will usually use os.stat() to compare the modification time of the found 
+    files with the TIMESTAMP file, which records when this script last ran, 
+    and only upload files modified since the last run of this script.
+ - If --fresh is specified, all existing monitoring files are deleted before
+    running the scans. Therefore, unless --use-s3-only is specified, ALL files
+    on the master repository will be uploaded anew. This could take a very long
+    time.
+ - If --check-s3 is specified, it lists ALL keys of data files on the S3 bucket and
+    compares these to the found files from the scan. Any files found locally but missing
+    from S3 will be added to the upload list regardless of their modification time.
+    Note that listing all keys from S3 can take a few minutes.
+ - If --use-s3-only is specified, ONLY the above comparison of the S3 content with the
+    local found files will determine the upload list - mtime is ignored. This is useful
+    for "resetting" the monitoring files, ensuring that the HPC-side monitoring is
+    consistent with what is *actually* available on the S3.
+ - If --dryrun is specified, the file list determination will take place as above
+    but nothing will actually be uploaded. Preupload functions (see below) will also
+    not be run.
+    
+For any file keys specified in consts.yml that include preupload functions, the
+script runs them in parallel using 5 processes by default. Each time it runs, it 
+attempts to run these functions on the files. It is up to the preupload functions to
+quickly return the existing filename if they have already run and the processed file
+exists in the preupload root.
+"""
+
+
 def process_args():
     parser = ArgumentParser(description='HPC-side script to sync Cai Lab datasets to S3 storage')
 
@@ -39,6 +75,13 @@ def process_args():
 
 
 def init_server():
+    """
+    init_server
+    -----------
+    Initialize a lib.server.DataServer instance and an S3 client. Use read_local_sync
+    to gather current dataset and file information, including the previous TIMESTAMP
+    and input patterns list that allow us to determine what files to upload.
+    """
     config = yaml.load(open('./consts.yml'), Loader=yaml.Loader)
 
     s3c = S3Connect(config=config)
@@ -50,9 +93,16 @@ def init_server():
 
 
 def search_and_upload(dm, mtime, use_s3_only=False, check_s3=False, dryrun=False):
-
+    """
+    search_and_upload
+    -----------------
+    Searches for relevant files from all pages, determines what to upload
+    using mtime and/or S3 contents, and performs the uploads.
+    """
     results = {}
 
+    # This populates the datafiles and datasets DataFrames for each page,
+    # which contain all relevant files found on the HPC
     for pagename in dm.pagenames:
         tmp, _ = dm.find_page_files(
             pagename=pagename,
@@ -60,11 +110,15 @@ def search_and_upload(dm, mtime, use_s3_only=False, check_s3=False, dryrun=False
         results[pagename] = dict(all_files=len(tmp))
         del tmp
 
-    # read in the s3 keys, unless --check-s3 is specified, from the local
-    # cached listing.
+    # Read in the s3 keys from local monitoring files unless
+    # check_s3 is True, in which case list all S3 keys to update the monitoring files.
     dm.check_s3_contents(use_local=(not check_s3))
 
     for pagename in dm.pagenames:
+        # Run preuploads if needed and upload all files subject to
+        # the given mtime and use_s3_only conditions.
+
+        # Note that the list of S3 keys is updated as these files are uploaded.
         pending, uploaded = dm.upload_to_s3(
             pagename,
             since=mtime,
@@ -88,12 +142,16 @@ def atexit_release(file):
 
 def main(args):
 
+    # Initialize the DataServer
     dm = init_server()
 
+    # This is read during read_local_sync from the TIMESTAMP
+    # file and should have the last time (in seconds) this script ran.
     mtime = dm.local_sync['timestamp'] or 0
 
     lock = Path(dm.sync_folder, LOCKFILE)
 
+    # Exit if lockfile is present
     if lock.exists():
         logger.info('Lockfile exists, exiting.')
         return 0
@@ -103,6 +161,9 @@ def main(args):
 
     atexit.register(atexit_release, lock)
 
+    # If --fresh is specified, delete all local monitoring files except for
+    # the lockfile. Also set mtime to 0, ignoring the timestamp of the last
+    # time this script ran.
     if args.fresh:
         mtime = 0
         # Delete all monitoring files
@@ -110,6 +171,8 @@ def main(args):
             if f.name != LOCKFILE:
                 f.unlink()
 
+    # Search for and upload new files according to the mtime and
+    # checking S3 conditions outlined above.
     results = search_and_upload(
         dm,
         mtime,
@@ -120,6 +183,10 @@ def main(args):
 
     logger.info(f'Results: {results}')
 
+    # Save the updated monitoring information locally and upload
+    # it to the S3 monitoring folder, which the webapp uses to determine
+    # what datasets and files are available. If --dryrun is specified,
+    # do not upload to S3.
     dm.save_and_sync(
         pagenames=None,
         timestamp=True,
