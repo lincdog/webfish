@@ -96,7 +96,7 @@ class FilePatterns:
                 root = self.file_locations[name]['root']
                 dataset = self.file_locations[name]['dataset_format']
                 prefix = self.file_locations[name]['prefix']
-                pattern = info['pattern']
+                pattern = info[key]['pattern']
                 break
 
         return category, root, dataset, prefix, pattern
