@@ -43,16 +43,18 @@ class DataServer(FilePatterns):
         super().__init__(config)
 
         self.client = s3_client
+        self.has_preupload = []
 
-        self.master_root = config.get('master_root')
-        if not Path(self.master_root).is_dir():
-            raise FileNotFoundError(f'master_root specified as '
-                                    f'{self.master_root} does not exist')
+        for name, loc in self.file_locations.items():
+            if not Path(loc['root']).is_dir():
+                raise FileNotFoundError(f'master_root specified as '
+                                        f'{loc["root"]} does not exist')
 
-        self.raw_master_root = config.get('raw_master_root')
-        if not Path(self.master_root).is_dir():
-            raise FileNotFoundError(f'raw_master_root specified as '
-                                    f'{self.raw_master_root} does not exist')
+            for k, v in self.file_entries[name].items():
+                if v['preupload']:
+                    preupload = getattr(lib.preuploaders, v['preupload'])
+                    self.file_entries[name][k]['preupload'] = preupload
+                    self.has_preupload.append(k)
 
         self.sync_folder = config.get('sync_folder', 'monitoring/')
         Path(self.sync_folder).mkdir(parents=True, exist_ok=True)
@@ -62,30 +64,6 @@ class DataServer(FilePatterns):
         self.all_datasets = pd.DataFrame()
 
         self.bucket_name = config.get('bucket_name')
-
-        # Make convenience dicts for the different fields of each file type
-        # source files and preupload functions
-        self.source_preuploads = {}
-        for k, v in self.file_entries['source'].items():
-            if v['preupload']:
-                preupload = getattr(lib.preuploaders, v['preupload'])
-            else:
-                preupload = None
-            self.source_preuploads[k] = preupload
-
-        # Raw files and preupload functions
-        self.raw_preuploads = {}
-        for k, v in self.raw_files.items():
-            if v['preupload']:
-                preupload = getattr(lib.preuploaders, v['preupload'])
-            else:
-                preupload = None
-            self.raw_preuploads[k] = preupload
-
-        # Make combined source+raw dicts, because when searching for files
-        # to upload we want to go through both of these
-        self.input_preuploads = self.source_preuploads | self.raw_preuploads
-        self.has_preupload = [k for k, v in self.input_preuploads.items() if v]
 
         self.sync_contents = {
             'all_datasets': Path(self.sync_folder, 'all_datasets.csv'),
@@ -161,8 +139,6 @@ class DataServer(FilePatterns):
 
     def check_s3_contents(
         self,
-        raw=True,
-        source=True,
         use_local=False
     ):
         if use_local:
@@ -174,35 +150,33 @@ class DataServer(FilePatterns):
         if not use_local:
             paginator = self.client.client.get_paginator('list_objects_v2')
 
-            if raw:
-                raw_pag = paginator.paginate(
-                    Bucket=self.bucket_name,
-                    Prefix=str(self.raw_folder),
-                    PaginationConfig=dict(PageSize=10000))
+            raw_pag = paginator.paginate(
+                Bucket=self.bucket_name,
+                Prefix=str(self.raw_folder),
+                PaginationConfig=dict(PageSize=10000))
 
-                raw_results = raw_pag.build_full_result()['Contents']
-                raw_keys = [
-                    self._preupload_revert(
-                        Path(k['Key']).relative_to(self.raw_folder))
-                    for k in raw_results
-                ]
+            raw_results = raw_pag.build_full_result()['Contents']
+            raw_keys = [
+                self._preupload_revert(
+                    Path(k['Key']).relative_to(self.raw_folder))
+                for k in raw_results
+            ]
 
-                self.s3_keys['raw'] = raw_keys
+            self.s3_keys['raw'] = raw_keys
 
-            if source:
-                source_pag = paginator.paginate(
-                    Bucket=self.bucket_name,
-                    Prefix=str(self.analysis_folder),
-                    PaginationConfig=dict(PageSize=10000))
+            source_pag = paginator.paginate(
+                Bucket=self.bucket_name,
+                Prefix=str(self.analysis_folder),
+                PaginationConfig=dict(PageSize=10000))
 
-                source_results = source_pag.build_full_result()['Contents']
-                source_keys = [
-                    self._preupload_revert(
-                        Path(k['Key']).relative_to(self.analysis_folder))
-                    for k in source_results
-                ]
+            source_results = source_pag.build_full_result()['Contents']
+            source_keys = [
+                self._preupload_revert(
+                    Path(k['Key']).relative_to(self.analysis_folder))
+                for k in source_results
+            ]
 
-                self.s3_keys['source'] = source_keys
+            self.s3_keys['source'] = source_keys
 
         all_keys = self.s3_keys['raw'] + self.s3_keys['source']
 
