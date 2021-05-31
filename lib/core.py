@@ -75,6 +75,32 @@ class FilePatterns:
     def category_patterns(self, cat):
         return self.file_patterns[cat]
 
+    def key_info(self, key):
+        """
+        key_info
+        ---------------
+        Given a key from the possible file keys given in the config,
+        returns all the path components required to localize it.
+        """
+        if key not in self.file_keys:
+            raise ValueError(f'key_to_fullpath: key must be one of {self.file_keys}')
+
+        category = ''
+        root = ''
+        dataset = ''
+        pattern = ''
+        prefix = ''
+        for name, info in self.file_entries.items():
+            if key in info.keys():
+                category = name
+                root = self.file_locations[name]['root']
+                dataset = self.file_locations[name]['dataset_format']
+                prefix = self.file_locations[name]['prefix']
+                pattern = info['pattern']
+                break
+
+        return category, root, dataset, prefix, pattern
+
 
 class S3Connect:
     """

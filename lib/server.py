@@ -2,6 +2,7 @@ from pathlib import Path
 import pandas as pd
 import json
 import logging
+import jmespath
 import lib.preuploaders
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from collections import defaultdict
@@ -150,35 +151,24 @@ class DataServer(FilePatterns):
         if not use_local:
             paginator = self.client.client.get_paginator('list_objects_v2')
 
-            raw_pag = paginator.paginate(
-                Bucket=self.bucket_name,
-                Prefix=str(self.raw_folder),
-                PaginationConfig=dict(PageSize=10000))
+            for prefix in jmespath.search('*.prefix', self.file_locations):
+                pag = paginator.paginate(
+                    Bucket=self.bucket_name,
+                    Prefix=str(prefix),
+                    PaginationConfig=dict(PageSize=10000))
 
-            raw_results = raw_pag.build_full_result()['Contents']
-            raw_keys = [
-                self._preupload_revert(
-                    Path(k['Key']).relative_to(self.raw_folder))
-                for k in raw_results
-            ]
+                results = pag.build_full_result()['Contents']
+                keys = [
+                    self._preupload_revert(
+                        Path(k['Key']).relative_to(prefix))
+                    for k in results
+                ]
 
-            self.s3_keys['raw'] = raw_keys
+                self.s3_keys[prefix] = keys
 
-            source_pag = paginator.paginate(
-                Bucket=self.bucket_name,
-                Prefix=str(self.analysis_folder),
-                PaginationConfig=dict(PageSize=10000))
-
-            source_results = source_pag.build_full_result()['Contents']
-            source_keys = [
-                self._preupload_revert(
-                    Path(k['Key']).relative_to(self.analysis_folder))
-                for k in source_results
-            ]
-
-            self.s3_keys['source'] = source_keys
-
-        all_keys = self.s3_keys['raw'] + self.s3_keys['source']
+        all_keys = []
+        for keys in self.s3_keys.values():
+            all_keys.extend(keys)
 
         if self.have_run_preuploads:
             # If we already ran preuploads on this set, our local files will
@@ -217,15 +207,14 @@ class DataServer(FilePatterns):
         self.all_datasets = pd.concat([
             self.all_datasets,
             all_datasets
-        ]).reset_index(drop=True)
+        ]).reset_index(drop=True).drop_duplicates(
+            subset=self.all_fields, ignore_index=True)
 
         return self.all_datasets
 
     def find_files(
         self,
-        source_folders=None,
-        raw_folders=None,
-        since=0,
+        folders=None,
     ):
         """
         find_files
@@ -235,54 +224,34 @@ class DataServer(FilePatterns):
         """
 
         if self.all_datasets.empty:
-            self.get_source_datasets()
+            for cat in self.file_cats:
+                self.get_datasets(cat)
 
-        if self.all_raw_datasets.empty:
-            self.get_raw_datasets()
+        datasets = pd.DataFrame()
 
-        source_datasets = pd.DataFrame()
-        raw_datasets = pd.DataFrame()
+        df = pd.DataFrame(columns=self.all_fields +
+                          ['folder', 'source_key'])
 
-        sourcefile_df = pd.DataFrame(columns=self.dataset_fields +
-                                   ['folder', 'source_key'])
+        file_dfs = []
+        set_dfs = []
 
-        rawfile_df = pd.DataFrame(columns=self.raw_fields +
-                                  ['folder', 'source_key'])
+        for key in self.file_keys:
+            cat, root, dataset, prefix, pattern = self.key_info(key)
 
-        all_sourcefiles = [self.find_source_files(key, pattern, source_folders)
-                           for key, pattern in self.source_patterns.items()]
+            key_df = self.find_category_files(cat, key, pattern, folders)
 
-        all_rawfiles = [self.find_raw_files(key, pattern, raw_folders)
-                        for key, pattern in self.raw_patterns.items()]
+            if not empty_or_false(key_df):
+                key_dataset_df = self.filter_datasets(
+                    key_df,
+                    self.file_locations[cat]['dataset_format_fields'],
+                    root
+                )
 
-        if any(notempty(all_sourcefiles)):
-            sourcefile_df = pd.concat(
-                all_sourcefiles).sort_values(
-                by=self.dataset_fields).reset_index(drop=True)
+                file_dfs.append(key_df)
+                set_dfs.append(key_dataset_df)
 
-            del all_sourcefiles
-            source_datasets = self.filter_datasets(
-                sourcefile_df,
-                self.dataset_fields,
-                self.dataset_root
-            )
-
-        if any(notempty(all_rawfiles)):
-            rawfile_df = pd.concat(
-                all_rawfiles).sort_values(
-                by=self.raw_fields).reset_index(drop=True)
-
-            del all_rawfiles
-            raw_datasets = self.filter_datasets(
-                rawfile_df,
-                self.raw_fields,
-                self.raw_dataset_root
-            )
-
-        self.datafiles = pd.concat(
-            [sourcefile_df, rawfile_df]).reset_index(drop=True)
-        self.datasets = pd.concat(
-            [source_datasets, raw_datasets]).reset_index(drop=True)
+        self.datafiles = pd.concat(file_dfs).reset_index(drop=True)
+        self.datasets = pd.concat(set_dfs).reset_index(drop=True)
 
         return self.datafiles, self.datasets
 
