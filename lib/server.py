@@ -260,8 +260,10 @@ class DataServer(FilePatterns):
                 file_dfs.append(key_df)
                 set_dfs.append(key_dataset_df)
 
-        self.datafiles = pd.concat(file_dfs).reset_index(drop=True)
-        self.datasets = pd.concat(set_dfs).reset_index(drop=True)
+        self.datafiles = pd.concat(file_dfs).reset_index(
+            drop=True).drop_duplicates(subset='filename', ignore_index=True)
+        self.datasets = pd.concat(set_dfs).reset_index(
+            drop=True).drop_duplicates(subset=self.all_fields, ignore_index=True)
 
         return self.datafiles, self.datasets
 
@@ -354,17 +356,9 @@ class DataServer(FilePatterns):
                 json.dump(self.s3_keys, s3kf)
 
         all_datasets_file = self.sync_contents['all_datasets']
-        all_raw_datasets_file = self.sync_contents['all_raw_datasets']
-
         self.all_datasets.to_csv(all_datasets_file, index=False)
-        self.all_raw_datasets.to_csv(all_raw_datasets_file, index=False)
 
         if upload:
-            self.client.client.upload_file(
-                str(all_raw_datasets_file),
-                Bucket=self.bucket_name,
-                Key=str(all_raw_datasets_file)
-            )
             self.client.client.upload_file(
                 str(all_datasets_file),
                 Bucket=self.bucket_name,
@@ -444,7 +438,7 @@ class DataServer(FilePatterns):
         # Remove any existing preupload prefix if present
         oldname = self._preupload_revert(oldname)
 
-        preupload_func = self.input_preuploads[source_key]
+        preupload_func = self.file_entries[source_key]['preupload']
 
         return str(Path(oldname).with_name(
             '__'.join([preupload_func.__name__, Path(oldname).name])
