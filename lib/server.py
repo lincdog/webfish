@@ -480,19 +480,14 @@ class DataServer(FilePatterns):
 
             errors[key] = []
 
-            if key in self.source_patterns.keys():
-                abs_root = self.master_root
-                data_root = self.dataset_root
-            elif key in self.raw_patterns.keys():
-                abs_root = self.raw_master_root
-                data_root = self.raw_dataset_root
+            cat, abs_root, data_root, prefix, pattern = self.key_info(key)
 
             # prepend proper absolute root
             filerows['filename'] = [str(Path(abs_root, f)) for f in filerows['filename']]
 
-            preupload_func = self.input_preuploads[key]
+            preupload_func = self.file_entries[cat][key]['preupload']
 
-            in_format = str(Path(data_root, self.input_patterns[key]))
+            in_format = str(Path(data_root, self.input_patterns[cat][key]))
             out_format = self._preupload_newname(in_format, key)
 
             with ProcessPoolExecutor(max_workers=nthreads) as exe:
