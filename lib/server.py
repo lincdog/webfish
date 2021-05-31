@@ -665,7 +665,7 @@ class DataServer(FilePatterns):
                 )
 
                 self.pending.drop(index=row.Index, inplace=True)
-                self.s3_keys[s3_type].append(
+                self.s3_keys[key_prefix].append(
                   self._preupload_revert(row.filename))
 
             except Exception as ex:
