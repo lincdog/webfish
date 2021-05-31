@@ -438,7 +438,9 @@ class DataServer(FilePatterns):
         # Remove any existing preupload prefix if present
         oldname = self._preupload_revert(oldname)
 
-        preupload_func = self.file_entries[source_key]['preupload']
+        cat, _, _, _, _ = self.key_info(source_key)
+
+        preupload_func = self.file_entries[cat][source_key]['preupload']
 
         return str(Path(oldname).with_name(
             '__'.join([preupload_func.__name__, Path(oldname).name])
