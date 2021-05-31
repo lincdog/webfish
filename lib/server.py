@@ -46,11 +46,9 @@ class DataServer(FilePatterns):
         self.client = s3_client
         self.has_preupload = []
 
-        # Remove output keys because the DataServer is agnostic of them; we only
+        # Remove output entries because the DataServer is agnostic of them; we only
         # care about input keys that need uploading or processing on the server side.
-        if 'output' in self.file_cats:
-            self.file_cats.remove('output')
-            self.file_locations.pop('output')
+        if 'output' in self.file_entries.keys():
             output_keys = self.file_entries.pop('output').keys()
             for k in output_keys:
                 self.file_keys.remove(k)
