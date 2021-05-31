@@ -46,6 +46,14 @@ class DataServer(FilePatterns):
         self.client = s3_client
         self.has_preupload = []
 
+        # Remove output keys because the DataServer is agnostic of them; we only
+        # care about input keys that need uploading or processing on the server side.
+        self.file_cats.pop('output', None)
+        self.file_locations.pop('output', None)
+        output_keys = self.file_entries.pop('output', None).keys()
+        for k in output_keys:
+            self.file_keys.remove(k)
+
         for name, loc in self.file_locations.items():
             if not Path(loc['root']).is_dir():
                 raise FileNotFoundError(f'master_root specified as '
@@ -237,6 +245,9 @@ class DataServer(FilePatterns):
 
         for key in self.file_keys:
             cat, root, dataset, prefix, pattern = self.key_info(key)
+
+            if cat == 'output':
+                continue
 
             key_df = self.find_category_files(cat, key, pattern, folders)
 

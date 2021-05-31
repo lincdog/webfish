@@ -46,10 +46,10 @@ class FilePatterns:
             config.get('file_locations', {}))
         self.file_cats = list(self.file_locations.keys())
 
-        self.all_fields = set(jmespath.search(
+        self.all_fields = list(set(jmespath.search(
             '*.dataset_format_fields[]',
             self.file_locations
-        ))
+        )))
 
         self.file_entries = {
             k: process_file_entries(v)
