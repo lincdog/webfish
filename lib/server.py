@@ -48,11 +48,12 @@ class DataServer(FilePatterns):
 
         # Remove output keys because the DataServer is agnostic of them; we only
         # care about input keys that need uploading or processing on the server side.
-        self.file_cats.pop('output', None)
-        self.file_locations.pop('output', None)
-        output_keys = self.file_entries.pop('output', None).keys()
-        for k in output_keys:
-            self.file_keys.remove(k)
+        if 'output' in self.file_cats:
+            self.file_cats.remove('output')
+            self.file_locations.pop('output')
+            output_keys = self.file_entries.pop('output').keys()
+            for k in output_keys:
+                self.file_keys.remove(k)
 
         for name, loc in self.file_locations.items():
             if not Path(loc['root']).is_dir():
