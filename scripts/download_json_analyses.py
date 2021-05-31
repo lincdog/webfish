@@ -329,7 +329,7 @@ def main(max_copy=10, allow_duplicates=False):
             # JSON, failure of one of the assertions in validate_json, or
             # some other ValueError.
             logger.error(f'JSON file {new_file} was invalid for '
-                         f'the following reason: ', e)
+                         f'the following reason: {e}')
 
     # max_copy is a throttle on the number of analyses we will submit at one time.
     # Right now, we just drop any files that are beyond this. In the future, we would
@@ -338,7 +338,7 @@ def main(max_copy=10, allow_duplicates=False):
     if len(to_copy) > max_copy:
         logger.error(f'Too many ({len(to_copy)}) new analysis '
                      f'files (max set to {max_copy}) - ignoring '
-                     f'these files: ', to_copy[max_copy:])
+                     f'these files: {to_copy[max_copy:]}')
 
         # Since we are ignoring files in to_copy[max_copy:], find and drop them
         # from the history directory. Ideally we would wait to delete files until
@@ -366,7 +366,7 @@ def main(max_copy=10, allow_duplicates=False):
         time.sleep(0.1)
 
     logger.info(f'Successfully submitted {len(successful_copies)} '
-                f'analyses: ', successful_copies)
+                f'analyses: {successful_copies}')
 
     # Finally, save the history file.
     history_df.to_csv(history_file, index=False)
