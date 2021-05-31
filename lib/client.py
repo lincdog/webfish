@@ -31,7 +31,9 @@ class DataClient(FilePatterns):
         s3_client=None,
     ):
         super().__init__(config)
+
         self.client = s3_client
+        self.has_generator = []
 
         self.sync_folder = Path(config.get('sync_folder', 'monitoring/'))
         self.sync_folder.mkdir(parents=True, exist_ok=True)
@@ -45,7 +47,6 @@ class DataClient(FilePatterns):
         self.pending = Path(self.sync_folder, 'pending.csv')
 
         self.all_datasets_file = Path(self.sync_folder, 'all_datasets.csv')
-        self.all_raw_datasets_file = Path(self.sync_folder, 'all_raw_datasets.csv')
 
         self.datafiles = None
         self.datasets = None
@@ -59,6 +60,7 @@ class DataClient(FilePatterns):
             else:
                 generator = None
             self.output_generators[k] = generator
+            self.has_generator.append(k)
 
     def sync_with_s3(
         self,
@@ -92,11 +94,8 @@ class DataClient(FilePatterns):
             self.datasets = pd.DataFrame()
             self.datafiles = pd.DataFrame()
 
-        if self.all_datasets_file.exists() and self.all_raw_datasets_file.exists():
-            self.all_datasets = pd.concat([
-                pd.read_csv(self.all_datasets_file),
-                pd.read_csv(self.all_raw_datasets_file)
-            ]).reset_index(drop=True)
+        if self.all_datasets_file.exists():
+            self.all_datasets = pd.read_csv(self.all_datasets_file)
 
     def local(
         self,
@@ -173,8 +172,7 @@ class DataClient(FilePatterns):
         results = []
 
         # Input files: no client side processing required
-        if (field in self.source_files.keys()
-                or field in self.raw_files.keys()):
+        if field not in self.has_generator:
             files = needed.query('source_key == @field')['filename'].values
             results = [
                 self.retrieve_or_download(f, field=field, force_download=force_download)
@@ -182,9 +180,11 @@ class DataClient(FilePatterns):
             ]
 
         # Output files: client-side processing required
-        elif field in self.output_files.keys():
+        elif field in self.has_generator:
+            cat, root, dataset, prefix, pattern = self.key_info(field)
+
             required_fields = process_requires(
-                self.output_files[field].get('requires', []))
+                self.file_entries[cat][field].get('requires', []))
 
             required_rows = needed.query('source_key in @required_fields').copy()
             local_filenames = []
@@ -207,7 +207,7 @@ class DataClient(FilePatterns):
             if generator is not None:
                 results = generator(
                     inrows=required_rows,
-                    outpattern=Path(self.dataset_root, self.output_patterns[field]),
+                    outpattern=Path(dataset, pattern),
                     savedir=Path(self.local_store)
                 )
         else:
@@ -219,19 +219,13 @@ class DataClient(FilePatterns):
     def retrieve_or_download(
         self,
         key,
-        field=None,
         force_download=False
     ):
         now = datetime.now()
         client_logger.debug(f'RETRIEVEORDOWNLOAD: starting {key}')
         error = []
 
-        if field in self.source_patterns.keys():
-            prefix = self.analysis_folder
-        elif field in self.raw_patterns.keys():
-            prefix = self.raw_folder
-        else:
-            prefix = ''
+        cat, root, dataset, prefix, pattern = self.key_info(key)
 
         lp = self.local(k2f(key))
 
