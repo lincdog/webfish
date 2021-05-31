@@ -88,8 +88,9 @@ class FilePatterns:
         category = ''
         root = ''
         dataset = ''
-        pattern = ''
         prefix = ''
+        pattern = ''
+
         for name, info in self.file_entries.items():
             if key in info.keys():
                 category = name

@@ -649,14 +649,7 @@ class DataServer(FilePatterns):
                 server_logger.info(f'upload_to_s3: {p} files done out of {total}')
             p += 1
 
-            if row.source_key in self.source_files.keys():
-                s3_type = 'source'
-                root = self.master_root
-                key_prefix = self.analysis_folder
-            elif row.source_key in self.raw_files.keys():
-                s3_type = 'raw'
-                root = self.raw_master_root
-                key_prefix = self.raw_folder
+            s3_type, root, dataset, key_prefix, pattern = self.key_info(row.source_key)
 
             if row.source_key in self.has_preupload:
                 root = Path(self.preupload_root)
