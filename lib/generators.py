@@ -66,6 +66,7 @@ def generate_mesh(
         return None
 
     outfile = Path(savedir, str(outpattern).format_map(inrows.iloc[0].to_dict()))
+    print(outfile)
 
     if outfile.is_file():
         return outfile

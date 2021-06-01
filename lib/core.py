@@ -41,7 +41,7 @@ class FilePatterns:
         config
     ):
         self.config = config
-        breakpoint()
+
         self.file_locations = process_file_locations(
             config.get('file_locations', {}))
         self.file_cats = list(self.file_locations.keys())
@@ -94,10 +94,12 @@ class FilePatterns:
         for name, info in self.file_entries.items():
             if key in info.keys():
                 category = name
-                root = self.file_locations[name]['root']
-                dataset = self.file_locations[name]['dataset_format']
-                prefix = self.file_locations[name]['prefix']
-                pattern = info[key]['pattern']
+                if name in self.file_locations.keys():
+                    root = self.file_locations[name].get('root', '')
+                    dataset = self.file_locations[name].get('dataset_format', '')
+                    prefix = self.file_locations[name].get('prefix', '')
+
+                pattern = info[key].get('pattern', '')
                 break
 
         return category, root, dataset, prefix, pattern
