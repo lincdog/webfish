@@ -38,7 +38,7 @@ class FilePatterns:
 
     def __init__(
         self,
-        config
+        config,
     ):
         self.config = config
 
@@ -69,8 +69,12 @@ class FilePatterns:
 
     @property
     def input_patterns(self):
-        return {k: v for k, v in self.file_patterns.items()
-                if k in self.file_cats}
+        result = {}
+        for k, v in self.file_patterns.items():
+            if k in self.file_cats:
+                result.update(v)
+
+        return result
 
     def category_patterns(self, cat):
         return self.file_patterns[cat]

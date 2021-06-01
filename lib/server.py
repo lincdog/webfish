@@ -40,8 +40,24 @@ class DataServer(FilePatterns):
         self,
         config,
         s3_client,
+        test_mode=False
     ):
         super().__init__(config)
+
+        # If in test mode, prefix all absolute root directories with the
+        # test_root value, and set the bucket name to the test bucket.
+        if test_mode:
+            test_root = config['test_root']
+            bucket_name = config['test_bucket_name']
+
+            for name, loc in self.file_locations.items():
+                old_root = loc['root']
+                self.file_locations[name]['root'] = str(Path(test_root, old_root))
+
+            preupload_root = str(Path(test_root, config.get('preupload_root')))
+        else:
+            bucket_name = config['bucket_name']
+            preupload_root = config.get('preupload_root')
 
         self.client = s3_client
         self.has_preupload = []
@@ -53,11 +69,14 @@ class DataServer(FilePatterns):
             for k in output_keys:
                 self.file_keys.remove(k)
 
+        # Ensure all "root" data directories exist
         for name, loc in self.file_locations.items():
             if not Path(loc['root']).is_dir():
                 raise FileNotFoundError(f'master_root specified as '
                                         f'{loc["root"]} does not exist')
 
+            # Populate the preupload function dictionary from the string names
+            # of preupload functions for any keys that have them
             for k, v in self.file_entries[name].items():
                 if v['preupload']:
                     preupload = getattr(lib.preuploaders, v['preupload'])
@@ -67,22 +86,55 @@ class DataServer(FilePatterns):
         self.sync_folder = config.get('sync_folder', 'monitoring/')
         Path(self.sync_folder).mkdir(parents=True, exist_ok=True)
 
-        self.preupload_root = config.get('preupload_root')
+        self.preupload_root = preupload_root
 
         self.all_datasets = pd.DataFrame()
 
-        self.bucket_name = config.get('bucket_name')
+        self.bucket_name = bucket_name
 
         self.sync_contents = {
+            # All folders that fit the `dataset_pattern`s supplied for any
+            # input file category. Upper bound on actual datasets as these
+            # are not checked for actually containing the right files -
+            # just the folder structure fitting a dataset pattern.
+            # Corresponds to self.all_datasets
             'all_datasets': Path(self.sync_folder, 'all_datasets.csv'),
+
+            # All patterns for input files of each file category. Used to
+            # check if any new patterns have been added and to search for
+            # these new ones and upload them, regardless of mod time etc.
             'input_patterns': Path(self.sync_folder, 'input_patterns.json'),
+
+            # Used to keep track of when save_and_sync was last run,
+            # to check for files that have been modified since the last run.
             'timestamp': Path(self.sync_folder, 'TIMESTAMP'),
+
+            # List of all S3 keys in each file category. Used to compare
+            # to local files and see if anything needs to be uploaded.
+            # Currently uses *original*, not preupload prefixed, filenames.
+            # Corresponds to self.s3_keys
             's3_keys': Path(self.sync_folder, 's3_keys.json'),
+
+            # The more "realistic" table of datasets - to be in this file,
+            # a dataset must have at least one of the input files of any
+            # category present. Corresponds to self.datasets
             'sync_file': Path(self.sync_folder, f'sync.csv'),
+
+            # Master table of all data files as well as their dataset and
+            # file fields. This is the most important sync document.
+            # Corresponds to self.datafiles
             'file_table': Path(self.sync_folder, f'files.csv'),
+
+            # Temporarily populated during upload_to_s3 with file rows that
+            # are meant to be uploaded; rows are dropped as uploads succeed,
+            # so if any are left over then some uploads have failed. This
+            # can be used to restart the upload process where it errored out.
             'pending_uploads': Path(self.sync_folder, f'pending.csv')
         }
 
+        # Dictionary that will contain the result of reading all the above
+        # files from the local sync folder. These can then be compared with
+        # freshly computed file and dataset lists to see what needs to be updated.
         self.local_sync = dict.fromkeys(self.sync_contents.keys(), None)
         self.s3_keys = defaultdict(list)
         self.s3_diff = pd.DataFrame()
@@ -98,6 +150,17 @@ class DataServer(FilePatterns):
         self,
         replace=False,
     ):
+        """
+        read_local_sync
+        ---------------
+        Read all files defined in self.sync_contents and optionally replace
+        any current values with these local contents. These can be used for
+        determining the output of the *last time* save_and_sync was run,
+        and comparing that to what we currently have, seeing if there are
+        new files to upload etc. It also serves as a local cache for the
+        long list of S3 keys which takes a few minutes to actually fetch
+        from Wasabi.
+        """
 
         def read_or_empty(fname, **kwargs):
             try:
@@ -112,9 +175,11 @@ class DataServer(FilePatterns):
 
             if isinstance(item, Path) and item in sync_folder_contents:
                 if name in ('all_datasets', 'all_raw_datasets'):
-                    self.local_sync[name] = pd.read_csv(item, dtype=str)
+                    self.local_sync[name] = read_or_empty(item, dtype=str)
 
                 elif name == 'input_patterns':
+                    # Identify new source keys by reading the local file
+                    # and comparing to the ones we are aware of currently.
                     local_patterns = json.load(open(item))
                     self.new_source_keys = [
                         k for k, v in self.input_patterns.items()
@@ -127,11 +192,11 @@ class DataServer(FilePatterns):
                 elif name == 's3_keys':
                     self.local_sync[name] = json.load(open(item))
                 elif name == 'sync_file':
-                    self.datasets = read_or_empty(item, dtype=str)
+                    self.local_sync[name] = read_or_empty(item, dtype=str)
                 elif name == 'file_table':
-                    self.datafiles = read_or_empty(item, dtype=str)
+                    self.local_sync[name] = read_or_empty(item, dtype=str)
                 elif name == 'pending_uploads':
-                    self.pending = read_or_empty(item, dtype=str)
+                    self.local_sync[name] = read_or_empty(item, dtype=str)
                 else:
                     pass
 
