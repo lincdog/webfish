@@ -54,7 +54,7 @@ class DataClient(FilePatterns):
 
         # Output files and generators
         self.output_generators = {}
-        for k, v in self.file_patterns['output'].items():
+        for k, v in self.file_entries['output'].items():
             if v['generator']:
                 generator = getattr(lib.generators, v['generator'])
             else:
@@ -175,13 +175,13 @@ class DataClient(FilePatterns):
         if field not in self.has_generator:
             files = needed.query('source_key == @field')['filename'].values
             results = [
-                self.retrieve_or_download(f, field=field, force_download=force_download)
+                self.retrieve_or_download(f, field, force_download=force_download)
                 for f in files
             ]
 
         # Output files: client-side processing required
         elif field in self.has_generator:
-            cat, root, dataset, prefix, pattern = self.key_info(field)
+            cat, root, _, prefix, pattern = self.key_info(field)
 
             required_fields = process_requires(
                 self.file_entries[cat][field].get('requires', []))
@@ -189,12 +189,24 @@ class DataClient(FilePatterns):
             required_rows = needed.query('source_key in @required_fields').copy()
             local_filenames = []
 
+            dataset = ''
+            dataset_nest = 0
+
             # fetch as many required files as we can
             for row in required_rows.itertuples():
+                cat, _, dataset_pat, _, _ = self.key_info(row.source_key)
+                nest = len(self.file_locations[cat]['dataset_format_fields'])
+
+                # Use the most specific (most nested) dataset format as the root
+                # directory for saving the output file.
+                if nest > dataset_nest:
+                    dataset_nest = nest
+                    dataset = dataset_pat
+
                 local_filenames.append(
                     self.retrieve_or_download(
                         row.filename,
-                        field=row.source_key,
+                        row.source_key,
                         force_download=force_download
                     )
                 )
@@ -219,15 +231,18 @@ class DataClient(FilePatterns):
     def retrieve_or_download(
         self,
         key,
+        field,
         force_download=False
     ):
         now = datetime.now()
         client_logger.debug(f'RETRIEVEORDOWNLOAD: starting {key}')
         error = []
 
-        cat, root, dataset, prefix, pattern = self.key_info(key)
+        cat, root, dataset, prefix, pattern = self.key_info(field)
 
         lp = self.local(k2f(key))
+
+        print('r_o_d:', cat, root, dataset, prefix, pattern, lp)
 
         if force_download or not lp.is_file():
             error = self.client.download_s3_objects(
