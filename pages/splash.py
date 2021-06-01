@@ -35,7 +35,8 @@ layout = [
                              '("experiment_name" field). Then navigate using the tabs '
                              'to explore the data or submit a new analysis run.')
             ])
-        ], style={'margin-top': '10px'})
+        ], style={'margin-top': '10px'}),
+
     ], width=6),
     dbc.Col([
         dbc.Card([
@@ -57,19 +58,39 @@ layout = [
                     html.Li(dcc.Markdown(
                         'Within each HybCycle folder, a series of TIFF stacks, '
                         'one for each position, named **`MMStack_Pos#.ome.tif`.**')),
+                    html.Li([
+                        dcc.Markdown(
+                            'A folder named **`barcode_key`** containing one or more files '
+                            'named **`channel_#.csv`** that specify the barcode assigned '
+                            'to each gene in each barcoding channel in your experiment.'
+                            ' Note that **channels start from 1**. Click the arrow below '
+                            'for an example of barcode key formatting.'
+                        ),
+                        html.Div(html.Details([
+                            html.Summary(html.B('Barcode key example')),
+                            dbc.Table.from_dataframe(example_barcode_key, striped=True, size='sm')
+                        ]), style={'width': '50%',
+                                   'font-size': '10pt',
+                                   'margin': '20px'})
+                    ]),
+
                     html.Li(dcc.Markdown(
-                        'A folder named **`barcode_key`** containing one or more files '
-                        'named **`channel_#.csv`** that specify the barcode assigned '
-                        'to each gene in each barcoding channel in your experiment.'
-                        ' Note that **channels start from 1**. See below for an example '
-                        'of how to format the barcode key.'
+                        '(optional) A folder named **`segmentation`** which contains '
+                        'images to be used for segmentation - e.g. membrane stains. '
+                        'These images should be named identically to the hyb round images: '
+                        '`MMStack_Pos#.ome.tif` for each position.'
                     )),
-                    html.Li(dcc.Markdown('A positions file from the microscope, ending in **`.pos`**.'))
+                    html.Li(dcc.Markdown(
+                        '(optional) A folder named **`Labeled_Images`** containing '
+                        '*existing* segmentation masks produced off-line.'
+                    )),
+                    html.Li(dcc.Markdown(
+                        'A positions file from the microscope, '
+                        'ending in **`.pos`**, which is used to display the '
+                        'experiment overview in the correct arrangement.'
+                    ))
                 ]),
-                html.Div([
-                    html.H5('Barcode key example'),
-                    dbc.Table.from_dataframe(example_barcode_key, striped=True, size='sm')
-                ], style={'width': '50%', 'font-size': '10pt'})
+
             ])
         ], style={'margin-top': '10px'})
     ], width=6)
