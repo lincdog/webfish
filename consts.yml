@@ -16,7 +16,7 @@ region_name: us-west-1
 bucket_name: hpc-wasabi
 
 test_root: tests/webfish_test_root
-test_bucket_name: testing-wasabi
+test_bucket_name: webfish-sandbox
 
 file_locations:
   source:
