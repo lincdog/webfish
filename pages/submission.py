@@ -144,10 +144,23 @@ clear_components = {
                 id='sb-dot-detection-select',
                 options=[
                     {'label': 'Biggest Jump 3D', 'value': 'biggest jump 3d'},
-                    {'label': 'ADCG 2D', 'value': 'adcg 2d'}
+                    {'label': 'ADCG 2D', 'value': 'adcg 2d'},
+                    {'label': 'Matlab 3D', 'value': 'matlab 3d'}
                 ],
                 value='biggest jump 3d',
                 disabled=False
+            ),
+        ]),
+    'sb-bg-subtraction':
+        dbc.FormGroup([
+           dbc.Checklist(
+                id='sb-bg-subtraction',
+                options=[
+                    {'label': 'Run background subtraction',
+                     'value': 'background subtraction'},
+                ],
+                value=['background subtraction'],
+                switch=True
             ),
         ]),
     'sb-strictness-select':
@@ -328,6 +341,7 @@ component_groups = {
     'alignment': ['sb-alignment-select'],
 
     'dot-detection': ['sb-dot-detection-select',
+                      'sb-bg-subtraction',
                       'sb-strictness-select',
                       'sb-threshold-select'],
 
@@ -376,6 +390,7 @@ id_to_json_key = {
     'sb-alignment-select': 'alignment',
 
     'sb-dot-detection-select': 'dot detection',
+    'sb-bg-subtraction': _checklist_process,
     'sb-strictness-select': 'strictness',
     'sb-threshold-select': 'threshold',
 
