@@ -360,26 +360,60 @@ component_groups = {
 
 }
 
-def _position_process(positions):
+def _position_process(positions, current):
     if not positions:
-        return {'positions': ''}
-
-    return {'positions': ','.join([str(p) for p in positions])}
-
-def _checklist_process(checked):
-    return {k: "true" for k in checked}
-
-def _decoding_channel_process(arg):
-    if arg == 'across':
-        return {'decoding': 'across'}
-    elif arg == 'individual':
-        return {}
-    elif isinstance(arg, list):
-        return {'decoding': {
-            'individual': [str(a) for a in arg]
-        }}
+        current['positions'] = ''
     else:
-        return {}
+        current['positions'] = ','.join([str(p) for p in positions])
+
+    return current
+
+def _checklist_process(checked, current):
+    update = {k: "true" for k in checked}
+
+    current.update(update)
+
+    return current
+
+def _decoding_channel_process(arg, current):
+
+    cur_decoding = current.get('decoding', None)
+    print(f'cd: {cur_decoding}, {arg}')
+
+    if cur_decoding is None:
+        # If there is not yet a decoding key, add it and return the dict
+        current['decoding'] = str(arg)
+
+        return current
+    elif cur_decoding == 'across':
+        # If there is a decoding key and it is 'across', do nothing
+        # and return the dict
+        return current
+    elif cur_decoding == 'individual':
+        if isinstance(arg, list):
+            # Individual is selected and we are handling the list of selected
+            # channels.
+            current['decoding'] = {
+                'individual': [str(a) for a in arg]
+            }
+        elif not arg:
+            raise ValueError('Must specify at least one channel to decode '
+                             'if "individual" is selected')
+        return current
+
+
+def _dotdetection_threshold_process(arg, current):
+    cur_dd = current.get('dot detection', None)
+
+    if cur_dd is None:
+        current['dot detection'] = str(arg)
+
+        return current
+
+    elif cur_dd != 'matlab 3d':
+        current['threshold'] = str(arg)
+
+    return current
 
 id_to_json_key = {
     'user-select': 'personal',
@@ -389,10 +423,10 @@ id_to_json_key = {
 
     'sb-alignment-select': 'alignment',
 
-    'sb-dot-detection-select': 'dot detection',
+    'sb-dot-detection-select': _dotdetection_threshold_process,
     'sb-bg-subtraction': _checklist_process,
     'sb-strictness-select': 'strictness',
-    'sb-threshold-select': 'threshold',
+    'sb-threshold-select': _dotdetection_threshold_process,
 
     'sb-segmentation-select': 'segmentation',
     'sb-segmentation-checklist': _checklist_process,
@@ -409,31 +443,58 @@ id_to_json_key = {
 
 
 def form_to_json_output(form_status):
+    """
+    form_to_json_output
+    -------------------
+    Takes the status of the form (a dict where the keys are the DOM
+    id of each form element and the values are the value of that form
+    element) and performs the necessary processing to generate a dict
+    that will be written as a JSON file to submit to the pipeline.
+
+    The id_to_json_key dict (above) is crucial because it specifies either
+    * the mapping from the form element id to the pipeline JSON input key,
+        leaving the value unchanged
+    or:
+    * a callable that takes the value of the form element and returns a dict
+        that will be used to update() the JSON dict in progress.
+
+    """
+
+    # The clusters key is always the same (at least for now)
     out = {
         "clusters": {
             "ntasks": "1",
             "mem-per-cpu": "10G",
             "email": "nrezaee@caltech.edu"
-        }
+        },
+        "__ERRORS__": []
     }
 
+    # This is special as it is not in the final dict but becoems the
+    # filename of the JSON file.
     analysis_name = ''
 
+    # For each form-id: form-value pair
     for k, v in form_status.items():
 
         if k == 'sb-analysis-name' and v:
             analysis_name = sanitize(v, delimiter_allowed=False)
         elif k in id_to_json_key.keys():
+            # If the form-id is in the id_to_json_key dict, fetch
+            # the corresponding value (a string or a function)
             prekey = id_to_json_key[k]
 
             if callable(prekey):
-                update = prekey(v)
+                # If a function, directly set the dictionary to the
+                # result of calling the function on the current output dict
+                try:
+                    out = prekey(v, out)
+                except ValueError as e:
+                    out['__ERRORS__'].append(e)
             else:
-                update = {prekey: str(v)}
-
-            for uk, uv in update.items():
-                if uk not in out.keys():
-                    out[uk] = uv
+                # else (a string), make a one-element dict that just
+                # assigns the form value to the JSON key
+                out.update({prekey: str(v)})
 
     return analysis_name, out
 
@@ -517,6 +578,7 @@ def submit_new_analysis(n_clicks, user, dataset, stage_select, *values):
     status.update({c: v for c, v in zip(relevant_comps, values)})
 
     analysis_name, submission = form_to_json_output(status)
+    sub_errors = submission.pop('__ERRORS__')
 
     for stage in set(pipeline_stages):
         if stage not in stage_select:
@@ -526,6 +588,13 @@ def submit_new_analysis(n_clicks, user, dataset, stage_select, *values):
         'user==@user and dataset==@dataset')['analysis'].unique()
 
     alerts = []
+
+    if len(sub_errors) > 0:
+        upload = False
+        alerts.extend([
+            dbc.Alert(f'Validation error: {e}', color='danger')
+            for e in sub_errors
+        ])
 
     if not all((analysis_name, user, dataset)):
         upload = False
@@ -540,6 +609,10 @@ def submit_new_analysis(n_clicks, user, dataset, stage_select, *values):
 
     if not upload:
         alerts.append(dbc.Alert('Did not upload JSON to S3 due to errors', color='danger'))
+
+    # We want the most general errors first, but we have to check the specific
+    # ones first.
+    alerts.reverse()
 
     modal = dbc.Modal([
         dbc.ModalHeader('Confirm Submission'),
