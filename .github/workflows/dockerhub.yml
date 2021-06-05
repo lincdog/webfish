@@ -10,6 +10,7 @@ on:
 jobs:
   # This workflow contains a single job called "build"
   build:
+    if: ${{ github.repository_owner == 'CaiGroup' }}
     # The type of runner that the job will run on
     runs-on: ubuntu-latest
 
