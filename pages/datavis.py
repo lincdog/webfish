@@ -176,7 +176,12 @@ def populate_analytics(pos, analysis, dataset, user):
         'dataset': dataset,
         'analysis': analysis,
         'position': pos
-    }, fields=['onoff_intensity_plot', 'onoff_sorted_plot', 'falsepositive_txt'])
+    }, fields=[
+        'onoff_intensity_plot',
+        'onoff_sorted_plot',
+        'falsepositive_txt',
+        'genes_assigned_to_cells'
+    ])
 
     if not active['onoff_intensity_plot']:
         img1 = html.B('On/off target intensity plot not found!')
@@ -188,6 +193,12 @@ def populate_analytics(pos, analysis, dataset, user):
         img2 = html.B('On/off target sorted barcode plot not found!')
     else:
         img2 = html.Img(src=base64_image(active['onoff_sorted_plot'][0]),
+                        style={'max-width': '100%'})
+
+    if not active['genes_assigned_to_cells']:
+        img3 = html.B('Genes assigned to cells plot not found!')
+    else:
+        img3 = html.Img(src=base64_image(active['genes_assigned_to_cells'][0]),
                         style={'max-width': '100%'})
 
     if not active['falsepositive_txt']:
@@ -212,7 +223,9 @@ def populate_analytics(pos, analysis, dataset, user):
             html.Hr(),
             img1,
             html.Hr(),
-            img2]
+            img2,
+            html.Hr(),
+            img3]
 
 
 @app.callback(

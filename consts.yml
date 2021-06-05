@@ -83,6 +83,8 @@ pages:
         "MMStack_Pos{position}/False_Positive_Rate_Analysis/Channel_{channel}/false_positives_after_segmentation.txt"
       offsets_json:
         "MMStack_Pos{position}/offsets.json"
+      genes_assigned_to_cells:
+        "MMStack_Pos{position}/Segmentation/Channel_{channel}/Genes_Assigned_to_Cells_Plotted.png"
 
     # Listing of output files generated from the source files
     # - "pattern" is the format string pattern for the output file,
