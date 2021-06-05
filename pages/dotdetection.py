@@ -478,7 +478,7 @@ layout = [
 
         ], id='dd-image-params-div', style={'margin': '10px'})
 
-    ], style={'border-right': '1px solid gray'}, width=4),
+    ], width=4),
 
     dbc.Col([
         dcc.Loading(cm.component('dd-fig'), id='dd-graph-wrapper')

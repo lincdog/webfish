@@ -196,10 +196,12 @@ def populate_analytics(pos, analysis, dataset, user):
                         style={'max-width': '100%'})
 
     if not active['genes_assigned_to_cells']:
-        img3 = html.B('Genes assigned to cells plot not found!')
+        img3 = [html.B('Genes assigned to cells plot not found!')]
     else:
-        img3 = html.Img(src=base64_image(active['genes_assigned_to_cells'][0]),
+        img3 = [html.H5('Genes Assigned to Cells Plot'),
+                html.Img(src=base64_image(active['genes_assigned_to_cells'][0]),
                         style={'max-width': '100%'})
+        ]
 
     if not active['falsepositive_txt']:
         fp_comp = html.B('No false positive rate analysis found!')
@@ -225,7 +227,7 @@ def populate_analytics(pos, analysis, dataset, user):
             html.Hr(),
             img2,
             html.Hr(),
-            img3]
+            *img3]
 
 
 @app.callback(
@@ -368,7 +370,7 @@ layout = [
             ], id='dv-analytics-wrapper')
         ])
 
-    ], width=4, style={'border-right': '1px solid gray'}),
+    ], width=4),
 
     dbc.Col([
         html.Div([
