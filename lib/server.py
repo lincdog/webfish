@@ -2,15 +2,19 @@ from pathlib import Path
 import pandas as pd
 import json
 import logging
+import jmespath
+import lib.preuploaders
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from collections import defaultdict
 from time import time
-from lib.core import Page
+from lib.core import FilePatterns
 from lib.util import (
     fmt2regex,
     find_matching_files,
+    copy_or_nop,
     notempty,
-    empty_or_false
+    empty_or_false,
+    process_file_entries
 )
 
 server_logger = logging.getLogger(__name__)
@@ -18,7 +22,7 @@ server_logger = logging.getLogger(__name__)
 logging.getLogger('tifffile').addHandler(logging.NullHandler())
 
 
-class DataServer:
+class DataServer(FilePatterns):
     """
     DataServer
     -----------
@@ -37,92 +41,134 @@ class DataServer:
         self,
         config,
         s3_client,
+        test_mode=False
     ):
-        self.config = config
+        super().__init__(config)
+
+        # If in test mode, prefix all absolute root directories with the
+        # test_root value, and set the bucket name to the test bucket.
+        if test_mode:
+            test_root = config['test_root']
+            bucket_name = config['test_bucket_name']
+
+            for name, loc in self.file_locations.items():
+                old_root = loc['root']
+                self.file_locations[name]['root'] = str(Path(test_root, old_root))
+
+            preupload_root = str(Path(test_root, config.get('preupload_root')))
+        else:
+            bucket_name = config['bucket_name']
+            preupload_root = config.get('preupload_root')
+
         self.client = s3_client
+        self.has_preupload = []
 
-        self.master_root = config.get('master_root')
-        if not Path(self.master_root).is_dir():
-            raise FileNotFoundError(f'master_root specified as '
-                                    f'{self.master_root} does not exist')
+        # Remove output entries because the DataServer is agnostic of them; we only
+        # care about input keys that need uploading or processing on the server side.
+        if 'output' in self.file_entries.keys():
+            output_keys = self.file_entries.pop('output').keys()
+            for k in output_keys:
+                self.file_keys.remove(k)
 
-        self.raw_master_root = config.get('raw_master_root')
-        if not Path(self.master_root).is_dir():
-            raise FileNotFoundError(f'raw_master_root specified as '
-                                    f'{self.raw_master_root} does not exist')
+        # Ensure all "root" data directories exist
+        for name, loc in self.file_locations.items():
+            if not Path(loc['root']).is_dir():
+                raise FileNotFoundError(f'master_root specified as '
+                                        f'{loc["root"]} does not exist')
+
+            # Populate the preupload function dictionary from the string names
+            # of preupload functions for any keys that have them
+            for k, v in self.file_entries[name].items():
+                if v['preupload']:
+                    preupload = getattr(lib.preuploaders, v['preupload'])
+                    self.file_entries[name][k]['preupload'] = preupload
+                    self.has_preupload.append(k)
 
         self.sync_folder = config.get('sync_folder', 'monitoring/')
         Path(self.sync_folder).mkdir(parents=True, exist_ok=True)
 
-        self.analysis_folder = config.get('analysis_folder', 'analyses/')
-        self.raw_folder = config.get('raw_folder', 'raw/')
-
-        self.local_store = config.get('local_store', 'webfish_data/')
-        self.preupload_root = config.get('preupload_root')
+        self.preupload_root = preupload_root
 
         self.all_datasets = pd.DataFrame()
-        self.all_raw_datasets = pd.DataFrame()
 
-        dr = config.get('dataset_root', '')
-        self.dataset_root = dr
-        # How many levels do we have to fetch to reach the datasets?
-        self.dataset_nest = len(Path(dr).parts) - 1
-
-        dre, drglob = fmt2regex(dr)
-        self.dataset_re = dre
-        self.dataset_glob = drglob
-
-        self.dataset_fields = list(dre.groupindex.keys())
-
-        rr = config.get('raw_dataset_root', '')
-        self.raw_dataset_root = rr
-        self.raw_nest = len(Path(rr).parts) - 1
-
-        rre, rrglob = fmt2regex(rr)
-        self.raw_re = rre
-        self.raw_glob = rrglob
-
-        self.raw_fields = list(rre.groupindex.keys())
-
-        self.all_fields = self.dataset_fields + self.raw_fields
-
-        self.pages = {name: Page(config, name) for name in config.get('pages', {})}
-        self.pagenames = tuple(self.pages.keys())
-
-        self.bucket_name = config.get('bucket_name')
-
-        pats = {}
-        for p in self.pages.values():
-            pats.update(p.input_patterns)
-
-        self.all_input_patterns = pats
+        self.bucket_name = bucket_name
 
         self.sync_contents = {
+            # All folders that fit the `dataset_pattern`s supplied for any
+            # input file category. Upper bound on actual datasets as these
+            # are not checked for actually containing the right files -
+            # just the folder structure fitting a dataset pattern.
+            # Corresponds to self.all_datasets
             'all_datasets': Path(self.sync_folder, 'all_datasets.csv'),
-            'all_raw_datasets': Path(self.sync_folder, 'all_raw_datasets.csv'),
+
+            # All patterns for input files of each file category. Used to
+            # check if any new patterns have been added and to search for
+            # these new ones and upload them, regardless of mod time etc.
             'input_patterns': Path(self.sync_folder, 'input_patterns.json'),
+
+            # Used to keep track of when save_and_sync was last run,
+            # to check for files that have been modified since the last run.
             'timestamp': Path(self.sync_folder, 'TIMESTAMP'),
-            's3_keys': Path(self.sync_folder, 's3_keys.json')
+
+            # List of all S3 keys in each file category. Used to compare
+            # to local files and see if anything needs to be uploaded.
+            # Currently uses *original*, not preupload prefixed, filenames.
+            # Corresponds to self.s3_keys
+            's3_keys': Path(self.sync_folder, 's3_keys.json'),
+
+            # The more "realistic" table of datasets - to be in this file,
+            # a dataset must have at least one of the input files of any
+            # category present. Corresponds to self.datasets
+            'sync_file': Path(self.sync_folder, f'sync.csv'),
+
+            # Master table of all data files as well as their dataset and
+            # file fields. This is the most important sync document.
+            # Corresponds to self.datafiles
+            'file_table': Path(self.sync_folder, f'files.csv'),
+
+            # Temporarily populated during upload_to_s3 with file rows that
+            # are meant to be uploaded; rows are dropped as uploads succeed,
+            # so if any are left over then some uploads have failed. This
+            # can be used to restart the upload process where it errored out.
+            'pending_uploads': Path(self.sync_folder, f'pending.csv')
         }
 
-        for name, page in self.pages.items():
-            self.sync_contents[name] = {
-                'sync_file': Path(self.sync_folder, f'{name}_sync.csv'),
-                'file_table': Path(self.sync_folder, f'{name}_files.csv'),
-                'pending_uploads': Path(self.sync_folder, f'{name}_pending.csv')
-            }
-
+        # Dictionary that will contain the result of reading all the above
+        # files from the local sync folder. These can then be compared with
+        # freshly computed file and dataset lists to see what needs to be updated.
         self.local_sync = dict.fromkeys(self.sync_contents.keys(), None)
-        self.s3_keys = {'raw': [], 'source': []}
+        self.s3_keys = defaultdict(list)
+        self.s3_diff = pd.DataFrame()
         self.new_source_keys = []
+
+        self.datafiles = pd.DataFrame()
+        self.datasets = pd.DataFrame()
+        self.pending = pd.DataFrame()
+
+        self.have_run_preuploads = False
 
     def read_local_sync(
         self,
-        pagenames=None,
         replace=False,
     ):
-        if pagenames is None:
-            pagenames = self.pagenames
+        """
+        read_local_sync
+        ---------------
+        Read all files defined in self.sync_contents and optionally replace
+        any current values with these local contents. These can be used for
+        determining the output of the *last time* save_and_sync was run,
+        and comparing that to what we currently have, seeing if there are
+        new files to upload etc. It also serves as a local cache for the
+        long list of S3 keys which takes a few minutes to actually fetch
+        from Wasabi.
+        """
+
+        def read_or_empty(fname, **kwargs):
+            try:
+                d = pd.read_csv(fname, **kwargs)
+            except pd.errors.EmptyDataError:
+                d = pd.DataFrame()
+            return d
 
         sync_folder_contents = list(Path(self.sync_folder).iterdir())
 
@@ -130,12 +176,14 @@ class DataServer:
 
             if isinstance(item, Path) and item in sync_folder_contents:
                 if name in ('all_datasets', 'all_raw_datasets'):
-                    self.local_sync[name] = pd.read_csv(item, dtype=str)
+                    self.local_sync[name] = read_or_empty(item, dtype=str)
 
                 elif name == 'input_patterns':
+                    # Identify new source keys by reading the local file
+                    # and comparing to the ones we are aware of currently.
                     local_patterns = json.load(open(item))
                     self.new_source_keys = [
-                        k for k, v in self.all_input_patterns.items()
+                        k for k, v in self.input_patterns.items()
                         if v not in local_patterns.values()
                     ]
 
@@ -144,49 +192,26 @@ class DataServer:
                     self.local_sync[name] = float(open(item).read().strip())
                 elif name == 's3_keys':
                     self.local_sync[name] = json.load(open(item))
+                elif name == 'sync_file':
+                    self.local_sync[name] = read_or_empty(item, dtype=str)
+                elif name == 'file_table':
+                    self.local_sync[name] = read_or_empty(item, dtype=str)
+                elif name == 'pending_uploads':
+                    self.local_sync[name] = read_or_empty(item, dtype=str)
                 else:
                     pass
 
-            elif isinstance(item, dict):
-                if name in pagenames:
-                    self.local_sync[name] = defaultdict(pd.DataFrame)
-
-                    def read_or_empty(fname, **kwargs):
-                        try:
-                            d = pd.read_csv(fname, **kwargs)
-                        except pd.errors.EmptyDataError:
-                            d = pd.DataFrame()
-                        return d
-                    # noinspection PyTypeChecker
-                    self.local_sync[name] = {
-                        k: read_or_empty(v, dtype=str)
-                        for k, v in item.items() if v in sync_folder_contents
-                    }
-            else:
-                pass
-
         if replace:
-            self.all_datasets = self.local_sync['all_datasets'].copy()
-            self.all_raw_datasets = self.local_sync['all_raw_datasets'].copy()
+            self.all_datasets = copy_or_nop(self.local_sync['all_datasets'])
 
-            for name in pagenames:
-                self.pages[name].datasets = self.local_sync[name].get(
-                    'sync_file', pd.DataFrame()).copy()
-                self.pages[name].datafiles = self.local_sync[name].get(
-                    'file_table', pd.DataFrame()).copy()
-                self.pages[name].pending = self.local_sync[name].get(
-                    'pending_uploads', pd.DataFrame()).copy()
+            self.datasets = copy_or_nop(self.local_sync['sync_file'])
+            self.datafiles = copy_or_nop(self.local_sync['file_table'])
+            self.pending = copy_or_nop(self.local_sync['pending_uploads'])
 
     def check_s3_contents(
         self,
-        pagenames=None,
-        raw=True,
-        source=True,
         use_local=False
     ):
-        if pagenames is None:
-            pagenames = self.pagenames
-
         if use_local:
             if isinstance(self.local_sync['s3_keys'], dict):
                 self.s3_keys = self.local_sync['s3_keys']
@@ -196,63 +221,51 @@ class DataServer:
         if not use_local:
             paginator = self.client.client.get_paginator('list_objects_v2')
 
-            if raw:
-                raw_pag = paginator.paginate(
+            for prefix in jmespath.search('*.prefix', self.file_locations):
+                pag = paginator.paginate(
                     Bucket=self.bucket_name,
-                    Prefix=str(self.raw_folder),
+                    Prefix=str(prefix),
                     PaginationConfig=dict(PageSize=10000))
 
-                raw_results = raw_pag.build_full_result()['Contents']
-                raw_keys = [
+                results = pag.build_full_result()['Contents']
+                keys = [
                     self._preupload_revert(
-                        Path(k['Key']).relative_to(self.raw_folder))
-                    for k in raw_results
+                        Path(k['Key']).relative_to(prefix))
+                    for k in results
                 ]
 
-                self.s3_keys['raw'] = raw_keys
+                self.s3_keys[prefix] = keys
 
-            if source:
-                source_pag = paginator.paginate(
-                    Bucket=self.bucket_name,
-                    Prefix=str(self.analysis_folder),
-                    PaginationConfig=dict(PageSize=10000))
+        all_keys = []
+        for keys in self.s3_keys.values():
+            all_keys.extend(keys)
 
-                source_results = source_pag.build_full_result()['Contents']
-                source_keys = [
-                    self._preupload_revert(
-                        Path(k['Key']).relative_to(self.analysis_folder))
-                    for k in source_results
-                ]
+        if self.have_run_preuploads:
+            # If we already ran preuploads on this set, our local files will
+            # have a new name. we actually need to revert it
+            local_filenames = [self._preupload_revert(f)
+                                   for f in self.datafiles['filename'].values]
+        else:
+            local_filenames = self.datafiles['filename'].values
 
-                self.s3_keys['source'] = source_keys
+        s3_diff = set(local_filenames) - set(all_keys)
 
-        all_keys = self.s3_keys['raw'] + self.s3_keys['source']
+        self.s3_diff = self.datafiles.query('filename in @s3_diff').copy()
 
-        for pagename in pagenames:
-            page = self.pages[pagename]
-
-            if empty_or_false(page.datafiles):
-                continue
-
-            if page.have_run_preuploads:
-                # If we already ran preuploads on this set, our local files will
-                # have a new name. we actually need to revert it
-                local_filenames = [self._preupload_revert(f)
-                                       for f in page.datafiles['filename'].values]
-            else:
-                local_filenames = page.datafiles['filename'].values
-
-            page_diff = set(local_filenames) - set(all_keys)
-
-            self.pages[pagename].s3_diff = page.datafiles.query('filename in @page_diff').copy()
-
-    def get_source_datasets(
+    def get_datasets(
         self,
+        category,
         folders=None,
     ):
+        if category not in self.file_cats:
+            raise ValueError(f'category {category} unrecognized, one of '
+                             f'{self.file_cats} required')
+
+        location = self.file_locations[category]
+
         possible_folders, fields, mtimes = find_matching_files(
-            self.master_root,
-            self.dataset_root)
+            location['root'],
+            location['dataset_format'])
         fields['folder'] = possible_folders
 
         all_datasets = pd.DataFrame(fields)
@@ -261,102 +274,61 @@ class DataServer:
             folders = [Path(f) for f in folders]
             all_datasets = all_datasets.query('folder in @folders').copy()
 
-        self.all_datasets = all_datasets
+        self.all_datasets = pd.concat([
+            self.all_datasets,
+            all_datasets
+        ]).reset_index(drop=True).drop_duplicates(
+            subset=self.all_fields, ignore_index=True)
 
         return self.all_datasets
 
-    def get_raw_datasets(
+    def find_files(
         self,
         folders=None,
     ):
-
-        possible_folders, fields, mtimes = find_matching_files(
-            self.raw_master_root,
-            self.raw_dataset_root)
-        fields['folder'] = possible_folders
-
-        all_raw_datasets = pd.DataFrame(fields)
-
-        if folders:
-            folders = [Path(f) for f in folders]
-            all_raw_datasets = all_raw_datasets.query('folder in @folders').copy()
-
-        self.all_raw_datasets = all_raw_datasets
-
-        return self.all_raw_datasets
-
-    def find_page_files(
-        self,
-        pagename,
-        source_folders=None,
-        raw_folders=None,
-        since=0,
-    ):
         """
-        find_page_files
+        find_files
         ------------
         Searches for all files required by a specified page.
 
         """
 
         if self.all_datasets.empty:
-            self.get_source_datasets()
+            for cat in self.file_cats:
+                self.get_datasets(cat)
 
-        if self.all_raw_datasets.empty:
-            self.get_raw_datasets()
+        datasets = pd.DataFrame()
 
-        source_datasets = pd.DataFrame()
-        raw_datasets = pd.DataFrame()
+        df = pd.DataFrame(columns=self.all_fields +
+                          ['folder', 'source_key'])
 
-        sourcefile_df = pd.DataFrame(columns=self.dataset_fields +
-                                   ['folder', 'source_key'])
+        file_dfs = []
+        set_dfs = []
 
-        rawfile_df = pd.DataFrame(columns=self.raw_fields +
-                                  ['folder', 'source_key'])
+        for key in self.file_keys:
+            cat, root, dataset, prefix, pattern = self.key_info(key)
 
-        # If this page doesn't require any files, just show all datasets
-        if not self.pages[pagename].input_patterns:
-            self.pages[pagename].datasets = pd.concat([
-                self.all_datasets.copy(),
-                self.all_raw_datasets.copy()
-                ]).reset_index(drop=True)
+            if cat == 'output':
+                continue
 
-        all_sourcefiles = [self.find_source_files(key, pattern, source_folders, since)
-                           for key, pattern in self.pages[pagename].source_patterns.items()]
+            key_df = self.find_category_files(cat, key, pattern, folders)
 
-        all_rawfiles = [self.find_raw_files(key, pattern, raw_folders, since)
-                        for key, pattern in self.pages[pagename].raw_patterns.items()]
+            if not empty_or_false(key_df):
+                key_dataset_df = self.filter_datasets(
+                    key_df,
+                    self.file_locations[cat]['dataset_format_fields'],
+                    root
+                )
 
-        if any(notempty(all_sourcefiles)):
-            sourcefile_df = pd.concat(
-                all_sourcefiles).sort_values(
-                by=self.dataset_fields).reset_index(drop=True)
+                file_dfs.append(key_df)
+                set_dfs.append(key_dataset_df)
 
-            del all_sourcefiles
-            source_datasets = self.filter_datasets(
-                sourcefile_df,
-                self.dataset_fields,
-                self.dataset_root
-            )
+        self.datafiles = pd.concat(file_dfs).reset_index(
+            drop=True).drop_duplicates(subset='filename', ignore_index=True)
+        self.datasets = pd.concat(set_dfs).reset_index(
+            drop=True).drop_duplicates(subset=self.all_fields, ignore_index=True)
 
-        if any(notempty(all_rawfiles)):
-            rawfile_df = pd.concat(
-                all_rawfiles).sort_values(
-                by=self.raw_fields).reset_index(drop=True)
-
-            del all_rawfiles
-            raw_datasets = self.filter_datasets(
-                rawfile_df,
-                self.raw_fields,
-                self.raw_dataset_root
-            )
-
-        self.pages[pagename].datafiles = pd.concat(
-            [sourcefile_df, rawfile_df]).reset_index(drop=True)
-        self.pages[pagename].datasets = pd.concat(
-            [source_datasets, raw_datasets]).reset_index(drop=True)
-
-        return self.pages[pagename].datafiles, self.pages[pagename].datasets
+        return self.datafiles, self.datasets
 
     @staticmethod
     def filter_datasets(
@@ -388,13 +360,19 @@ class DataServer:
 
         return results
 
-    def find_source_files(
+    def find_category_files(
         self,
+        category,
         key,
         pattern,
         folders,
-        since=0
     ):
+        if category not in self.file_cats:
+            raise ValueError(f'category {category} unrecognized, '
+                             f'must be one of {self.file_cats}')
+
+        location = self.file_locations[category]
+
         paths = None
         if folders:
             paths = []
@@ -402,59 +380,26 @@ class DataServer:
             # datasets to look in. This makes a list of glob results looking for
             # pattern from each supplied folder.
             _, glob = fmt2regex(pattern)
-            [paths.extend(Path(self.master_root, f).glob(glob)) for f in folders]
+            [paths.extend(Path(location['root'], f).glob(glob)) for f in folders]
         elif folders == []:
             return pd.DataFrame()
 
         filenames, fields, mtimes = find_matching_files(
-            str(self.master_root),
-            str(Path(self.dataset_root, pattern)),
+            str(location['root']),
+            str(Path(location['dataset_format'], pattern)),
             paths=paths,
         )
 
         if filenames:
             fields['source_key'] = key
             fields['mtime'] = mtimes
-            fields['filename'] = [f.relative_to(self.master_root) for f in filenames]
-            return pd.DataFrame(fields, dtype=str)
-        else:
-            return pd.DataFrame()
-
-    def find_raw_files(
-        self,
-        key,
-        pattern,
-        folders,
-        since=0
-    ):
-        paths = None
-        if folders:
-            paths = []
-            # We are assuming folders is a list up to dataset_root nesting - potential
-            # datasets to look in. This makes a list of glob results looking for
-            # pattern from each supplied folder.
-            _, glob = fmt2regex(pattern)
-            [paths.extend(Path(self.raw_master_root, f).glob(glob)) for f in folders]
-        elif folders == []:
-            return pd.DataFrame()
-
-        filenames, fields, mtimes = find_matching_files(
-            str(self.raw_master_root),
-            str(Path(self.raw_dataset_root, pattern)),
-            paths=paths,
-        )
-
-        if filenames:
-            fields['source_key'] = key
-            fields['mtime'] = mtimes
-            fields['filename'] = [f.relative_to(self.raw_master_root) for f in filenames]
+            fields['filename'] = [f.relative_to(location['root']) for f in filenames]
             return pd.DataFrame(fields, dtype=str)
         else:
             return pd.DataFrame()
 
     def save_and_sync(
         self,
-        pagenames=None,
         timestamp=True,
         patterns=True,
         s3_keys=True,
@@ -467,110 +412,98 @@ class DataServer:
 
         if patterns:
             with open(self.sync_contents['input_patterns'], 'w') as ips:
-                json.dump(self.all_input_patterns, ips)
+                json.dump(self.input_patterns, ips)
 
         if s3_keys and any(self.s3_keys.values()):
             with open(self.sync_contents['s3_keys'], 'w') as s3kf:
                 json.dump(self.s3_keys, s3kf)
 
-        if pagenames is None:
-            pagenames = self.pagenames
-
         all_datasets_file = self.sync_contents['all_datasets']
-        all_raw_datasets_file = self.sync_contents['all_raw_datasets']
-
         self.all_datasets.to_csv(all_datasets_file, index=False)
-        self.all_raw_datasets.to_csv(all_raw_datasets_file, index=False)
 
         if upload:
-            self.client.client.upload_file(
-                str(all_raw_datasets_file),
-                Bucket=self.bucket_name,
-                Key=str(all_raw_datasets_file)
-            )
             self.client.client.upload_file(
                 str(all_datasets_file),
                 Bucket=self.bucket_name,
                 Key=str(all_datasets_file)
             )
 
-        for name in pagenames:
-            page_sync_file = self.sync_contents[name]['sync_file']
-            try:
-                current_sync = self.local_sync[name].get('sync_file', None)
-                updated_sync = pd.concat([current_sync, self.pages[name].datasets])
-            except AttributeError:
-                updated_sync = self.pages[name].datasets
+        page_sync_file = self.sync_contents['sync_file']
+        try:
+            current_sync = self.local_sync.get('sync_file', None)
+            updated_sync = pd.concat([current_sync, self.datasets])
+        except AttributeError:
+            updated_sync = self.datasets
 
-            updated_sync.drop_duplicates(
-                subset=['folder'],
-                keep='last',
-                inplace=True,
-                ignore_index=True
+        updated_sync.drop_duplicates(
+            subset=['folder'],
+            keep='last',
+            inplace=True,
+            ignore_index=True
+        )
+        updated_sync.to_csv(page_sync_file, index=False)
+
+        page_file_table = self.sync_contents['file_table']
+        try:
+            current_files = self.local_sync.get('file_table', None)
+            updated_files = pd.concat([current_files, self.datafiles])
+        except AttributeError:
+            updated_files = self.datafiles
+
+        if self.have_run_preuploads:
+            preup_filenames = []
+
+            for row in updated_files.itertuples():
+                preup_filenames.append(self._preupload_newname(
+                    row.filename, row.source_key
+                ))
+            updated_files['filename'] = preup_filenames
+
+        updated_files.drop_duplicates(
+            subset=['filename'],
+            inplace=True,
+            ignore_index=True
+        )
+
+        updated_files.to_csv(page_file_table, index=False)
+
+        # We don't try to merge the pending file table with the existing one, because
+        # upload_to_s3 already does that - it considers any existing pending files as well
+        # as the new ones supplied to it. If it does error, the remaining files are still in
+        # the pending DF, so we can just write it out and replace the existing file.
+        # Also, if it's empty we'll delete the file. We don't upload this to s3.
+        page_pending_table = self.sync_contents['pending_uploads']
+        if not empty_or_false(self.pending):
+            self.pending.to_csv(page_pending_table, index=False)
+        else:
+            page_pending_table.unlink(missing_ok=True)
+
+        if upload:
+            self.client.client.upload_file(
+                str(page_sync_file),
+                Bucket=self.bucket_name,
+                Key=str(page_sync_file)
             )
-            updated_sync.to_csv(page_sync_file, index=False)
-
-            page_file_table = self.sync_contents[name]['file_table']
-            try:
-                current_files = self.local_sync[name].get('file_table', None)
-                updated_files = pd.concat([current_files, self.pages[name].datafiles])
-            except AttributeError:
-                updated_files = self.pages[name].datafiles
-
-            if self.pages[name].have_run_preuploads:
-                preup_filenames = []
-
-                for row in updated_files.itertuples():
-                    preup_filenames.append(self._preupload_newname(
-                        row.filename, name, row.source_key
-                    ))
-                updated_files['filename'] = preup_filenames
-
-            updated_files.drop_duplicates(
-                subset=['filename'],
-                inplace=True,
-                ignore_index=True
+            self.client.client.upload_file(
+                str(page_file_table),
+                Bucket=self.bucket_name,
+                Key=str(page_file_table)
             )
-
-            updated_files.to_csv(page_file_table, index=False)
-
-            # We don't try to merge the pending file table with the existing one, because
-            # upload_to_s3 already does that - it considers any existing pending files as well
-            # as the new ones supplied to it. If it does error, the remaining files are still in
-            # the pending DF, so we can just write it out and replace the existing file.
-            # Also, if it's empty we'll delete the file. We don't upload this to s3.
-            page_pending_table = self.sync_contents[name]['pending_uploads']
-            if not empty_or_false(self.pages[name].pending):
-                self.pages[name].pending.to_csv(page_pending_table, index=False)
-            else:
-                page_pending_table.unlink(missing_ok=True)
-
-            if upload:
-                self.client.client.upload_file(
-                    str(page_sync_file),
-                    Bucket=self.bucket_name,
-                    Key=str(page_sync_file)
-                )
-                self.client.client.upload_file(
-                    str(page_file_table),
-                    Bucket=self.bucket_name,
-                    Key=str(page_file_table)
-                )
 
     def _preupload_newname(
         self,
         oldname,
-        pagename,
         source_key
     ):
-        page = self.pages[pagename]
-        if source_key not in page.has_preupload:
+        if source_key not in self.has_preupload:
             return oldname
 
         # Remove any existing preupload prefix if present
         oldname = self._preupload_revert(oldname)
 
-        preupload_func = page.input_preuploads[source_key]
+        cat, _, _, _, _ = self.key_info(source_key)
+
+        preupload_func = self.file_entries[cat][source_key]['preupload']
 
         return str(Path(oldname).with_name(
             '__'.join([preupload_func.__name__, Path(oldname).name])
@@ -588,22 +521,16 @@ class DataServer:
 
     def run_preuploads(
         self,
-        pagename,
         file_df=None,
         nthreads=5
     ):
-        page = self.pages[pagename]
-
-        if not page.preupload_class:
-            return file_df, {}
-
-        if not page.has_preupload:
+        if not self.has_preupload:
             return file_df, {}
 
         if empty_or_false(file_df):
             return file_df, {}
 
-        keys_with_preuploads = page.has_preupload
+        keys_with_preuploads = self.has_preupload
 
         file_df = file_df.reset_index(drop=True)
 
@@ -618,20 +545,15 @@ class DataServer:
 
             errors[key] = []
 
-            if key in page.source_patterns.keys():
-                abs_root = self.master_root
-                data_root = self.dataset_root
-            elif key in page.raw_patterns.keys():
-                abs_root = self.raw_master_root
-                data_root = self.raw_dataset_root
+            cat, abs_root, data_root, prefix, pattern = self.key_info(key)
 
             # prepend proper absolute root
             filerows['filename'] = [str(Path(abs_root, f)) for f in filerows['filename']]
 
-            preupload_func = page.input_preuploads[key]
+            preupload_func = self.file_entries[cat][key]['preupload']
 
-            in_format = str(Path(data_root, page.input_patterns[key]))
-            out_format = self._preupload_newname(in_format, pagename, key)
+            in_format = str(Path(data_root, self.input_patterns[key]))
+            out_format = self._preupload_newname(in_format, key)
 
             with ProcessPoolExecutor(max_workers=nthreads) as exe:
                 futures = {}
@@ -671,26 +593,25 @@ class DataServer:
 
                     done += 1
 
-        self.pages[pagename].datafiles = pd.concat(
-            [self.pages[pagename].datafiles, output_df]).reset_index(drop=True)
+        self.datafiles = pd.concat(
+            [self.datafiles, output_df]).reset_index(drop=True)
         # This drops any duplicates that did not get their filename modified
-        self.pages[pagename].datafiles.drop_duplicates(
+        self.datafiles.drop_duplicates(
             subset=['filename'], inplace=True, ignore_index=True)
         # This drops the *old* unmodified rows. Note we keep *last* because we concatenate
         # file_df on the end of the current datafiles table. So we are keeping the rows from file_df
         # that match on every column *except* filename - those that got modified filenames.
-        self.pages[pagename].datafiles.drop_duplicates(
-            subset=self.pages[pagename].datafiles.columns.difference(['filename']),
+        self.datafiles.drop_duplicates(
+            subset=self.datafiles.columns.difference(['filename']),
             keep='last', inplace=True, ignore_index=True
         )
 
-        self.pages[pagename].have_run_preuploads = True
+        self.have_run_preuploads = True
 
         return output_df, errors
 
     def upload_to_s3(
         self,
-        pagename,
         since=0,
         file_df=None,
         run_preuploads=True,
@@ -714,10 +635,8 @@ class DataServer:
         files present locally but not on s3. This is useful for starting
         fresh with no local monitoring files but not uploading everything again.
         """
-        page = self.pages[pagename]
-
         if not isinstance(file_df, pd.DataFrame):
-            file_df = page.datafiles
+            file_df = self.datafiles
 
         # Filter by last modified time
         if 'mtime' in file_df.columns:
@@ -726,9 +645,9 @@ class DataServer:
 
         # Add any pending files if present
         if do_pending:
-            local_pending = self.local_sync.get(pagename, {}).get('pending_uploads')
+            local_pending = self.local_sync.get('pending_uploads', pd.DataFrame())
             file_df = pd.concat(
-                [page.pending, file_df, local_pending]).reset_index(
+                [self.pending, file_df, local_pending]).reset_index(
                 drop=True).drop_duplicates(
                 subset='filename', ignore_index=True)
 
@@ -739,7 +658,7 @@ class DataServer:
         if self.new_source_keys:
             nsks = self.new_source_keys
             file_df = pd.concat(
-                [file_df, page.datafiles.query('source_key in @nsks')]
+                [file_df, self.datafiles.query('source_key in @nsks')]
             ).reset_index(drop=True).drop_duplicates(
                 subset='filename', ignore_index=True)
 
@@ -751,20 +670,20 @@ class DataServer:
 
         # Add files present locally but not on s3
         if do_s3_diff:
-            if not empty_or_false(page.s3_diff):
+            if not empty_or_false(self.s3_diff):
                 file_df = pd.concat(
-                    [page.s3_diff, file_df]).reset_index(
+                    [self.s3_diff, file_df]).reset_index(
                     drop=True).drop_duplicates(
                     subset='filename', ignore_index=True)
 
         if run_preuploads:
-            server_logger.info(f'upload_to_s3: running preuploads for page {pagename}')
-            file_df, errors = self.run_preuploads(
-                pagename, file_df=file_df, nthreads=nthreads)
+            server_logger.info(f'upload_to_s3: running preuploads')
+            file_df, errors = self.run_preuploads(file_df=file_df, nthreads=nthreads)
 
             if any(errors.values()):
                 server_logger.warning(
-                    f'upload_to_s3: ran into some preupload errors for {pagename}')
+                    f'upload_to_s3: ran into some preupload errors')
+                server_logger.debug(errors)
 
                 for key_errs in errors.values():
                     bad_fnames = [e[0] for e in key_errs]
@@ -781,7 +700,7 @@ class DataServer:
 
         file_df = file_df.reset_index(drop=True)
 
-        self.pages[pagename].pending = file_df.copy()
+        self.pending = file_df.copy()
 
         if dryrun:
             return file_df, 0
@@ -793,16 +712,9 @@ class DataServer:
                 server_logger.info(f'upload_to_s3: {p} files done out of {total}')
             p += 1
 
-            if row.source_key in page.source_files.keys():
-                s3_type = 'source'
-                root = self.master_root
-                key_prefix = self.analysis_folder
-            elif row.source_key in page.raw_files.keys():
-                s3_type = 'raw'
-                root = self.raw_master_root
-                key_prefix = self.raw_folder
+            s3_type, root, dataset, key_prefix, pattern = self.key_info(row.source_key)
 
-            if row.source_key in page.has_preupload:
+            if row.source_key in self.has_preupload:
                 root = Path(self.preupload_root)
 
             keyname = Path(key_prefix, row.filename)
@@ -815,12 +727,12 @@ class DataServer:
                     Key=str(keyname)
                 )
 
-                self.pages[pagename].pending.drop(index=row.Index, inplace=True)
-                self.s3_keys[s3_type].append(
+                self.pending.drop(index=row.Index, inplace=True)
+                self.s3_keys[key_prefix].append(
                   self._preupload_revert(row.filename))
 
             except Exception as ex:
                 server_logger.warning(f'problem uploading file {row.filename}: {ex}')
 
-        return self.pages[pagename].pending, p
+        return self.pending, p
 

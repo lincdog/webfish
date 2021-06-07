@@ -6,8 +6,9 @@ from time import sleep
 
 import boto3
 import botocore.exceptions as boto3_exc
+import jmespath
 
-from lib.util import process_file_entries, fmt2regex
+from lib.util import process_file_entries, process_file_locations, fmt2regex
 import lib.generators as generators
 import lib.preuploaders as preuploaders
 
@@ -30,124 +31,82 @@ class Page:
         self.title = self.config.get('title', self.name)
         self.description = self.config.get('description', '')
 
-        self.bucket_name = config['bucket_name']
-
-        self.local_store = Path(config.get('local_store', 'webfish_data/'), name)
-
-        self.sync_file = Path(config.get('sync_folder'), f'{name}_sync.csv')
-        self.file_table = Path(config.get('sync_folder'), f'{name}_files.csv')
-
-        dr = config.get('dataset_root', '')
-        self.dataset_root = dr
-        # How many levels do we have to fetch to reach the datasets?
-        self.dataset_nest = len(Path(dr).parts) - 1
-
-        dre, drglob = fmt2regex(dr)
-        self.dataset_re = dre
-        self.dataset_glob = drglob
-
-        rr = config.get('raw_dataset_root', '')
-        self.raw_dataset_root = rr
-        self.raw_nest = len(Path(rr).parts) - 1
-
-        rre, rrglob = fmt2regex(rr)
-        self.raw_re = rre
-        self.raw_glob = rrglob
-
-        self.dataset_fields = list(dre.groupindex.keys())
-        self.raw_fields = list(rre.groupindex.keys())
-
         self.file_fields = self.config.get('variables')
 
-        self.source_files = process_file_entries(
-            self.config.get('source_files', {}))
 
-        self.output_files = process_file_entries(
-            self.config.get('output_files', {}))
+class FilePatterns:
 
-        self.global_files = process_file_entries(
-            self.config.get('global_files', {}))
+    def __init__(
+        self,
+        config,
+    ):
+        self.config = config
 
-        self.raw_files = process_file_entries(
-            self.config.get('raw_files', {}))
+        self.file_locations = process_file_locations(
+            config.get('file_locations', {}))
+        self.file_cats = list(self.file_locations.keys())
 
-        self.file_keys = list(self.source_files.keys()) + \
-            list(self.output_files.keys()) + \
-            list(self.global_files.keys()) + \
-            list(self.raw_files.keys())
+        self.all_fields = list(set(jmespath.search(
+            '*.dataset_format_fields[]',
+            self.file_locations
+        )))
 
-        if len(np.unique(self.file_keys)) != len(self.file_keys):
+        self.file_entries = {
+            k: process_file_entries(v)
+            for k, v in config.get('file_patterns', {}).items()
+        }
+
+        self.file_keys = jmespath.search('map(&keys(@), values(@))[]', self.file_entries)
+
+        if len(set(self.file_keys)) != len(self.file_keys):
             raise ValueError('File keys must be unique across all '
-                             'file classes (source, raw, output, global'
-                             ' in one Page object.')
+                             'file classes (source, raw, output, global')
 
-        # Try to grab the generator class object from this module
-        self.generator_class = None
-        if 'generator_class' in self.config.keys():
-            self.generator_class = getattr(generators,
-                                           self.config['generator_class'])
-        # Same for the preupload function class
-        self.preupload_class = None
-        if 'preupload_class' in self.config.keys():
-            self.preupload_class = getattr(preuploaders,
-                                           self.config['preupload_class'])
+    @property
+    def file_patterns(self):
+        return {c: {k: v['pattern'] for k, v in entry.items()}
+                for c, entry in self.file_entries.items()}
 
-        # Make convenience dicts for the different fields of each file type
-        # source files and preupload functions
-        self.source_patterns = {}
-        self.source_preuploads = {}
-        for k, v in self.source_files.items():
-            self.source_patterns[k] = v['pattern']
+    @property
+    def input_patterns(self):
+        result = {}
+        for k, v in self.file_patterns.items():
+            if k in self.file_cats:
+                result.update(v)
 
-            if v['preupload']:
-                preupload = getattr(self.preupload_class, v['preupload'])
-            else:
-                preupload = None
-            self.source_preuploads[k] = preupload
+        return result
 
-        # Raw files and preupload functions
-        self.raw_patterns = {}
-        self.raw_preuploads = {}
-        for k, v in self.raw_files.items():
-            self.raw_patterns[k] = v['pattern']
+    def category_patterns(self, cat):
+        return self.file_patterns[cat]
 
-            if v['preupload']:
-                preupload = getattr(self.preupload_class, v['preupload'])
-            else:
-                preupload = None
-            self.raw_preuploads[k] = preupload
+    def key_info(self, key):
+        """
+        key_info
+        ---------------
+        Given a key from the possible file keys given in the config,
+        returns all the path components required to localize it.
+        """
+        if key not in self.file_keys:
+            raise ValueError(f'key_to_fullpath: key must be one of {self.file_keys}')
 
-        # Make combined source+raw dicts, because when searching for files
-        # to upload we want to go through both of these
-        self.input_patterns = self.source_patterns | self.raw_patterns
-        self.input_preuploads = self.source_preuploads | self.raw_preuploads
-        self.has_preupload = [k for k, v in self.input_preuploads.items() if v]
-        self.have_run_preuploads = False
+        category = ''
+        root = ''
+        dataset = ''
+        prefix = ''
+        pattern = ''
 
-        # Output files and generators
-        self.output_patterns = {}
-        self.output_generators = {}
-        for k, v in self.output_files.items():
-            self.output_patterns[k] = v['pattern']
+        for name, info in self.file_entries.items():
+            if key in info.keys():
+                category = name
+                if name in self.file_locations.keys():
+                    root = self.file_locations[name].get('root', '')
+                    dataset = self.file_locations[name].get('dataset_format', '')
+                    prefix = self.file_locations[name].get('prefix', '')
 
-            if v['generator']:
-                generator = getattr(self.generator_class, v['generator'])
-            else:
-                generator = None
-            self.output_generators[k] = generator
+                pattern = info[key].get('pattern', '')
+                break
 
-        self.datafiles = None
-        self.datasets = None
-        self.pending = None
-        self.s3_diff = None
-
-        # Blank these out to tell Client that it should use the all_datasets
-        # files for this page.
-        # Alternatively, Server could make a sync for this page
-        # that is identical to the all_datasets one.
-        if not self.input_patterns and not self.output_patterns:
-            self.sync_file = None
-            self.file_table = None
+        return category, root, dataset, prefix, pattern
 
 
 class S3Connect:

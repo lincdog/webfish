@@ -750,6 +750,27 @@ def process_file_entries(entries):
     return result
 
 
+def process_file_locations(locs):
+    result = {}
+
+    for key, value in locs.items():
+        info = value
+
+        dformat = info.get('dataset_format', '')
+
+        dfr, dfg = fmt2regex(dformat)
+        fields = list(dfr.groupindex.keys())
+
+        info['dataset_format_re'] = dfr
+        info['dataset_format_glob'] = dfg
+        info['dataset_format_fields'] = fields
+        info['dataset_format_nest'] = len(Path(dformat).parts) - 1
+
+        result[key] = info
+
+    return result
+
+
 def empty_or_false(thing):
     if isinstance(thing, pd.DataFrame):
         return thing.empty
@@ -759,3 +780,12 @@ def empty_or_false(thing):
 
 def notempty(dfs):
     return [not empty_or_false(df) for df in dfs]
+
+
+def copy_or_nop(df):
+    try:
+        result = df.copy()
+    except AttributeError:
+        result = df
+
+    return result

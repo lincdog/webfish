@@ -101,37 +101,26 @@ def search_and_upload(dm, mtime, use_s3_only=False, check_s3=False, dryrun=False
     """
     results = {}
 
-    # This populates the datafiles and datasets DataFrames for each page,
-    # which contain all relevant files found on the HPC
-    for pagename in dm.pagenames:
-        tmp, _ = dm.find_page_files(
-            pagename=pagename,
-        )
-        results[pagename] = dict(all_files=len(tmp))
-        del tmp
+    tmp, _ = dm.find_files()
+    results['all_files'] = len(tmp)
+    del tmp
 
     # Read in the s3 keys from local monitoring files unless
     # check_s3 is True, in which case list all S3 keys to update the monitoring files.
     dm.check_s3_contents(use_local=(not check_s3))
 
-    for pagename in dm.pagenames:
-        # Run preuploads if needed and upload all files subject to
-        # the given mtime and use_s3_only conditions.
+    pending, uploaded = dm.upload_to_s3(
+        since=mtime,
+        do_pending=True,
+        run_preuploads=True,
+        do_s3_diff=True,
+        use_s3_only=use_s3_only,
+        progress=100,
+        dryrun=dryrun
+    )
 
-        # Note that the list of S3 keys is updated as these files are uploaded.
-        pending, uploaded = dm.upload_to_s3(
-            pagename,
-            since=mtime,
-            do_pending=True,
-            run_preuploads=True,
-            do_s3_diff=True,
-            use_s3_only=use_s3_only,
-            progress=100,
-            dryrun=dryrun
-        )
-
-        results[pagename].update(dict(pending_count=len(pending),
-                                      uploaded_count=uploaded))
+    results.update(dict(pending_count=len(pending),
+                        uploaded_count=uploaded))
 
     return results
 
@@ -188,7 +177,6 @@ def main(args):
     # what datasets and files are available. If --dryrun is specified,
     # do not upload to S3.
     dm.save_and_sync(
-        pagenames=None,
         timestamp=True,
         patterns=True,
         upload=(not args.dryrun)

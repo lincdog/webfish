@@ -36,261 +36,260 @@ returning some False-y value that the webapp can check and display a proper noti
 """
 
 
-class DatavisProcessing:
+"""
+DatavisProcessing
+-----------------
+Namespace class used to get generating functions for datasets
+
+FUNCTION TEMPLATE:
+ - inrows: Dataframe where each row is a file, includes ALL fields from the file
+    discovery methods - from dataset_root and whatever source_patterns are required
+ - outpattern: pattern from the config file to specify the output filename - this is
+    the dataset_root pattern joined to the output_pattern for this output file.
+ - savedir: local folder to store output
+
+returns: Filename(s)
+"""
+
+
+def generate_mesh(
+    inrows,
+    outpattern,
+    savedir
+):
     """
-    DatavisProcessing
-    -----------------
-    Namespace class used to get generating functions for datasets
-
-    FUNCTION TEMPLATE:
-     - inrows: Dataframe where each row is a file, includes ALL fields from the file
-        discovery methods - from dataset_root and whatever source_patterns are required
-     - outpattern: pattern from the config file to specify the output filename - this is
-        the dataset_root pattern joined to the output_pattern for this output file.
-     - savedir: local folder to store output
-
-    returns: Filename(s)
+    generate_mesh
+    ------------
     """
-    @classmethod
-    def generate_mesh(
-        cls,
-        inrows,
-        outpattern,
-        savedir
-    ):
-        """
-        generate_mesh
-        ------------
-        """
 
-        if inrows.empty:
-            return None
+    if inrows.empty:
+        return None
 
-        outfile = Path(savedir, str(outpattern).format_map(inrows.iloc[0].to_dict()))
+    outfile = Path(savedir, str(outpattern).format_map(inrows.iloc[0].to_dict()))
+    print(outfile)
 
-        if outfile.is_file():
-            return outfile
-
-        im = inrows.query('source_key == "segmentation"')['local_filename'].values[0]
-        # generate the mesh from the image
-        cls.gen_mesh(
-            im,
-            separate_regions=False,
-            region_data=None,
-            outfile=outfile)
-
+    if outfile.is_file():
         return outfile
 
-    @classmethod
-    def generate_dots(
-        cls,
-        inrows,
-        outpattern,
-        savedir
-    ):
-        if inrows.empty:
-            return None
-
-        inrows = inrows.astype(str)
-        outfile = Path(savedir, str(outpattern).format_map(inrows.iloc[0].to_dict()))
-
-        # If the processed file already exists just return it
-        if outfile.is_file():
-            return outfile
-
-        pcds = []
-
-        genecol = 'gene'
-        query = ''
-
-        if 'dots_csv' in inrows['source_key'].values:
-            query = 'source_key == "dots_csv"'
-            genecol = 'gene'
-        elif 'dots_csv_unseg' in inrows['source_key'].values:
-            query = 'source_key == "dots_csv_unseg"'
-            genecol = 'geneID'
-
-        infiles = inrows.query(query)[['channel', 'local_filename']]
-
-        for chan, csv in infiles.values:
-            pcd_single = pd.read_csv(csv)
-            pcd_single['channel'] = chan
-            pcds.append(pcd_single)
-
-        pcds_combined = pd.concat(pcds)
-        del pcds
-
-        cls.gen_pcd_df(pcds_combined, genecol=genecol, outfile=outfile)
-        del pcds_combined
-
-        return outfile
-
-    @staticmethod
-    def gen_mesh(
-        imgfilename,
-        px_size=(0.5, 0.11, 0.11),
-        scale_factor=(1., 1. / 16, 1. / 16),
+    im = inrows.query('source_key == "segmentation"')['local_filename'].values[0]
+    # generate the mesh from the image
+    gen_mesh(
+        im,
         separate_regions=False,
         region_data=None,
-        outfile=None
-    ):
-        """
-        gen_mesh
-        ---------
-        Takes an image along with pixel size and scale factor, and generates
-        a triangular mesh from a scaled-down version of the image.
+        outfile=outfile)
 
-        If `separate_regions` is True, triangulates each labeled region (identified by
-        skimage.measure.regionprops) separately, and optionally associates data
-        `region_data` with each region. `region_data` should be an iterable that
-        yields a datum for each label in the image.
+    return outfile
 
-        Returns: JSON structure as follows:
-            {
-              "verts": <2D list of vertex coordinates, shape Nx3>,
-              "faces": <2D list of vertex indices forming triangles, shape Tx3>,
-              "data": <null or list of data for each face, length T>
-            }
-        """
 
-        # imagej=False because TiffFile throws a TypeError otherwise
-        im = imread(imgfilename, is_imagej=False)
+def generate_dots(
+    inrows,
+    outpattern,
+    savedir
+):
+    if inrows.empty:
+        return None
 
-        # RGB images seem to be present for some 2D segmentations
-        if im.shape[-1] == 3:
-            im = im[..., 0]
+    inrows = inrows.astype(str)
+    outfile = Path(savedir, str(outpattern).format_map(inrows.iloc[0].to_dict()))
 
-        # For a 2D image, make it a 3-slice copy of itself
-        if im.ndim == 2:
-            im = np.array([im, im, im])
+    # If the processed file already exists just return it
+    if outfile.is_file():
+        return outfile
 
-        px_scaled = tuple(a / b for a, b in zip(px_size, scale_factor))
+    pcds = []
 
-        im_small = skit.rescale(
-            im,
-            scale_factor,
-            order=0,
-            mode='constant',
-            cval=0,
-            clip=True,
-            preserve_range=True,
-            anti_aliasing=False,
-            anti_aliasing_sigma=None
-        ).astype(np.uint8)
+    genecol = 'gene'
+    query = ''
 
-        del im
+    if 'dots_csv' in inrows['source_key'].values:
+        query = 'source_key == "dots_csv"'
+        genecol = 'gene'
+    elif 'dots_csv_unseg' in inrows['source_key'].values:
+        query = 'source_key == "dots_csv_unseg"'
+        genecol = 'geneID'
 
-        def triangulate_bin(
-                binim,
-                spacing=px_scaled,
-                data=None,
-                corner=(0, 0, 0)
-        ):
-            tris = skim.marching_cubes(
-                np.pad(binim, ((1, 1), (1, 1), (1, 1))),
-                level=0.5,
-                spacing=spacing,
-                step_size=1
-            )
+    infiles = inrows.query(query)[['channel', 'local_filename']]
 
-            # get the real coordinates of the top left corner
-            corner_real = np.multiply(spacing, corner)
-            # Offset all coords to the corner coord
-            # then subtract 1 voxel due to previous pad operation
-            new_pts = tris[0] + corner_real - np.array(spacing)
+    for chan, csv in infiles.values:
+        pcd_single = pd.read_csv(csv)
+        pcd_single['channel'] = chan
+        pcds.append(pcd_single)
 
-            if data is not None:
-                tridata = [data] * len(tris[1])
-            else:
-                tridata = []
+    pcds_combined = pd.concat(pcds)
+    del pcds
 
-            return new_pts, tris[1], tridata
+    gen_pcd_df(pcds_combined, genecol=genecol, outfile=outfile)
+    del pcds_combined
 
-        from itertools import zip_longest
+    return outfile
 
-        comb_pts = []
-        comb_tris = []
-        comb_data = []
 
-        if separate_regions:
+def gen_mesh(
+    imgfilename,
+    px_size=(0.5, 0.11, 0.11),
+    scale_factor=(1., 1. / 16, 1. / 16),
+    separate_regions=False,
+    region_data=None,
+    outfile=None
+):
+    """
+    gen_mesh
+    ---------
+    Takes an image along with pixel size and scale factor, and generates
+    a triangular mesh from a scaled-down version of the image.
 
-            maxpt = 0
+    If `separate_regions` is True, triangulates each labeled region (identified by
+    skimage.measure.regionprops) separately, and optionally associates data
+    `region_data` with each region. `region_data` should be an iterable that
+    yields a datum for each label in the image.
 
-            for r, d in zip_longest(
-                    skim.regionprops(im_small),
-                    region_data,
-                    fillvalue=None
-            ):
-                rtris = triangulate_bin(r.image, px_scaled, r.bbox[:3], d)
-
-                comb_pts.extend(rtris[0])
-                comb_tris.extend(rtris[1] + maxpt)
-                comb_data.extend(rtris[2])
-                maxpt += len(rtris[0])
-        else:
-            # make the whole image binary
-            comb_pts, comb_tris, _ = triangulate_bin(im_small > 0, px_scaled)
-
-        assert len(comb_tris) == len(comb_data) or len(comb_data) == 0, \
-            "Something went wrong in the mesh processing..."
-
-        mesh = {
-            'verts': comb_pts.tolist(),
-            'faces': comb_tris.tolist(),
-            'data': comb_data
+    Returns: JSON structure as follows:
+        {
+          "verts": <2D list of vertex coordinates, shape Nx3>,
+          "faces": <2D list of vertex indices forming triangles, shape Tx3>,
+          "data": <null or list of data for each face, length T>
         }
+    """
 
-        if outfile is not None:
-            with open(outfile, 'w') as fp:
-                json.dump(mesh, fp)
+    # imagej=False because TiffFile throws a TypeError otherwise
+    im = imread(imgfilename, is_imagej=False)
 
-        return mesh
+    # RGB images seem to be present for some 2D segmentations
+    if im.shape[-1] == 3:
+        im = im[..., 0]
 
-    @staticmethod
-    def gen_pcd_df(
-            csv,
-            px_size=(0.5, 0.11, 0.11),
-            cmap='tab20',
-            genecol='gene',
-            outfile=None
+    # For a 2D image, make it a 3-slice copy of itself
+    if im.ndim == 2:
+        im = np.array([im, im, im])
+
+    px_scaled = tuple(a / b for a, b in zip(px_size, scale_factor))
+
+    im_small = skit.rescale(
+        im,
+        scale_factor,
+        order=0,
+        mode='constant',
+        cval=0,
+        clip=True,
+        preserve_range=True,
+        anti_aliasing=False,
+        anti_aliasing_sigma=None
+    ).astype(np.uint8)
+
+    del im
+
+    def triangulate_bin(
+            binim,
+            spacing=px_scaled,
+            data=None,
+            corner=(0, 0, 0)
     ):
-        """
-        gen_pcd_df
-        ----------
-        Takes a CSV file of dot locations and genes and converts pixel units to
-        real space units as well as adding hex colors to differentiate each gene
-        in a plot.
+        tris = skim.marching_cubes(
+            np.pad(binim, ((1, 1), (1, 1), (1, 1))),
+            level=0.5,
+            spacing=spacing,
+            step_size=1
+        )
 
-        Returns: Pandas DataFrame
-        """
+        # get the real coordinates of the top left corner
+        corner_real = np.multiply(spacing, corner)
+        # Offset all coords to the corner coord
+        # then subtract 1 voxel due to previous pad operation
+        new_pts = tris[0] + corner_real - np.array(spacing)
 
-        if isinstance(csv, str):
-            dots = pd.read_csv(csv)
-        elif isinstance(csv, pd.DataFrame):
-            dots = csv.copy()
+        if data is not None:
+            tridata = [data] * len(tris[1])
         else:
-            raise TypeError
+            tridata = []
 
-        dots['geneInd'] = dots[genecol].factorize()[0] % 20
+        return new_pts, tris[1], tridata
 
-        def cmap2hex(cmap):
-            return '#{:02X}{:02X}{:02X}'.format(cmap[0], cmap[1], cmap[2])
+    from itertools import zip_longest
 
-        cm = get_cmap(cmap).colors
-        cm = (255 * np.array(cm)).astype(np.uint8)  # convert to bytes
+    comb_pts = []
+    comb_tris = []
+    comb_data = []
 
-        dots['geneColor'] = [cmap2hex(cm[c]) for c in dots['geneInd']]
+    if separate_regions:
 
-        # adjust Z to start from 0
-        dots[['z', 'y', 'x']] -= np.array([1, 0, 0])
-        # convert to real units
-        dots[['z', 'y', 'x']] *= np.array(px_size)
+        maxpt = 0
 
-        if genecol != 'gene':
-            dots = dots.rename(columns={genecol: 'gene'})
+        for r, d in zip_longest(
+                skim.regionprops(im_small),
+                region_data,
+                fillvalue=None
+        ):
+            rtris = triangulate_bin(r.image, px_scaled, r.bbox[:3], d)
 
-        if outfile is not None:
-            dots.to_csv(outfile, index=False)
+            comb_pts.extend(rtris[0])
+            comb_tris.extend(rtris[1] + maxpt)
+            comb_data.extend(rtris[2])
+            maxpt += len(rtris[0])
+    else:
+        # make the whole image binary
+        comb_pts, comb_tris, _ = triangulate_bin(im_small > 0, px_scaled)
 
-        return dots
+    assert len(comb_tris) == len(comb_data) or len(comb_data) == 0, \
+        "Something went wrong in the mesh processing..."
+
+    mesh = {
+        'verts': comb_pts.tolist(),
+        'faces': comb_tris.tolist(),
+        'data': comb_data
+    }
+
+    if outfile is not None:
+        with open(outfile, 'w') as fp:
+            json.dump(mesh, fp)
+
+    return mesh
+
+
+def gen_pcd_df(
+        csv,
+        px_size=(0.5, 0.11, 0.11),
+        cmap='tab20',
+        genecol='gene',
+        outfile=None
+):
+    """
+    gen_pcd_df
+    ----------
+    Takes a CSV file of dot locations and genes and converts pixel units to
+    real space units as well as adding hex colors to differentiate each gene
+    in a plot.
+
+    Returns: Pandas DataFrame
+    """
+
+    if isinstance(csv, str):
+        dots = pd.read_csv(csv)
+    elif isinstance(csv, pd.DataFrame):
+        dots = csv.copy()
+    else:
+        raise TypeError
+
+    dots['geneInd'] = dots[genecol].factorize()[0] % 20
+
+    def cmap2hex(cmap):
+        return '#{:02X}{:02X}{:02X}'.format(cmap[0], cmap[1], cmap[2])
+
+    cm = get_cmap(cmap).colors
+    cm = (255 * np.array(cm)).astype(np.uint8)  # convert to bytes
+
+    dots['geneColor'] = [cmap2hex(cm[c]) for c in dots['geneInd']]
+
+    # adjust Z to start from 0
+    dots[['z', 'y', 'x']] -= np.array([1, 0, 0])
+    # convert to real units
+    dots[['z', 'y', 'x']] *= np.array(px_size)
+
+    if genecol != 'gene':
+        dots = dots.rename(columns={genecol: 'gene'})
+
+    if outfile is not None:
+        dots.to_csv(outfile, index=False)
+
+    return dots
 

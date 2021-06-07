@@ -1,21 +1,22 @@
 import pandas as pd
 import logging
+import lib.generators
 from datetime import datetime
-
 from pathlib import Path
-from lib.core import Page
+from lib.core import FilePatterns
 from lib.util import (
     f2k,
     k2f,
     source_keys_conv,
     process_requires,
-    sanitize
+    sanitize,
+    process_file_entries
 )
 
 client_logger = logging.getLogger(__name__)
 
 
-class DataClient:
+class DataClient(FilePatterns):
     """
     DataClient
     --------------
@@ -28,75 +29,38 @@ class DataClient:
         self,
         config=None,
         s3_client=None,
-        pagename=None,
     ):
-        self.pagenames = config['pages'].keys()
-        if pagename and pagename not in self.pagenames:
-            raise ValueError(f'A page name (one of {self.pagenames}) is required.')
+        super().__init__(config)
 
-        self.config = config
         self.client = s3_client
+        self.has_generator = []
 
         self.sync_folder = Path(config.get('sync_folder', 'monitoring/'))
         self.sync_folder.mkdir(parents=True, exist_ok=True)
 
-        self.analysis_folder = config.get('analysis_folder', 'analyses/')
-        self.raw_folder = config.get('raw_folder', 'raw/')
+        self.local_store = Path(config.get('local_store', 'webfish_data/'))
+
         self.bucket_name = config['bucket_name']
 
-        self._page = None
-        self._pagename = None
+        self.sync_file = Path(self.sync_folder, 'sync.csv')
+        self.file_table = Path(self.sync_folder, 'files.csv')
+        self.pending = Path(self.sync_folder, 'pending.csv')
 
-        # See properties below: setting self.pagename triggers a property
-        # setter that validates the name and then calls the page property
-        # setter, passing a Page object.
-        self.pagename = pagename
-
-        if self.page:
-            # TODO: we don't actually use any of these right now in the page files.
-            #   we *could* use the dataset_root and various source/raw/output fields
-            #   to automatically generate selectors for the various fields.
-            # e.g. user -> dataset -> analysis then position -> hyb -> ...
-            # though the config may not be enough to completely specify the
-            # structure and UI we want for each individual case.
-            self.dataset_root = self.page.dataset_root
-            self.dataset_re = self.page.dataset_re
-            self.dataset_glob = self.page.dataset_glob
-            self.dataset_fields = self.page.dataset_fields
-
-            self.raw_dataset_root = self.page.raw_dataset_root
-            self.raw_re = self.page.raw_re
-            self.raw_glob = self.page.raw_glob
-            self.raw_fields = self.page.raw_fields
+        self.all_datasets_file = Path(self.sync_folder, 'all_datasets.csv')
 
         self.datafiles = None
         self.datasets = None
+        self.all_datasets = None
 
-    @property
-    def pagename(self):
-        return self._pagename
-
-    @pagename.setter
-    def pagename(self, val):
-        if not val:
-            self._pagename = None
-            self.page = None
-        elif val in self.pagenames:
-            self._pagename = val
-            self.page = Page(self.config, val)
-        else:
-            raise ValueError(f'A valid page name (one of {self.pagenames}) is required.')
-
-    @property
-    def page(self):
-        return self._page
-
-    @page.setter
-    def page(self, val):
-        self._page = val
-
-        if isinstance(val, Page):
-            self._page.local_store.mkdir(parents=True, exist_ok=True)
+        # Output files and generators
+        self.output_generators = {}
+        for k, v in self.file_entries['output'].items():
+            if v['generator']:
+                generator = getattr(lib.generators, v['generator'])
+            else:
+                generator = None
+            self.output_generators[k] = generator
+            self.has_generator.append(k)
 
     def sync_with_s3(
         self,
@@ -120,25 +84,22 @@ class DataClient:
                     f'sync_with_s3: errors downloading keys:',
                     error)
 
-        if self.page and self.page.sync_file and self.page.file_table:
+        if self.sync_file.exists() and self.file_table.exists():
             self.datasets = pd.read_csv(
-                self.page.sync_file,
+                self.sync_file,
                 converters={'source_keys': source_keys_conv})
 
-            self.datafiles = pd.read_csv(self.page.file_table, dtype=str)
+            self.datafiles = pd.read_csv(self.file_table, dtype=str)
         else:
-            source_file = Path(self.sync_folder, 'all_datasets.csv')
-            raw_file = Path(self.sync_folder, 'all_raw_datasets.csv')
+            self.datasets = pd.DataFrame()
+            self.datafiles = pd.DataFrame()
 
-            self.datasets = pd.concat([
-                pd.read_csv(source_file),
-                pd.read_csv(raw_file)
-            ]).reset_index(drop=True)
+        if self.all_datasets_file.exists():
+            self.all_datasets = pd.read_csv(self.all_datasets_file)
 
     def local(
         self,
         key,
-        page=None,
         delimiter='/'
     ):
         """
@@ -151,11 +112,8 @@ class DataClient:
 
         key = k2f(key, delimiter)
 
-        if page is None:
-            page = self.pagename
-
-        if not key.is_relative_to(self.page.local_store):
-            key = self.page.local_store / key
+        if not key.is_relative_to(self.local_store):
+            key = self.local_store / key
 
         return Path(key)
 
@@ -179,14 +137,6 @@ class DataClient:
         """
         if isinstance(fields, str):
             fields = (fields,)
-
-        if self.page.global_files:
-            if all([field in self.page.global_files.keys() for field in fields]):
-                return {
-                    field: self.retrieve_or_download(
-                        self.page.global_files[field], force_download=force_download)
-                    for field in fields
-                }
 
         if self.datafiles is None:
             return {}
@@ -222,28 +172,41 @@ class DataClient:
         results = []
 
         # Input files: no client side processing required
-        if (field in self.page.source_files.keys()
-                or field in self.page.raw_files.keys()):
+        if field not in self.has_generator:
             files = needed.query('source_key == @field')['filename'].values
             results = [
-                self.retrieve_or_download(f, field=field, force_download=force_download)
+                self.retrieve_or_download(f, field, force_download=force_download)
                 for f in files
             ]
 
         # Output files: client-side processing required
-        elif field in self.page.output_files.keys():
+        elif field in self.has_generator:
+            cat, root, _, prefix, pattern = self.key_info(field)
+
             required_fields = process_requires(
-                self.page.output_files[field].get('requires', []))
+                self.file_entries[cat][field].get('requires', []))
 
             required_rows = needed.query('source_key in @required_fields').copy()
             local_filenames = []
 
+            dataset = ''
+            dataset_nest = 0
+
             # fetch as many required files as we can
             for row in required_rows.itertuples():
+                cat, _, dataset_pat, _, _ = self.key_info(row.source_key)
+                nest = len(self.file_locations[cat]['dataset_format_fields'])
+
+                # Use the most specific (most nested) dataset format as the root
+                # directory for saving the output file.
+                if nest > dataset_nest:
+                    dataset_nest = nest
+                    dataset = dataset_pat
+
                 local_filenames.append(
                     self.retrieve_or_download(
                         row.filename,
-                        field=row.source_key,
+                        row.source_key,
                         force_download=force_download
                     )
                 )
@@ -251,44 +214,42 @@ class DataClient:
             # add the local filenames to the dataframe
             required_rows['local_filename'] = local_filenames
 
-            generator = self.page.output_generators[field]
+            generator = self.output_generators[field]
 
             if generator is not None:
                 results = generator(
                     inrows=required_rows,
-                    outpattern=Path(self.dataset_root, self.page.output_patterns[field]),
-                    savedir=Path(self.page.local_store)
+                    outpattern=Path(dataset, pattern),
+                    savedir=Path(self.local_store)
                 )
         else:
             raise ValueError(
-                f'request for invalid field {field}, valid are {self.page.file_fields}')
+                f'request for invalid field {field}, valid are {self.file_keys}')
 
         return results
 
     def retrieve_or_download(
         self,
         key,
-        field=None,
+        field,
         force_download=False
     ):
         now = datetime.now()
         client_logger.debug(f'RETRIEVEORDOWNLOAD: starting {key}')
         error = []
 
-        if self.page is not None:
-            if field in self.page.source_patterns.keys():
-                prefix = self.analysis_folder
-            elif field in self.page.raw_patterns.keys():
-                prefix = self.raw_folder
+        cat, root, dataset, prefix, pattern = self.key_info(field)
 
         lp = self.local(k2f(key))
+
+        print('r_o_d:', cat, root, dataset, prefix, pattern, lp)
 
         if force_download or not lp.is_file():
             error = self.client.download_s3_objects(
                 self.bucket_name,
                 str(key),
                 prefix=str(prefix),
-                local_dir=self.page.local_store
+                local_dir=self.local_store
             )
 
         if len(error) > 0:

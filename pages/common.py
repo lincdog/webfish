@@ -6,23 +6,16 @@ import dash_core_components as dcc
 import dash_html_components as html
 
 
-data_clients = {
-    pagename: DataClient(pagename=pagename, config=config, s3_client=s3_client)
-    for pagename in config['pages'].keys()
-}
-data_clients['__all__'] = DataClient(pagename=None, config=config, s3_client=s3_client)
+data_client = DataClient(config=config, s3_client=s3_client)
 
 
 def sync_with_s3():
-    data_clients['__all__'].sync_with_s3(download=True)
-
-    for cli in data_clients.values():
-        cli.sync_with_s3(download=False)
+    data_client.sync_with_s3(download=True)
 
 
 def get_all_datasets():
     # Save the dataset record to compare to individual pages
-    return data_clients['__all__'].datasets.copy()
+    return data_client.all_datasets.copy()
 
 
 sync_with_s3()
