@@ -317,7 +317,7 @@ class DataServer(FilePatterns):
                 key_dataset_df = self.filter_datasets(
                     key_df,
                     self.file_locations[cat]['dataset_format_fields'],
-                    root
+                    dataset
                 )
 
                 file_dfs.append(key_df)
@@ -334,7 +334,7 @@ class DataServer(FilePatterns):
     def filter_datasets(
         datafile_df,
         fields,
-        dataset_root
+        dataset_format
     ):
         page_datasets = []
 
@@ -342,7 +342,7 @@ class DataServer(FilePatterns):
             dataset = {field: value for field, value
                        in zip(fields, group)}
 
-            dataset['folder'] = dataset_root.format_map(dataset)
+            dataset['folder'] = dataset_format.format_map(dataset)
 
             # FIXME: Technically we should also group by the source file variables, but
             #   usually all the positions etc WITHIN one analysis ALL have the same
