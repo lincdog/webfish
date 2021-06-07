@@ -780,3 +780,12 @@ def empty_or_false(thing):
 
 def notempty(dfs):
     return [not empty_or_false(df) for df in dfs]
+
+
+def copy_or_nop(df):
+    try:
+        result = df.copy()
+    except AttributeError:
+        result = df
+
+    return result

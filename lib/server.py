@@ -11,6 +11,7 @@ from lib.core import FilePatterns
 from lib.util import (
     fmt2regex,
     find_matching_files,
+    copy_or_nop,
     notempty,
     empty_or_false,
     process_file_entries
@@ -201,14 +202,11 @@ class DataServer(FilePatterns):
                     pass
 
         if replace:
-            self.all_datasets = self.local_sync['all_datasets'].copy()
+            self.all_datasets = copy_or_nop(self.local_sync['all_datasets'])
 
-            self.datasets = self.local_sync.get(
-                'sync_file', pd.DataFrame()).copy()
-            self.datafiles = self.local_sync.get(
-                'file_table', pd.DataFrame()).copy()
-            self.pending = self.local_sync.get(
-                'pending_uploads', pd.DataFrame()).copy()
+            self.datasets = copy_or_nop(self.local_sync['sync_file'])
+            self.datafiles = copy_or_nop(self.local_sync['file_table'])
+            self.pending = copy_or_nop(self.local_sync['pending_uploads'])
 
     def check_s3_contents(
         self,
@@ -554,7 +552,7 @@ class DataServer(FilePatterns):
 
             preupload_func = self.file_entries[cat][key]['preupload']
 
-            in_format = str(Path(data_root, self.input_patterns[cat][key]))
+            in_format = str(Path(data_root, self.input_patterns[key]))
             out_format = self._preupload_newname(in_format, key)
 
             with ProcessPoolExecutor(max_workers=nthreads) as exe:
