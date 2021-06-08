@@ -214,10 +214,7 @@ def validate_json(fname, history_df, dm, allow_duplicates=False):
     assert cluster_info['mem-per-cpu'] == '10G', 'something other than 10G per cpu?'
 
     # This should contain all possible datasets including raw and already-run analyses
-    existing_datasets = pd.concat([
-        dm.all_datasets,
-        dm.all_raw_datasets
-    ], ignore_index=True)
+    existing_datasets = dm.all_datasets.copy()
 
     possible_users = existing_datasets['user'].unique()
 
