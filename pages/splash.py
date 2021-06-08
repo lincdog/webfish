@@ -46,7 +46,8 @@ layout = [
                 dcc.Markdown('To use the pipeline and this site, upload the raw data'
                              ' from each of your experiments to: \n\n**`/groups/CaiLab/personal/'
                              '<user name>/raw/<experiment name>/`**\n\n where you insert '
-                             'your name and each experiment\'s name.  Use /central/groups/CaiLab/personal/nrezaee/raw/2020-08-08-takei as an example.'),
+                             'your name and each experiment\'s name. '
+                             '*Use `/central/groups/CaiLab/personal/nrezaee/raw/2020-08-08-takei` as an example.*'),
                 dcc.Markdown('*Download a tool like [Cyberduck](https://cyberduck.io/) '
                              'to upload your data using an easy, graphical interface.*'),
                 html.H3('Directory Structure'),
@@ -54,17 +55,20 @@ layout = [
                              'essentially the same as the output from an automation '
                              'experiment. The contents of each experiment directory should be:'),
                 html.Ul([
-                    html.Li(dcc.Markdown('A series of folders, one for each hyb cycle, named **`HybCycle_#`**  . Make sure you do not have any files with "HybCycle_*' in the name.)),
+                    html.Li(dcc.Markdown('A series of folders, one for each hyb cycle, named **`HybCycle_#`**. '
+                                         'Make sure you do not have any other files with `HybCycle_` in the name.')),
                     html.Li(dcc.Markdown(
                         'Within each HybCycle folder, a series of TIFF stacks, '
-                        'one for each position, named **`MMStack_Pos#.ome.tif`.**'. Do not add folders that have "HybCycle_*" in the name unless it has MMStack_Pos*.ome.tif files in it.)),
+                        'one for each position, named **`MMStack_Pos#.ome.tif`.**. '
+                        'Do not add folders that have `HybCycle_#` in the name unless they have `MMStack_Pos#.ome.tif` files in them.)),
                     html.Li([
                         dcc.Markdown(
                             'A folder named **`barcode_key`** containing one or more files '
                             'named **`channel_#.csv`** that specify the barcode assigned '
                             'to each gene in each barcoding channel in your experiment.'
                             ' Note that **channels start from 1**. Click the arrow below '
-                            'for an example of barcode key formatting and also the folder /central/groups/CaiLab/personal/nrezaee/raw/2020-08-08-takei/barcode_key.'
+                            'for an example of barcode key formatting, and also see the folder '
+                            '`/central/groups/CaiLab/personal/nrezaee/raw/2020-08-08-takei/barcode_key`.'
                         ),
                         html.Div(html.Details([
                             html.Summary(html.B('Barcode key example')),
