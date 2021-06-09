@@ -54,7 +54,10 @@ dataset_form = {
             id='s3-sync-button',
             n_clicks=0,
             color='primary'
-        )
+        ),
+    # Interval that fires every 5 minutes (units in milliseconds) to sync with s3
+    's3-sync-interval':
+        dcc.Interval(id='s3-sync-interval', interval=5 * 60 * 1000, n_intervals=0),
 }
 
 
@@ -103,10 +106,11 @@ index_cm = ComponentManager(
     Output('user-select', 'value'),
     Output('user-select', 'options'),
     Input('s3-sync-button', 'children'),
-    State('s3-sync-button', 'n_clicks')
+    State('s3-sync-button', 'n_clicks'),
+    State('s3-sync-interval', 'n_intervals')
 )
-def finish_client_s3_sync(contents, n_clicks):
-    if n_clicks != 1:
+def finish_client_s3_sync(contents, n_clicks, n_intervals):
+    if n_clicks + n_intervals != 1:
         raise PreventUpdate
 
     if ' Syncing...' not in contents:
@@ -114,15 +118,26 @@ def finish_client_s3_sync(contents, n_clicks):
 
     sync_with_s3()
 
-    return index_cm.component('s3-sync-button'), None, get_users()
+    return ([index_cm.component('s3-sync-button'),
+            index_cm.component('s3-sync-interval')],
+            None, get_users())
 
 
 @app.callback(
     Output('s3-sync-button', 'children'),
-    Input('s3-sync-button', 'n_clicks')
+    Input('s3-sync-button', 'n_clicks'),
+    Input('s3-sync-interval', 'n_intervals')
 )
-def init_client_s3_sync(n_clicks):
-    if n_clicks == 1:
+def init_client_s3_sync(n_clicks, n_intervals):
+    if n_intervals == 1:
+        print('interval fired')
+
+    print(n_clicks, n_intervals)
+
+    # Initialize sync when button is clicked OR interval fires, not both -
+    # to prevent re-syncing if the button is clicked during a sync or the
+    # interval fires during a sync, before the counts have reset.
+    if n_clicks + n_intervals == 1:
         return [dbc.Spinner(size='sm'), ' Syncing...']
     else:
         raise PreventUpdate
@@ -202,7 +217,9 @@ def sync_tab_url(pathname, tabval):
 app.layout = dbc.Container(
     fluid=True,
     children=[
+        # Location to track the URL bar contents
         dcc.Location(id='url', refresh=False),
+        # Store to store state locally (currently unused)
         dcc.Store(id='wf-store', storage_type='session', data={}),
 
         dbc.Row([
@@ -232,7 +249,10 @@ app.layout = dbc.Container(
                 dbc.Card(dbc.CardBody([
                     index_cm.component('user-select', options=get_users()),
                     index_cm.component('dataset-select', disabled=True),
-                    html.Div(index_cm.component('s3-sync-button'), id='s3-sync-div'),
+                    html.Div([
+                        index_cm.component('s3-sync-button'),
+                        index_cm.component('s3-sync-interval')
+                    ], id='s3-sync-div'),
                 ]), style={'margin-top': '10px'}),
             ], width=4),
             dbc.Col([

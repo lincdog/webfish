@@ -90,6 +90,10 @@ file_patterns:
       "MMStack_Pos{position}/Dot_Locations/Average_Brightness_Analysis.csv"
     biggest_jump:
       "MMStack_Pos{position}/Dot_Locations/Biggest_Jump_Histograms/HybCycle_{hyb}_Jump.png"
+    preprocess_check:
+      "MMStack_Pos{position}/PreProcess_Check/HybCycle_{hyb}.png"
+    alignment_check:
+      "MMStack_Pos{position}/Alignment_Checks/Aligned_and_Stacked_DAPI_S.tif"
 
   raw:
     hyb_fov:
