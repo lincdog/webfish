@@ -211,7 +211,7 @@ app.layout = dbc.Container(
                     [
                         dbc.NavItem(dbc.NavLink(
                             'View on GitHub',
-                            href='https://github.com/lincdog/webfish'
+                            href='https://github.com/CaiGroup/web-ui'
                         )),
                         dbc.NavItem(dbc.NavLink(
                             'Cai Lab home',

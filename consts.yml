@@ -31,14 +31,14 @@ file_locations:
 
 # Folder to save file manifests and syncing information to, both on
 #   server and on client (running instance of webapp)
-sync_folder: /webfish/monitoring/
+sync_folder: monitoring/
 
 # Location to save files that have been processed with preuploader functions
 preupload_root: /groups/CaiLab/personal/lincoln/webfish_preupload/
 
 # Folder on client (webapp) to save all downloaded data/analysis files that
 #   are used in the webapp
-local_store: /webfish/webfish_data/
+local_store: webfish_data/
 
 # ----------------------------
 
