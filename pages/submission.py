@@ -308,7 +308,8 @@ clear_components = {
                 id='sb-decoding-select',
                 options=[
                     {'label': 'Across channels', 'value': 'across'},
-                    {'label': 'Individual channel(s)', 'value': 'individual'}
+                    {'label': 'Individual channel(s)', 'value': 'individual'},
+                    {'label': 'smFISH (non-barcoded)', 'value': 'smfish'}
                 ],
                 value='individual',
                 inline=True
