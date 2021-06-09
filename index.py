@@ -194,7 +194,7 @@ def sync_tab_url(pathname, tabval):
         newval = tabval
 
     if newval not in tabs_and_splash:
-        return '', 'home'
+        return 'home', 'home'
 
     return newval, newval
 

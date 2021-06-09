@@ -168,6 +168,9 @@ clear_components = {
     'dd-z-select': dcc.Slider(id='dd-z-select'),
     'dd-chan-select': dbc.Select(id='dd-chan-select'),
     'dd-contrast-slider': dcc.RangeSlider(id='dd-contrast-slider'),
+    'dd-contrast-note': dcc.Markdown('NOTE: the image intensity is rescaled to '
+                                     'use the full range of the datatype before '
+                                     'display - **they are not true to the original image**'),
 
     'dd-fig': dcc.Graph(id='dd-fig')
 }
@@ -188,7 +191,8 @@ component_groups = {
                      'dd-chan-cap',
                      'dd-chan-select',
                      'dd-contrast-cap',
-                     'dd-contrast-slider']
+                     'dd-contrast-slider',
+                     'dd-contrast-note']
 }
 
 cm = ComponentManager(clear_components, component_groups=component_groups)
@@ -294,7 +298,7 @@ def select_pos_hyb(swap, position, hyb, dataset, user):
     z_range = list(range(image.shape[z_ind]))
     chan_range = list(range(image.shape[c_ind]))
 
-    marks = {a // 256: str(a) for a in range(0, 2**16, 5000)}
+    marks = {a*256: '{:0.1}'.format(a) for a in np.linspace(0, 1, 11)}
 
     return True, [
         html.B('Select Z slice'),
@@ -326,6 +330,7 @@ def select_pos_hyb(swap, position, hyb, dataset, user):
                 value=[0, 200],
                 allowCross=False
             ),
+            cm.component('dd-contrast-note')
         ], id='dd-contrast-div'),
     ]
 
