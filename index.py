@@ -210,7 +210,7 @@ app.layout = dbc.Container(
                 dbc.NavbarSimple(
                     [
                         dbc.NavItem(dbc.NavLink(
-                            'View on GitHub',
+                            'View on Github',
                             href='https://github.com/CaiGroup/web-ui'
                         )),
                         dbc.NavItem(dbc.NavLink(
