@@ -7,6 +7,7 @@ import lib.preuploaders
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from collections import defaultdict
 from time import time
+from pprint import pformat
 from lib.core import FilePatterns
 from lib.util import (
     fmt2regex,
@@ -683,7 +684,7 @@ class DataServer(FilePatterns):
             if any(errors.values()):
                 server_logger.warning(
                     f'upload_to_s3: ran into some preupload errors')
-                server_logger.debug(errors)
+                server_logger.debug(pformat(errors))
 
                 for key_errs in errors.values():
                     bad_fnames = [e[0] for e in key_errs]
