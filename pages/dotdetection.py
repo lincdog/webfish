@@ -121,16 +121,38 @@ def gen_image_figure(
 
         print(f'offsets: {offsets}')
 
+        if 'strictness' in dots_select.columns:
+            strictnesses = dots_select['strictness'].values
+
+            color_by = np.nan_to_num(strictnesses, nan=0)
+            cbar_title = 'Strictness'
+        else:
+            color_by = dots_select['z'].values
+            cbar_title = 'Z slice'
+
+
         fig.add_trace(go.Scatter(
+            name='detected dots',
             x=dots_select['x'].values - offsets[1],
             y=dots_select['y'].values - offsets[0],
             mode='markers',
             marker_symbol='cross',
+            text=color_by,
+            hovertemplate='(%{x}, %{y})<br>'+cbar_title+': %{text}',
+            hoverinfo='x+y+text',
             marker=dict(
                 maxdisplayed=1000,
                 size=10,
-                color=dots_select['z'].values))
+                cmax=-10,
+                cmin=100,
+                colorbar=dict(
+                    title=cbar_title
+                ),
+                colorscale="Viridis",
+                color=color_by))
         )
+
+        fig.update_layout(coloraxis_showscale=True)
 
     return fig
 
@@ -152,8 +174,10 @@ clear_components = {
         ),
     'dd-new-analysis-text': html.Div(id='dd-new-analysis-text'),
 
+    'dd-hyb-select-label': dbc.Label('Select a hyb round', html_for='dd-hyb-select'),
     'dd-hyb-select':
         dbc.Select(id='dd-hyb-select', placeholder='Select a hyb round'),
+    'dd-position-select-label': dbc.Label('Select a position', html_for='dd-position-select'),
     'dd-position-select':
         dbc.Select(id='dd-position-select', placeholder='Select a position'),
     'dd-swap-channels-slices':
@@ -183,7 +207,9 @@ component_groups = {
                      'dd-submit-new-analysis-provider',
                      'dd-new-analysis-text'],
 
-    'image-select': ['dd-hyb-select',
+    'image-select': ['dd-hyb-select-label',
+                     'dd-hyb-select',
+                     'dd-position-select-label',
                      'dd-position-select',
                      'dd-swap-channels-slices'],
 
