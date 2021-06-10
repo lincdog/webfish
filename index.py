@@ -103,11 +103,10 @@ index_cm = ComponentManager(
 
 @app.callback(
     Output('s3-sync-div', 'children'),
-    Output('user-select', 'value'),
     Output('user-select', 'options'),
     Input('s3-sync-button', 'children'),
     State('s3-sync-button', 'n_clicks'),
-    State('s3-sync-interval', 'n_intervals')
+    State('s3-sync-interval', 'n_intervals'),
 )
 def finish_client_s3_sync(contents, n_clicks, n_intervals):
     if n_clicks + n_intervals != 1:
@@ -120,7 +119,7 @@ def finish_client_s3_sync(contents, n_clicks, n_intervals):
 
     return ([index_cm.component('s3-sync-button'),
             index_cm.component('s3-sync-interval')],
-            None, get_users())
+            get_users())
 
 
 @app.callback(

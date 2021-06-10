@@ -1,4 +1,4 @@
-from copy import copy
+from copy import copy, deepcopy
 from lib.client import DataClient
 from app import config, s3_client
 import dash_bootstrap_components as dbc
@@ -59,11 +59,11 @@ class ComponentManager:
     ):
         component_groups = component_groups or {}
 
-        self.clear_components = copy(clear_components)
-        self.component_groups = copy(component_groups)
+        self.clear_components = deepcopy(clear_components)
+        self.component_groups = deepcopy(component_groups)
 
     def component(self, id, **options):
-        comp = copy(self.clear_components[id])
+        comp = deepcopy(self.clear_components[id])
 
         for k, v in options.items():
             setattr(comp, k, v)

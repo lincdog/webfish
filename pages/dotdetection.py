@@ -65,6 +65,7 @@ def put_analysis_request(
 def gen_image_figure(
     imfile,
     dots_csv=None,
+    offsets=(0, 0),
     swap=False,
     hyb='0',
     z_slice='0',
@@ -118,11 +119,11 @@ def gen_image_figure(
             #dtype={'ch': int, 'z': int, 'hyb': int}
         ).query(dots_query)
 
-        print(dots_query, dots_select.info())
+        print(f'offsets: {offsets}')
 
         fig.add_trace(go.Scatter(
-            x=dots_select['x'].values,
-            y=dots_select['y'].values,
+            x=dots_select['x'].values - offsets[1],
+            y=dots_select['y'].values - offsets[0],
             mode='markers',
             marker_symbol='cross',
             marker=dict(
@@ -210,6 +211,7 @@ cm = ComponentManager(clear_components, component_groups=component_groups)
     Input('dd-analysis-select', 'value'),
     Input('dataset-select', 'value'),
     Input('user-select', 'value'),
+    State('dd-fig', 'relayoutData')
 )
 def update_image_params(
     is_open,
@@ -221,7 +223,8 @@ def update_image_params(
     hyb,
     analysis,
     dataset,
-    user
+    user,
+    current_layout
 ):
     # Again test for None explicitly because z, channel, position or hyb might be 0
     if not is_open or any([v is None for v in
@@ -236,19 +239,54 @@ def update_image_params(
     )['hyb_fov']
 
     if analysis:
-        dot_locations = data_client.request(
+        requests = data_client.request(
             {'user': user, 'dataset': dataset, 'position': position, 'analysis': analysis},
-            fields='dot_locations'
-        )['dot_locations']
+            fields=['dot_locations', 'offsets_json']
+        )
+        dot_locations = requests['dot_locations']
+        offsets_json = requests['offsets_json']
     else:
         dot_locations = None
+        offsets_json = None
 
     print(f'hyb_fov: {hyb_fov}')
     print(f'dot locations: {dot_locations}')
+    print(f'offsets json: {offsets_json}')
+    print('current_layout:')
 
-    figure = gen_image_figure(hyb_fov, dot_locations, swap, hyb, z, channel, contrast)
+    if offsets_json:
+        all_offsets = json.load(open(offsets_json[0]))
+        offsets = all_offsets.get(
+            f'HybCycle_{hyb}/MMStack_Pos{position}.ome.tif',
+            (0, 0)
+        )
+    else:
+        offsets = (0, 0)
 
-    return cm.component('dd-fig', figure=figure)
+    figure = gen_image_figure(
+        hyb_fov,
+        dot_locations,
+        offsets,
+        swap,
+        hyb,
+        z,
+        channel,
+        contrast
+    )
+
+    if current_layout:
+        if 'xaxis.range[0]' in current_layout:
+            figure['layout']['xaxis']['range'] = [
+                current_layout['xaxis.range[0]'],
+                current_layout['xaxis.range[1]']
+            ]
+        if 'yaxis.range[0]' in current_layout:
+            figure['layout']['yaxis']['range'] = [
+                current_layout['yaxis.range[0]'],
+                current_layout['yaxis.range[1]']
+            ]
+
+    return cm.component('dd-fig', figure=figure, relayoutData=current_layout)
 
 
 @app.callback(

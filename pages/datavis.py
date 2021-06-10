@@ -117,9 +117,17 @@ def gen_figure(selected_genes, active):
     State('dv-analysis-select', 'value'),
     State('dataset-select', 'value'),
     State('user-select', 'value'),
+    State('dv-fig', 'relayoutData'),
     prevent_initial_call=True
 )
-def update_figure(selected_genes, pos, analysis, dataset, user):
+def update_figure(
+    selected_genes,
+    pos,
+    analysis,
+    dataset,
+    user,
+    current_layout
+):
     """
     update_figure:
     Callback triggered by by selecting
@@ -151,9 +159,15 @@ def update_figure(selected_genes, pos, analysis, dataset, user):
     else:
         info = None
 
+    print(current_layout.keys())
+
     fig = gen_figure(selected_genes, active)
 
-    return [info, dcc.Graph(id='dv-test-graph', figure=fig)]
+    if current_layout:
+        if 'scene.camera' in current_layout:
+            fig['layout']['scene']['camera'] = current_layout['scene.camera']
+
+    return [info, dcc.Graph(id='dv-fig', figure=fig, relayoutData=current_layout)]
 
 
 @app.callback(
@@ -375,7 +389,7 @@ layout = [
         html.Div([
             dcc.Loading(
                 dcc.Graph(
-                    id='dv-test-graph',
+                    id='dv-fig',
                 ), id='dv-graph-wrapper'
             )
         ])
