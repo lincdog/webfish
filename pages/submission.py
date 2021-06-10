@@ -216,6 +216,8 @@ clear_components = {
                  'value': 'nuclei labeled image'},
                 {'label': 'Segment cytoplasm',
                  'value': 'cyto labeled image'},
+                {'label': 'Match nuclear and cytoplasm segmentation',
+                 'value': 'nuclei cyto match'}
             ],
             value=['only decode dots in cells',
                    'all post analyses',
@@ -254,14 +256,26 @@ clear_components = {
             dbc.Label('Cytoplasm Channel', html_for='sb-cyto-channel'),
             dbc.RadioItems(
                 id='sb-cyto-channel',
-                options=[{'label': '1', 'value': '1'},
-                         {'label': '2', 'value': '2'},
-                         {'label': '3', 'value': '3'}
+                options=[{'label': str(i), 'value': str(i)}
+                         for i in range(4)
                          ],
                 value='3',
                 inline=True
             ),
             dbc.FormText('Select which channel to use for cytoplasm segmentation')
+        ]),
+    'sb-nuclei-channel':
+        dbc.FormGroup([
+            dbc.Label('Nucleus Channel', html_for='sb-nuclei-channel'),
+            dbc.RadioItems(
+                id='sb-nuclei-channel',
+                options=[{'label': str(i), 'value': str(i)}
+                         for i in range(4)
+                         ],
+                value='3',
+                inline=True
+            ),
+            dbc.FormText('Select which channel to use for nuclei segmentation')
         ]),
     'sb-nuclei-radius':
         dbc.FormGroup([
@@ -292,6 +306,44 @@ clear_components = {
             dbc.Label('Set Flow Threshold Parameter', html_for='sb-flow-threshold'),
             dcc.Slider(
                 id='sb-flow-threshold',
+                min=0,
+                max=1,
+                step=0.01,
+                value=0.8,
+                marks={i: f'{i:0.2f}' for i in np.linspace(0, 1, 11)}
+            )
+        ]),
+    'sb-cyto-radius':
+        dbc.FormGroup([
+            dbc.Label('Select Cytoplasm Radius', html_for='sb-cyto-radius'),
+            dbc.Input(
+                id='sb-cyto-radius',
+                type='number',
+                min=0,
+                max=100,
+                step=1,
+                value=10
+            ),
+        ]),
+    'sb-cyto-cell-prob-threshold':
+        dbc.FormGroup([
+            dbc.Label('Set Cytoplasm Cell Probability Threshold',
+                      html_for='sb-cyto-cell-prob-threshold'),
+            dcc.Slider(
+                id='sb-cyto-cell-prob-threshold',
+                min=-6,
+                max=6,
+                step=1,
+                value=-4,
+                marks={i: str(i) for i in range(-6, 7, 1)}
+            ),
+        ]),
+    'sb-cyto-flow-threshold':
+        dbc.FormGroup([
+            dbc.Label('Set Cytoplasm Flow Threshold Parameter',
+                      html_for='sb-cyto-flow-threshold'),
+            dcc.Slider(
+                id='sb-cyto-flow-threshold',
                 min=0,
                 max=1,
                 step=0.01,
@@ -352,6 +404,10 @@ component_groups = {
     'segmentation-advanced': ['sb-edge-deletion',
                               'sb-nuclei-distance',
                               'sb-cyto-channel',
+                              'sb-cyto-radius',
+                              'sb-cyto-cell-prob-threshold',
+                              'sb-cyto-flow-threshold',
+                              'sb-nuclei-channel',
                               'sb-nuclei-radius',
                               'sb-cell-prob-threshold',
                               'sb-flow-threshold'],
@@ -433,7 +489,11 @@ id_to_json_key = {
     'sb-segmentation-checklist': _checklist_process,
     'sb-edge-deletion': 'edge deletion',
     'sb-nuclei-distance': 'distance between nuclei',
+    'sb-nuclei-channel': 'nuclei channel number',
     'sb-cyto-channel': 'cyto channel number',
+    'sb-cyto-radius': 'cyto radius',
+    'sb-cyto-cell-prob-threshold': 'cyto cell prob threshold',
+    'sb-cyto-flow-threshold': 'cyto flow threshold',
     'sb-nuclei-radius': 'nuclei radius',
     'sb-cell-prob-threshold': 'cell_prob_threshold',
     'sb-flow-threshold': 'flow_threshold',
