@@ -293,7 +293,7 @@ clear_components = {
                 min=0,
                 max=100,
                 step=1,
-                value=10
+                value=0
             ),
             dbc.FormText('Set to 0 to let Cellpose find automatically.')
         ]),
@@ -330,7 +330,7 @@ clear_components = {
                 min=0,
                 max=100,
                 step=1,
-                value=10
+                value=0
             ),
             dbc.FormText('Set to 0 to let Cellpose find automatically.')
         ]),
