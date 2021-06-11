@@ -70,7 +70,8 @@ def gen_image_figure(
     hyb='0',
     z_slice='0',
     channel='0',
-    contrast_minmax=(0, 2000)
+    contrast_minmax=(0, 2000),
+    strictness=None
 ):
 
     if len(imfile) > 0:
@@ -103,6 +104,9 @@ def gen_image_figure(
         else:
             img_select = np.max(image[channel], axis=0)
         dots_query = 'hyb == @hyb_q and ch == @channel_q'
+
+    if strictness is not None:
+        dots_query += ' and strictness <= @strictness'
 
     fig = px.imshow(
         img_select,
@@ -142,8 +146,8 @@ def gen_image_figure(
             marker=dict(
                 maxdisplayed=1000,
                 size=10,
-                cmax=-10,
-                cmin=100,
+                cmax=min(color_by),
+                cmin=max(color_by),
                 colorbar=dict(
                     title=cbar_title
                 ),
@@ -219,8 +223,7 @@ component_groups = {
                      'dd-chan-select',
                      'dd-contrast-cap',
                      'dd-contrast-slider',
-                     'dd-contrast-note',
-                     'dd-strictness-slider']
+                     'dd-contrast-note']
 }
 
 cm = ComponentManager(clear_components, component_groups=component_groups)
@@ -283,27 +286,33 @@ def update_image_params(
     print(f'dot locations: {dot_locations}')
     print(f'offsets json: {offsets_json}')
 
-    strictness_disabled = True
     strictness_options = {}
 
     if dot_locations:
         try:
             strictnesses = pd.read_csv(
                 dot_locations[0],
-                usecols=['strictness'])['strictness'].values.astype(int)
+                usecols=['strictness'])['strictness'].dropna().values.astype(int)
 
             strictness_range = (np.min(strictnesses), np.max(strictnesses))
+
+            if strictness is None:
+                strictness = round(np.median(strictnesses))
+
             strictness_options = {
                 'min': strictness_range[0],
                 'max': strictness_range[1],
                 'step': 1,
-                'value': round(np.median(strictnesses)),
+                'value': strictness,
                 'marks': {
-                    a: str(a) for a in
+                    a: '{:d}'.format(round(a)) for a in
                     np.linspace(strictness_range[0], strictness_range[1], 10)
-                }
+                },
+                'disabled': False
             }
-            strictness_disabled = False
+
+            print(f'strictness_options: {strictness_options}')
+
         except ValueError:
             strictness_options = {}
 
@@ -324,7 +333,8 @@ def update_image_params(
         hyb,
         z,
         channel,
-        contrast
+        contrast,
+        strictness
     )
 
     if current_layout:
@@ -340,7 +350,8 @@ def update_image_params(
             ]
 
     return (cm.component('dd-fig', figure=figure, relayoutData=current_layout),
-            strictness_options)
+            [dbc.Label('Strictness <= ', html_for='dd-strictness-slider'),
+             cm.component('dd-strictness-slider', **strictness_options)])
 
 
 @app.callback(
@@ -359,7 +370,13 @@ def select_pos_hyb(swap, position, hyb, dataset, user):
 
     # Close the collapser and reset the components
     if not is_open:
-        return False, cm.component_group('image-params', tolist=True)
+        return (False,
+                [
+                    *cm.component_group('image-params', tolist=True),
+                    html.Div([
+                        cm.component('dd-strictness-slider')
+                    ], id='dd-strictness-slider-wrapper')
+                 ])
 
     swap = 'swap' in swap
 
@@ -373,12 +390,20 @@ def select_pos_hyb(swap, position, hyb, dataset, user):
         assert image.ndim == 4, 'Must have 4 dimensions'
     except (AssertionError, IndexError, RuntimeError) as e:
         print(e, type(e))
-        return True, [
-                   dbc.Alert(f'No image file for dataset {user}/{dataset} '
-                             f'hyb {hyb} position {position} found!', color='warning')
-               ] + cm.component_group('image-params',
-                                      tolist=True,
-                                      options=dict(disabled=True))
+        return (True,
+                [
+                    dbc.Alert(f'No image file for dataset {user}/{dataset} '
+                             f'hyb {hyb} position {position} found!', color='warning'),
+
+                    *cm.component_group(
+                        'image-params',
+                        tolist=True,
+                        options=dict(disabled=True)
+                    ),
+                    html.Div([
+                        cm.component('dd-strictness-slider')
+                    ], id='dd-strictness-slider-wrapper')
+                ])
 
     if swap:
         z_ind = 0
@@ -573,12 +598,11 @@ layout = [
                 dbc.Spinner([
                     *cm.component_group(
                         'image-params',
-                        options={
-                            'dd-strictness-slider-wrapper':
-                                dict(children=cm.component('dd-strictness-slider'))
-                        },
-                        tolist=True)
-                ], id='dd-image-params-loader')
+                        tolist=True),
+                    html.Div(cm.component(
+                        'dd-strictness-slider',
+                    ), id='dd-strictness-slider-wrapper')
+                ], id='dd-image-params-loader'),
             ], is_open=False, id='dd-image-params-wrapper'),
 
         ], id='dd-image-params-div', style={'margin': '10px'})
