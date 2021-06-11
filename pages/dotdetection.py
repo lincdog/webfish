@@ -201,7 +201,7 @@ clear_components = {
                                      'display'),
     'dd-strictness-slider': dcc.Slider(id='dd-strictness-slider', disabled=True),
 
-    'dd-fig': dcc.Graph(id='dd-fig')
+    'dd-fig': dcc.Graph(id='dd-fig', config={'scrollZoom': True})
 }
 
 component_groups = {

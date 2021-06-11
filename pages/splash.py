@@ -62,14 +62,9 @@ layout = [
                         'one for each position, named **`MMStack_Pos#.ome.tif`.**. '
                         'Do not add folders that have `HybCycle_#` in the name unless they have '
                         '`MMStack_Pos#.ome.tif` files in them.')),
-                    html.Li(dcc.Markdown(
-                        'Optionally, a folder named **`final_background`** '
-                        'containing background images of each position '
-                        '(**`MMStack_Pos#.ome.tif`**) for background subtraction'
-                    )),
                     html.Li([
                         dcc.Markdown(
-                            'A folder named **`barcode_key`** containing one or more files '
+                            '*If barcoding*: A folder named **`barcode_key`** containing one or more files '
                             'named **`channel_#.csv`** that specify the barcode assigned '
                             'to each gene in each barcoding channel in your experiment.'
                             ' Note that **channels start from 1**. Click the arrow below '
@@ -83,7 +78,18 @@ layout = [
                                    'font-size': '10pt',
                                    'margin': '20px'})
                     ]),
-
+                    html.Li([
+                        dcc.Markdown(
+                            '*If doing smFISH*: A folder named **`non_barcoded_key`** '
+                            'with a file named'
+                            ' **`sequential_key.csv`** containing the hyb and gene mapping'
+                        )
+                    ]),
+                    html.Li(dcc.Markdown(
+                        '(optional) a folder named **`final_background`** '
+                        'containing background images of each position '
+                        '(**`MMStack_Pos#.ome.tif`**) for background subtraction'
+                    )),
                     html.Li(dcc.Markdown(
                         '(optional) A folder named **`segmentation`** which contains '
                         'images to be used for segmentation - e.g. membrane stains. '
