@@ -101,6 +101,12 @@ file_patterns:
       preupload: "compress_raw_im_2"
     positions:
       pattern: "{posfilename}.pos"
+    background_im:
+      pattern: "final_background/MMStack_Pos{position}.ome.tif"
+      preupload: "compress_raw_im_2"
+    presegmentation_im:
+      pattern: "segmentation/MMStack_Pos{position}.ome.tif"
+      preupload: "compress_raw_im_2"
 
   # Listing of output files generated from the source files
   # - "pattern" is the format string pattern for the output file,
