@@ -224,6 +224,13 @@ clear_components = {
                    'nuclei labeled image'],
             switch=True
         ),
+    'sb-segmentation-label':
+        dbc.Label(
+            '"Match nuclear and cytoplasm segmentation" traces each nucleus '
+            'mask back to a cytoplasm mask in the same [x, y] '
+            'location and only keeps the nuclei and cytoplasm that have a match',
+            id='sb-segmentation-label', size='sm', style={'margin-left': '20px'}
+        ),
     # segmentation-advanced
     'sb-edge-deletion':
         dbc.FormGroup([
@@ -399,7 +406,8 @@ component_groups = {
                       'sb-threshold-select'],
 
     'segmentation': ['sb-segmentation-select',
-                     'sb-segmentation-checklist'],
+                     'sb-segmentation-checklist',
+                     'sb-segmentation-label'],
 
     'segmentation-advanced': ['sb-edge-deletion',
                               'sb-nuclei-distance',
@@ -442,10 +450,7 @@ def _decoding_channel_process(arg, current):
         current['decoding'] = str(arg)
 
         return current
-    elif cur_decoding == 'across':
-        # If there is a decoding key and it is 'across', do nothing
-        # and return the dict
-        return current
+
     elif cur_decoding == 'individual':
         if isinstance(arg, list):
             # Individual is selected and we are handling the list of selected
@@ -456,6 +461,8 @@ def _decoding_channel_process(arg, current):
         elif not arg:
             raise ValueError('Must specify at least one channel to decode '
                              'if "individual" is selected')
+        return current
+    else:
         return current
 
 
@@ -625,7 +632,7 @@ def select_pipeline_stages(stages):
     State('dataset-select', 'value'),
     State('sb-stage-select', 'value'),
     [State(comp, 'value') for comp in cm.clear_components.keys()
-     if comp != 'sb-stage-select']
+     if comp not in ['sb-stage-select', 'sb-segmentation-label']]
 )
 def submit_new_analysis(n_clicks, user, dataset, stage_select, *values):
     if not n_clicks:

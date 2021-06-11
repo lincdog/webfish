@@ -60,7 +60,13 @@ layout = [
                     html.Li(dcc.Markdown(
                         'Within each HybCycle folder, a series of TIFF stacks, '
                         'one for each position, named **`MMStack_Pos#.ome.tif`.**. '
-                        'Do not add folders that have `HybCycle_#` in the name unless they have `MMStack_Pos#.ome.tif` files in them.')),
+                        'Do not add folders that have `HybCycle_#` in the name unless they have '
+                        '`MMStack_Pos#.ome.tif` files in them.')),
+                    html.Li(dcc.Markdown(
+                        'Optionally, a folder named **`final_background`** '
+                        'containing background images of each position '
+                        '(**`MMStack_Pos#.ome.tif`**) for background subtraction'
+                    )),
                     html.Li([
                         dcc.Markdown(
                             'A folder named **`barcode_key`** containing one or more files '
