@@ -72,7 +72,7 @@ pipeline_stages = [
 ]
 stage_ids = [
     'alignment',
-    'dot-detection',
+    'dot detection',
     'segmentation',
     'decoding',
     'segmentation-advanced'
@@ -136,12 +136,12 @@ clear_components = {
             ),
         ]),
 
-    # dot-detection
-    'sb-dot-detection-select':
+    # dot detection
+    'sb-dot detection-select':
         dbc.FormGroup([
-            dbc.Label('Dot Detection Algorithm', html_for='sb-dot-detection-select'),
+            dbc.Label('Dot Detection Algorithm', html_for='sb-dot detection-select'),
             dbc.Select(
-                id='sb-dot-detection-select',
+                id='sb-dot detection-select',
                 options=[
                     {'label': 'Biggest Jump 3D', 'value': 'biggest jump 3d'},
                     {'label': 'ADCG 2D', 'value': 'adcg 2d'},
@@ -395,6 +395,8 @@ clear_components = {
 
 }
 
+excluded_status_comps = ['sb-stage-select', 'sb-segmentation-label']
+
 component_groups = {
     'basic-metadata': ['sb-analysis-name',
                        'sb-position-select',
@@ -402,7 +404,7 @@ component_groups = {
 
     'alignment': ['sb-alignment-select'],
 
-    'dot-detection': ['sb-dot-detection-select',
+    'dot detection': ['sb-dot detection-select',
                       'sb-bg-subtraction',
                       'sb-strictness-select',
                       'sb-threshold-select'],
@@ -489,7 +491,7 @@ id_to_json_key = {
 
     'sb-alignment-select': 'alignment',
 
-    'sb-dot-detection-select': _dotdetection_threshold_process,
+    'sb-dot detection-select': _dotdetection_threshold_process,
     'sb-bg-subtraction': _checklist_process,
     'sb-strictness-select': 'strictness',
     'sb-threshold-select': _dotdetection_threshold_process,
@@ -512,7 +514,7 @@ id_to_json_key = {
 }
 
 
-def form_to_json_output(form_status):
+def form_to_json_output(form_status, selected_stages):
     """
     form_to_json_output
     -------------------
@@ -544,8 +546,22 @@ def form_to_json_output(form_status):
     # filename of the JSON file.
     analysis_name = ''
 
+    selected_stages.append('basic-metadata')
+
+    if 'segmentation' in selected_stages:
+        selected_stages.append('segmentation-advanced')
+
+    selected_form_ids = []
+    for s in selected_stages:
+        selected_form_ids.extend(component_groups[s])
+
     # For each form-id: form-value pair
-    for k, v in form_status.items():
+    for k in selected_form_ids:
+
+        v = form_status.get(k, '__NONE__')
+
+        if v =='__NONE__':
+            continue
 
         if k == 'sb-analysis-name' and v:
             analysis_name = sanitize(v, delimiter_allowed=False)
@@ -634,7 +650,7 @@ def select_pipeline_stages(stages):
     State('dataset-select', 'value'),
     State('sb-stage-select', 'value'),
     [State(comp, 'value') for comp in cm.clear_components.keys()
-     if comp not in ['sb-stage-select', 'sb-segmentation-label']]
+     if comp not in excluded_status_comps]
 )
 def submit_new_analysis(n_clicks, user, dataset, stage_select, *values):
     if not n_clicks:
@@ -642,12 +658,13 @@ def submit_new_analysis(n_clicks, user, dataset, stage_select, *values):
 
     upload = True
 
-    relevant_comps = [c for c in cm.clear_components.keys() if c != 'sb-stage-select']
+    relevant_comps = [c for c in cm.clear_components.keys()
+                      if c not in excluded_status_comps]
 
     status = {'user-select': user, 'dataset-select': dataset}
     status.update({c: v for c, v in zip(relevant_comps, values)})
 
-    analysis_name, submission = form_to_json_output(status)
+    analysis_name, submission = form_to_json_output(status, stage_select)
     sub_errors = submission.pop('__ERRORS__')
 
     for stage in set(pipeline_stages):
@@ -807,8 +824,8 @@ col1_clear = [
     html.Hr(),
     html.Details(
         [html.Summary('Dot detection options')] +
-        cm.component_group('dot-detection', tolist=True),
-        open=True, id='sb-dot-detection-wrapper'
+        cm.component_group('dot detection', tolist=True),
+        open=True, id='sb-dot detection-wrapper'
     ),
 ]
 
