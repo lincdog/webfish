@@ -424,7 +424,8 @@ def populate_genes(dots_pcd):
     """
     unique_genes, gene_counts = np.unique(dots_pcd['gene'], return_counts=True)
 
-    possible_genes = ['All'] + list(np.flip(unique_genes[np.argsort(gene_counts)]))
+    possible_genes = ['All', 'All Real', 'All Fake'] +\
+        list(np.flip(unique_genes[np.argsort(gene_counts)]))
 
     return possible_genes
 

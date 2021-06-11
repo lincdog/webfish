@@ -130,7 +130,6 @@ def gen_image_figure(
             color_by = dots_select['z'].values
             cbar_title = 'Z slice'
 
-
         fig.add_trace(go.Scatter(
             name='detected dots',
             x=dots_select['x'].values - offsets[1],
@@ -195,7 +194,8 @@ clear_components = {
     'dd-contrast-slider': dcc.RangeSlider(id='dd-contrast-slider'),
     'dd-contrast-note': dcc.Markdown('NOTE: the image intensity is rescaled to '
                                      'use the full range of the datatype before '
-                                     'display - **they are not true to the original image**'),
+                                     'display'),
+    'dd-strictness-slider': dcc.Slider(id='dd-strictness-slider', disabled=True),
 
     'dd-fig': dcc.Graph(id='dd-fig')
 }
@@ -219,7 +219,8 @@ component_groups = {
                      'dd-chan-select',
                      'dd-contrast-cap',
                      'dd-contrast-slider',
-                     'dd-contrast-note']
+                     'dd-contrast-note',
+                     'dd-strictness-slider']
 }
 
 cm = ComponentManager(clear_components, component_groups=component_groups)
@@ -227,11 +228,13 @@ cm = ComponentManager(clear_components, component_groups=component_groups)
 
 @app.callback(
     Output('dd-graph-wrapper', 'children'),
+    Output('dd-strictness-slider-wrapper', 'children'),
     Input('dd-image-params-wrapper', 'is_open'),
     Input('dd-swap-channels-slices', 'value'),
     Input('dd-z-select', 'value'),
     Input('dd-chan-select', 'value'),
     Input('dd-contrast-slider', 'value'),
+    Input('dd-strictness-slider', 'value'),
     Input('dd-position-select', 'value'),
     Input('dd-hyb-select', 'value'),
     Input('dd-analysis-select', 'value'),
@@ -245,6 +248,7 @@ def update_image_params(
     z,
     channel,
     contrast,
+    strictness,
     position,
     hyb,
     analysis,
@@ -255,7 +259,7 @@ def update_image_params(
     # Again test for None explicitly because z, channel, position or hyb might be 0
     if not is_open or any([v is None for v in
             (z, channel, contrast, position, hyb, dataset, user)]):
-        return cm.component('dd-fig')
+        return cm.component('dd-fig'), cm.component('dd-strictness-slider')
 
     swap = 'swap' in swap
 
@@ -278,7 +282,30 @@ def update_image_params(
     print(f'hyb_fov: {hyb_fov}')
     print(f'dot locations: {dot_locations}')
     print(f'offsets json: {offsets_json}')
-    print('current_layout:')
+
+    strictness_disabled = True
+    strictness_options = {}
+
+    if dot_locations:
+        try:
+            strictnesses = pd.read_csv(
+                dot_locations[0],
+                usecols=['strictness'])['strictness'].values.astype(int)
+
+            strictness_range = (np.min(strictnesses), np.max(strictnesses))
+            strictness_options = {
+                'min': strictness_range[0],
+                'max': strictness_range[1],
+                'step': 1,
+                'value': round(np.median(strictnesses)),
+                'marks': {
+                    a: str(a) for a in
+                    np.linspace(strictness_range[0], strictness_range[1], 10)
+                }
+            }
+            strictness_disabled = False
+        except ValueError:
+            strictness_options = {}
 
     if offsets_json:
         all_offsets = json.load(open(offsets_json[0]))
@@ -312,7 +339,8 @@ def update_image_params(
                 current_layout['yaxis.range[1]']
             ]
 
-    return cm.component('dd-fig', figure=figure, relayoutData=current_layout)
+    return (cm.component('dd-fig', figure=figure, relayoutData=current_layout),
+            strictness_options)
 
 
 @app.callback(
@@ -396,6 +424,9 @@ def select_pos_hyb(swap, position, hyb, dataset, user):
             ),
             cm.component('dd-contrast-note')
         ], id='dd-contrast-div'),
+        html.Div([
+            cm.component('dd-strictness-slider')
+        ], id='dd-strictness-slider-wrapper')
     ]
 
 
@@ -540,7 +571,13 @@ layout = [
 
             dbc.Collapse([
                 dbc.Spinner([
-                    *cm.component_group('image-params', tolist=True)
+                    *cm.component_group(
+                        'image-params',
+                        options={
+                            'dd-strictness-slider-wrapper':
+                                dict(children=cm.component('dd-strictness-slider'))
+                        },
+                        tolist=True)
                 ], id='dd-image-params-loader')
             ], is_open=False, id='dd-image-params-wrapper'),
 

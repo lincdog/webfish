@@ -21,11 +21,15 @@ def query_df(df, selected_genes):
     """
     if 'All' in selected_genes:
         return df
+    elif 'All Real' in selected_genes:
+        selected_genes = [gene for gene in df['gene'] if 'fake' not in gene]
+    elif 'All Fake' in selected_genes:
+        selected_genes = [gene for gene in df['gene'] if 'fake' in gene]
 
     return df.query('gene in @selected_genes')
 
 
-def gen_figure(selected_genes, active):
+def gen_figure(selected_genes, active, color_option):
     """
     gen_figure:
     Given a list of selected genes and a dataset, generates a Plotly figure with
@@ -55,6 +59,9 @@ def gen_figure(selected_genes, active):
         pz, py, px = dots_filt[['z', 'y', 'x']].values.T
 
         color = dots_filt['geneColor']
+        if color_option == 'fake':
+            color = [('#ee2', '#22a')[int('fake' in g)] for g in dots_filt['gene']]
+
         hovertext = dots_filt['gene']
 
         figdata.append(
@@ -84,7 +91,7 @@ def gen_figure(selected_genes, active):
                 x=x, y=y, z=z,
                 i=i, j=j, k=k,
                 color='lightgray',
-                opacity=0.7,
+                opacity=0.6,
                 hoverinfo='skip',
             )
         )
@@ -113,6 +120,7 @@ def gen_figure(selected_genes, active):
 @app.callback(
     Output('dv-graph-wrapper', 'children'),
     Input('dv-gene-select', 'value'),
+    Input('dv-color-option', 'value'),
     State('dv-pos-select', 'value'),
     State('dv-analysis-select', 'value'),
     State('dataset-select', 'value'),
@@ -122,6 +130,7 @@ def gen_figure(selected_genes, active):
 )
 def update_figure(
     selected_genes,
+    color_option,
     pos,
     analysis,
     dataset,
@@ -141,7 +150,8 @@ def update_figure(
     if not isinstance(selected_genes, list):
         selected_genes = [selected_genes]
 
-    if 'All' in selected_genes:
+    if 'All' in selected_genes or (
+            'All Real' in selected_genes and 'All Fake' in selected_genes):
         selected_genes = ['All']
 
     active = data_client.request({
@@ -161,7 +171,7 @@ def update_figure(
 
     print(current_layout.keys())
 
-    fig = gen_figure(selected_genes, active)
+    fig = gen_figure(selected_genes, active, color_option)
 
     if current_layout:
         if 'scene.camera' in current_layout:
@@ -320,8 +330,7 @@ def select_analysis(analysis, dataset, user):
             options=[{'label': i, 'value': i} for i in positions_sorted],
             value=positions[0],
             placeholder='Select a position',
-            clearable=False,
-            style={'width': '200px'}
+            clearable=False
         )
     ]
 
@@ -359,20 +368,42 @@ layout = [
     dbc.Col([
         html.Div([
             html.H2('Data selection'),
-            html.Div(id='dv-analysis-select-div')
+            html.Div([
+                dcc.Dropdown(id='dv-analysis-select')
+            ], id='dv-analysis-select-div')
         ], id='dv-analysis-selectors-div'),
 
         html.Hr(),
         html.Div([
+
             html.Div(
                 dcc.Loading(dcc.Dropdown(id='dv-pos-select', disabled=True),
                     id='dv-pos-wrapper'),
-                id='dv-pos-div'),
-            html.Div(
-                dcc.Loading(dcc.Dropdown(id='dv-gene-select', disabled=True),
-                    id='dv-gene-wrapper'),
-                id='dv-gene-div')
-            ], id='dv-selectors-wrapper', style={'width': '200px', 'margin': '20px'}),
+                id='dv-pos-div'
+            ),
+
+            html.Div([
+                dcc.Loading(
+                    dcc.Dropdown(id='dv-gene-select', disabled=True),
+                    id='dv-gene-wrapper'
+                ),
+
+                dbc.FormGroup([
+                    dbc.Label('Color by...', html_for='dv-color-option'),
+                    dbc.RadioItems(
+                        id='dv-color-option',
+                        options=[
+                            {'label': 'Gene', 'value': 'gene'},
+                            {'label': 'On/Off Target', 'value': 'fake'}
+                        ],
+                        value='gene',
+                        inline=True
+                    )
+                ])
+
+            ], id='dv-gene-div'),
+        ], id='dv-selectors-wrapper', style={'margin': '20px'}),
+
         html.Hr(),
 
         html.Div([
