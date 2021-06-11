@@ -295,6 +295,7 @@ clear_components = {
                 step=1,
                 value=10
             ),
+            dbc.FormText('Set to 0 to let Cellpose find automatically.')
         ]),
     'sb-cell-prob-threshold':
         dbc.FormGroup([
@@ -331,6 +332,7 @@ clear_components = {
                 step=1,
                 value=10
             ),
+            dbc.FormText('Set to 0 to let Cellpose find automatically.')
         ]),
     'sb-cyto-cell-prob-threshold':
         dbc.FormGroup([
