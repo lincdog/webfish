@@ -25,10 +25,10 @@ logger = logging.getLogger('webfish.' + __name__)
 
 # TODO: move this to DataClient
 def put_analysis_request(
-    user,
-    dataset,
-    analysis_name,
-    dot_detection='biggest jump 3d'
+        user,
+        dataset,
+        analysis_name,
+        dot_detection='biggest jump 3d'
 ):
     analysis_dict = {
         'personal': user,
@@ -67,15 +67,15 @@ def put_analysis_request(
 
 
 def gen_image_figure(
-    imfile,
-    dots_csv=None,
-    offsets=(0, 0),
-    swap=False,
-    hyb='0',
-    z_slice='0',
-    channel='0',
-    contrast_minmax=(0, 2000),
-    strictness=None
+        imfile,
+        dots_csv=None,
+        offsets=(0, 0),
+        swap=False,
+        hyb='0',
+        z_slice='0',
+        channel='0',
+        contrast_minmax=(0, 2000),
+        strictness=None
 ):
     logger.info('Entering gen_image_figure')
 
@@ -113,7 +113,8 @@ def gen_image_figure(
         dots_query = 'hyb == @hyb_q and ch == @channel_q'
 
     if strictness is not None:
-        dots_query += ' and strictness <= @strictness'
+        smin, smax = strictness
+        dots_query += ' and strictness <= @smax and strictness >= @smin'
 
     fig = px.imshow(
         img_select,
@@ -141,7 +142,7 @@ def gen_image_figure(
     if dots_csv:
         dots_select = pd.read_csv(
             dots_csv[0],
-            #dtype={'ch': int, 'z': int, 'hyb': int}
+            # dtype={'ch': int, 'z': int, 'hyb': int}
         ).query(dots_query)
 
         logger.info(f'gen_image_figure: read and queried dots CSV file '
@@ -176,9 +177,8 @@ def gen_image_figure(
             y=dots_select['y'].values - offsets[0],
             mode='markers',
             marker_symbol='cross',
-            text=hovertext,
-            hovertemplate='(%{x}, %{y})<br>%{text}',
-            hoverinfo='x+y+text',
+            text=color_by,
+            hovertemplate='(%{x}, %{y})<br>' + cbar_title + ': %{text}',
             marker=dict(
                 maxdisplayed=1000,
                 size=10,
@@ -239,7 +239,7 @@ clear_components = {
     'dd-contrast-note': dcc.Markdown('NOTE: the image intensity is rescaled to '
                                      'use the full range of the datatype before '
                                      'display'),
-    'dd-strictness-slider': dcc.Slider(id='dd-strictness-slider', disabled=True),
+    'dd-strictness-slider': dcc.RangeSlider(id='dd-strictness-slider', disabled=True),
 
     'dd-fig': dcc.Graph(id='dd-fig', config={
         'scrollZoom': True,
@@ -308,8 +308,11 @@ def update_image_params(
 
     # Again test for None explicitly because z, channel, position or hyb might be 0
     if not is_open or any([v is None for v in
-            (z, channel, contrast, position, hyb, dataset, user)]):
-        return cm.component('dd-fig'), cm.component('dd-strictness-slider')
+                           (z, channel, contrast, position, hyb, dataset, user)]):
+        return [
+            cm.component('dd-fig'),
+            cm.component('dd-strictness-slider')
+        ]
 
     swap = 'swap' in swap
 
@@ -338,16 +341,19 @@ def update_image_params(
 
     strictness_options = {}
 
+    update_strictness_slider = False
+
     if dot_locations:
         try:
             strictnesses = pd.read_csv(
                 dot_locations[0],
                 usecols=['strictness'])['strictness'].dropna().values.astype(int)
 
-            strictness_range = (np.min(strictnesses), np.max(strictnesses))
+            strictness_range = [np.min(strictnesses), np.max(strictnesses)]
 
-            if strictness is None:
-                strictness = round(np.median(strictnesses))
+            if not strictness:
+                update_strictness_slider = True
+                strictness = [0, round(np.median(strictnesses))]
 
             strictness_options = {
                 'min': strictness_range[0],
@@ -356,7 +362,8 @@ def update_image_params(
                 'value': strictness,
                 'marks': {
                     a: '{:d}'.format(round(a)) for a in
-                    np.linspace(strictness_range[0], strictness_range[1], 10)
+                    strictness_range +
+                    list(np.linspace(strictness_range[0] + 1, strictness_range[1], 10))
                 },
                 'disabled': False
             }
@@ -402,9 +409,16 @@ def update_image_params(
             ]
 
     logger.info('update_image_params: returning updated figure')
-    return (cm.component('dd-fig', figure=figure, relayoutData=current_layout),
-            [dbc.Label('Strictness <= ', html_for='dd-strictness-slider'),
-             cm.component('dd-strictness-slider', **strictness_options)])
+
+    if update_strictness_slider:
+        updated_slider = cm.component('dd-strictness-slider', **strictness_options)
+    else:
+        updated_slider = no_update
+
+    print(updated_slider)
+    return [cm.component('dd-fig', figure=figure, relayoutData=current_layout),
+            updated_slider
+            ]
 
 
 @app.callback(
@@ -431,7 +445,7 @@ def select_pos_hyb(swap, position, hyb, dataset, user):
                     html.Div([
                         cm.component('dd-strictness-slider')
                     ], id='dd-strictness-slider-wrapper')
-                 ])
+                ])
 
     swap = 'swap' in swap
 
@@ -450,7 +464,7 @@ def select_pos_hyb(swap, position, hyb, dataset, user):
         return (True,
                 [
                     dbc.Alert(f'No image file for dataset {user}/{dataset} '
-                             f'hyb {hyb} position {position} found!', color='warning'),
+                              f'hyb {hyb} position {position} found!', color='warning'),
 
                     *cm.component_group(
                         'image-params',
@@ -474,7 +488,7 @@ def select_pos_hyb(swap, position, hyb, dataset, user):
     z_range = list(range(image.shape[z_ind]))
     chan_range = list(range(image.shape[c_ind]))
 
-    marks = {a*256: '{:0.1}'.format(a) for a in np.linspace(0, 1, 11)}
+    marks = {a * 256: '{:0.1}'.format(a) for a in np.linspace(0, 1, 11)}
 
     logger.info('select_pos_hyb: returning image_params components')
 
@@ -528,7 +542,7 @@ def select_dataset_analysis(dataset, user):
     analyses = data_client.datasets.query(
         'user==@user and dataset==@dataset')['analysis'].dropna().unique()
 
-    return [{'label': '(new)', 'value': '__new__'}] +\
+    return [{'label': '(new)', 'value': '__new__'}] + \
            [{'label': a, 'value': a} for a in analyses]
 
 
@@ -598,11 +612,11 @@ def reset_dependents(dataset, user):
     State('dd-analysis-select', 'options')
 )
 def submit_new_analysis(
-    confirm_n_clicks,
-    new_analysis_name,
-    user,
-    dataset,
-    analysis_options
+        confirm_n_clicks,
+        new_analysis_name,
+        user,
+        dataset,
+        analysis_options
 ):
     if not all((new_analysis_name, user, dataset, analysis_options)):
         raise PreventUpdate
@@ -622,9 +636,9 @@ def submit_new_analysis(
 
         if isinstance(new_analysis_future, Exception):
             return [dbc.Alert(f'Failure: failed to submit request for new '
-                             f'analysis. Exception: ', color='error'),
+                              f'analysis. Exception: ', color='error'),
                     html.Pre(new_analysis_future)
-            ]
+                    ]
 
         return dbc.Alert(f'Success! New dot detection test will be at '
                          f'{user}/{dataset}/{new_analysis_future} '
@@ -674,4 +688,3 @@ layout = [
         dcc.Loading(cm.component('dd-fig'), id='dd-graph-wrapper')
     ], id='dd-fig-col', width='auto')
 ]
-

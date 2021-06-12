@@ -1,7 +1,9 @@
+import dash
 import pandas as pd
 import numpy as np
 import logging
 import plotly.graph_objects as go
+import plotly.express as px
 
 import dash_core_components as dcc
 import dash_html_components as html
@@ -10,8 +12,25 @@ from dash.dependencies import Input, Output, State, MATCH, ALL
 from dash.exceptions import PreventUpdate
 
 from app import app
-from lib.util import populate_mesh, base64_image, populate_genes, mesh_from_json
-from .common import data_client
+from lib.util import (
+    populate_mesh,
+    base64_image,
+    populate_genes,
+    mesh_from_json,
+    safe_imread
+)
+
+from .common import ComponentManager, data_client
+
+
+clear_components = {
+    'dv-gene-select': None,
+    'dv-vis-mode': None,
+    'dv-color-option': None,
+    'dv-analysis-select': None,
+    'dv-pos-select': None,
+    'dv-fig': None
+}
 
 logger = logging.getLogger('webfish.' + __name__)
 
@@ -32,9 +51,73 @@ def query_df(df, selected_genes):
     return df.query('gene in @selected_genes')
 
 
-def gen_figure(selected_genes, active, color_option):
+def gen_figure_2d(selected_genes, active, color_option):
+
+    dots = active.get('dots')
+
+    print(active)
+
+    if 'background_im' in active:
+        imfile = active['background_im'][0]
+        imtype = 'background_im'
+    elif 'presegmentation_im' in active:
+        imfile = active['presegmentation_im'][0]
+        imtype = 'presegmentation_im'
+
+    img = safe_imread(imfile)
+
+    if img.ndim == 4:
+        img = np.max(img[0], axis=0)
+    elif img.ndim == 3:
+        img = img[0]
+
+    fig = px.imshow(
+        img,
+        zmin=0,
+        zmax=200,
+        width=1000,
+        height=1000,
+        binary_string=True
+    )
+
+    # If dots is populated, grab it.
+    # Otherwise, set the coords to None to create an empty Scatter3d.
+    if dots is not None:
+
+        dots_df = pd.read_csv(dots)
+        dots_filt = query_df(dots_df, selected_genes).copy()
+        del dots_df
+
+        py, p_x = dots_filt[['y', 'x']].values.T
+
+        color = dots_filt['geneColor']
+        if color_option == 'fake':
+            color = [('#ee2', '#22a')[int('fake' in g)] for g in dots_filt['gene']]
+
+        hovertext = dots_filt['gene']
+
+        fig.add_trace(
+            go.Scatter(
+                name='dots',
+                x=p_x, y=py,
+                mode='markers',
+                marker=dict(
+                    size=2,
+                    color=color,
+                    opacity=1,
+                    symbol='circle',
+                ),
+                hoverinfo='text',
+                hovertext=hovertext
+            )
+        )
+
+    return fig
+
+
+def gen_figure_3d(selected_genes, active, color_option):
     """
-    gen_figure:
+    gen_figure_3d:
     Given a list of selected genes and a dataset, generates a Plotly figure with
     Scatter3d and Mesh3d traces for dots and cells, respectively. Memoizes using the
     gene selection and active dataset name.
@@ -111,8 +194,8 @@ def gen_figure(selected_genes, active, color_option):
     )
 
     figlayout = go.Layout(
-        height=800,
-        width=800,
+        height=1000,
+        width=1000,
         #plot_bgcolor='black',
         #paper_bgcolor='white',
         margin=dict(b=10, l=10, r=10, t=10),
@@ -132,6 +215,8 @@ def gen_figure(selected_genes, active, color_option):
     Output('dv-graph-wrapper', 'children'),
     Input('dv-gene-select', 'value'),
     Input('dv-color-option', 'value'),
+    Input('dv-vis-mode', 'value'),
+    Input('dv-2d-source', 'value'),
     State('dv-pos-select', 'value'),
     State('dv-analysis-select', 'value'),
     State('dataset-select', 'value'),
@@ -142,6 +227,8 @@ def gen_figure(selected_genes, active, color_option):
 def update_figure(
     selected_genes,
     color_option,
+    vis_mode,
+    source_2d,
     pos,
     analysis,
     dataset,
@@ -151,13 +238,18 @@ def update_figure(
     """
     update_figure:
     Callback triggered by by selecting
-    gene(s) to display. Calls `gen_figure` to populate the figure on the page.
+    gene(s) to display. Calls `gen_figure_3d` to populate the figure on the page.
 
     """
 
     logger.info('Starting update_figure')
 
     if not all((user, dataset, analysis, pos)):
+        raise PreventUpdate
+
+    ctx = dash.callback_context
+    trigger_id = ctx.triggered[0]['prop_id'].split('.')[0]
+    if trigger_id == 'dv-2d-source' and vis_mode != '2d':
         raise PreventUpdate
 
     if not isinstance(selected_genes, list):
@@ -169,12 +261,14 @@ def update_figure(
 
     logger.info('update_figure: requesting mesh and dots files')
 
+    info = None
+
     active = data_client.request({
         'user': user,
         'dataset': dataset,
         'analysis': analysis,
         'position': pos
-    }, fields=('mesh', 'dots', ''))
+    }, fields='dots')
 
     logger.info('update_figure: got mesh and dots files')
 
@@ -182,16 +276,42 @@ def update_figure(
         return [dbc.Alert('Segmented image and dots not found!', color='warning'),
                 dcc.Graph(id='dv-fig')]
 
-    if not active['mesh']:
-        info = dbc.Alert('Note: no segmented cell image found', color='warning')
-    else:
-        info = None
+    if vis_mode == '3d':
+        active |= data_client.request({
+            'user': user,
+            'dataset': dataset,
+            'analysis': analysis,
+            'position': pos
+        }, fields='mesh')
 
-    fig = gen_figure(selected_genes, active, color_option)
+        if not active['mesh']:
+            info = dbc.Alert('Note: no segmented cell image found', color='warning')
+
+        fig = gen_figure_3d(selected_genes, active, color_option)
+
+    else:
+        active |= data_client.request({
+            'user': user,
+            'dataset': dataset,
+            'position': pos
+        }, fields=source_2d)
+
+        fig = gen_figure_2d(selected_genes, active, color_option)
 
     if current_layout:
         if 'scene.camera' in current_layout:
             fig['layout']['scene']['camera'] = current_layout['scene.camera']
+
+        if 'xaxis.range[0]' in current_layout:
+            fig['layout']['xaxis']['range'] = [
+                current_layout['xaxis.range[0]'],
+                current_layout['xaxis.range[1]']
+            ]
+        if 'yaxis.range[0]' in current_layout:
+            fig['layout']['yaxis']['range'] = [
+                current_layout['yaxis.range[0]'],
+                current_layout['yaxis.range[1]']
+            ]
 
     logger.info('update_figure: returning constructed figure')
 
@@ -420,9 +540,36 @@ layout = [
                         value='gene',
                         inline=True
                     )
-                ])
+                ]),
 
             ], id='dv-gene-div'),
+
+            dbc.FormGroup([
+                    dbc.Label('Visualization mode', html_for='dv-vis-mode'),
+                    dbc.RadioItems(
+                        id='dv-vis-mode',
+                        options=[
+                            {'label': '3D (one position)', 'value': '3d'},
+                            {'label': '2D (multi position)', 'value': '2d'}
+                        ],
+                        value='2d',
+                        inline=True
+                    )
+                ]),
+            dbc.FormGroup([
+                dbc.Label('2D visualization source', html_for='dv-2d-source'),
+                dbc.RadioItems(
+                    id='dv-2d-source',
+                    options=[
+                            {'label': 'Final background image',
+                             'value': 'background_im'},
+                            {'label': 'Segmentation stain image',
+                             'value': 'presegmentation_im'}
+                        ],
+                    value='background_im',
+                    inline=True
+                )
+            ])
         ], id='dv-selectors-wrapper', style={'margin': '20px'}),
 
         html.Hr(),
