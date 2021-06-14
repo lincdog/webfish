@@ -134,6 +134,13 @@ def gen_image_figure(
             color_by = dots_select['z'].values
             cbar_title = 'Z slice'
 
+        if len(set(color_by)) > 1:
+            cmin, cmax = min(color_by), max(color_by)
+        elif len(set(color_by)) == 1:
+            cmin, cmax = color_by[0], color_by[0]
+        else:
+            cmin, cmax = 0, 0
+
         fig.add_trace(go.Scatter(
             name='detected dots',
             x=dots_select['x'].values - offsets[1],
@@ -146,8 +153,8 @@ def gen_image_figure(
             marker=dict(
                 maxdisplayed=1000,
                 size=10,
-                cmax=min(color_by),
-                cmin=max(color_by),
+                cmax=cmin,
+                cmin=cmax,
                 colorbar=dict(
                     title=cbar_title
                 ),
