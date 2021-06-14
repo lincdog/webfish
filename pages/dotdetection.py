@@ -114,8 +114,12 @@ def gen_image_figure(
         zmax=contrast_minmax[1],
         width=1000,
         height=1000,
-        binary_string=True
+        binary_string=True,
+        binary_compression_level=4,
+        binary_backend='pil'
     )
+
+    fig.data[0].hovertemplate = '(%{x}, %{y})<br>%{color[0]}'
 
     if dots_csv:
         dots_select = pd.read_csv(
@@ -134,6 +138,13 @@ def gen_image_figure(
             color_by = dots_select['z'].values
             cbar_title = 'Z slice'
 
+        if 'int' in dots_select.columns:
+            intensities = dots_select['int'].values
+            hovertext = ['{0}: {1:.0f} <br>Intensity: {2:.0f}'.format(
+                cbar_title, cb, i) for cb, i in zip(color_by, intensities)]
+        else:
+            hovertext = ['{0}: {1:.0f}'.format(cbar_title, cb) for cb in color_by]
+
         if len(set(color_by)) > 1:
             cmin, cmax = min(color_by), max(color_by)
         elif len(set(color_by)) == 1:
@@ -147,8 +158,8 @@ def gen_image_figure(
             y=dots_select['y'].values - offsets[0],
             mode='markers',
             marker_symbol='cross',
-            text=color_by,
-            hovertemplate='(%{x}, %{y})<br>'+cbar_title+': %{text}',
+            text=hovertext,
+            hovertemplate='(%{x}, %{y})<br>%{text}',
             hoverinfo='x+y+text',
             marker=dict(
                 maxdisplayed=1000,
@@ -208,7 +219,10 @@ clear_components = {
                                      'display'),
     'dd-strictness-slider': dcc.Slider(id='dd-strictness-slider', disabled=True),
 
-    'dd-fig': dcc.Graph(id='dd-fig', config={'scrollZoom': True})
+    'dd-fig': dcc.Graph(id='dd-fig', config={
+        'scrollZoom': True,
+        'modeBarButtonsToRemove': ['zoom2d', 'zoomOut2d', 'zoomIn2d']
+    })
 }
 
 component_groups = {
