@@ -551,7 +551,7 @@ def form_to_json_output(form_status, selected_stages):
     if 'segmentation' in selected_stages:
         selected_stages.append('segmentation-advanced')
 
-    selected_form_ids = []
+    selected_form_ids = ['user-select', 'dataset-select']
     for s in selected_stages:
         selected_form_ids.extend(component_groups[s])
 
