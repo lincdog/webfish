@@ -12,8 +12,13 @@ import jmespath
 from PIL import Image, ImageSequence
 
 
-def pil_imopen(fname):
-    return Image.open(fname)
+def pil_imopen(fname, metadata=False):
+    im = Image.open(fname)
+
+    if metadata:
+        return im, pil_getmetadata(im)
+    else:
+        return im
 
 
 def pil_imread(fname, metadata=False):
@@ -21,10 +26,13 @@ def pil_imread(fname, metadata=False):
     im = pil_imopen(fname)
     md = pil_getmetadata(im)
 
+    imarr = pil_frames_to_ndarray(im)
+
     if metadata:
-        return im, md
+        return imarr, md
     else:
-        return im
+        return imarr
+
 
 
 def pil_getmetadata(im, relevant_keys=None):
@@ -140,7 +148,7 @@ def pil_frames_to_ndarray(im, dtype=np.uint16):
 
             # Select the matching frame
             im.seek(ind)
-            
+
             # Copy the frame into the correct c and z position in the numpy array
             npoutput[c, z] = pil2numpy(im)
 
