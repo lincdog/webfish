@@ -161,15 +161,14 @@ def update_figure(
         'position': pos
     }, fields=('mesh', 'dots'))
 
-    if not active['mesh'] and not active['dots']:
-        return html.H2('Segmented image and dots not found!')
+    if (not active['mesh']) and (not active['dots']):
+        return [dbc.Alert('Segmented image and dots not found!', color='warning'),
+                dcc.Graph(id='dv-fig')]
 
     if not active['mesh']:
         info = dbc.Alert('Note: no segmented cell image found', color='warning')
     else:
         info = None
-
-    print(current_layout.keys())
 
     fig = gen_figure(selected_genes, active, color_option)
 
