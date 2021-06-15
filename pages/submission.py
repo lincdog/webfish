@@ -130,8 +130,8 @@ clear_components = {
             dbc.Label('Alignment Algorithm', html_for='sb-alignment-select'),
             dbc.Select(
                 id='sb-alignment-select',
-                value='mean squares 2d',
-                options=[{'label': 'DAPI Alignment', 'value': 'mean squares 2d'}],
+                value='matlab dapi',
+                options=[{'label': 'DAPI Alignment', 'value': 'matlab dapi'}],
                 disabled=False
             ),
         ]),
@@ -168,11 +168,11 @@ clear_components = {
             dbc.Label('Strictness parameter', html_for='sb-strictness-select'),
             dcc.Slider(
                 id='sb-strictness-select',
-                min=-15,
-                max=15,
+                min=-10,
+                max=25,
                 step=1,
                 value=2,
-                marks={i: str(i) for i in range(-15, 16, 2)}
+                marks={i: str(i) for i in range(-10, 26, 3)}
             ),
             dbc.FormText('Higher strictness sets a '
                          'higher minimum intensity threshold for dot detection.')

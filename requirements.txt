@@ -11,3 +11,4 @@ tifffile
 imagecodecs
 matplotlib
 jmespath
+Pillow

@@ -120,7 +120,7 @@ def gen_image_figure(
     )
 
     fig.data[0].text = img_select/2.55
-    fig.data[0].hovertemplate = '(%{x}, %{y})<br>%{text:0.2f}'
+    fig.data[0].hovertemplate = '(%{x}, %{y})<br>%{text:0.1f}'
 
     if dots_csv:
         dots_select = pd.read_csv(
