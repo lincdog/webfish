@@ -119,7 +119,8 @@ def gen_image_figure(
         binary_backend='pil'
     )
 
-    fig.data[0].hovertemplate = '(%{x}, %{y})<br>%{color[0]}'
+    fig.data[0].text = img_select/2.55
+    fig.data[0].hovertemplate = '(%{x}, %{y})<br>%{text:0.2f}'
 
     if dots_csv:
         dots_select = pd.read_csv(
