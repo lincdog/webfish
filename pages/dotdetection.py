@@ -1,8 +1,10 @@
+import dash
 import numpy as np
 import pandas as pd
 import io
 import json
 import re
+import logging
 
 import dash_core_components as dcc
 import dash_html_components as html
@@ -17,6 +19,8 @@ import plotly.graph_objects as go
 from app import app
 from lib.util import safe_imread
 from .common import ComponentManager, data_client
+
+logger = logging.getLogger('webfish.' + __name__)
 
 
 # TODO: move this to DataClient
@@ -73,11 +77,14 @@ def gen_image_figure(
     contrast_minmax=(0, 2000),
     strictness=None
 ):
+    logger.info('Entering gen_image_figure')
 
     if len(imfile) > 0:
         image = safe_imread(imfile[0])
     else:
         return {}
+
+    logger.info(f'gen_image_figure: Read image from {imfile[0]}')
 
     print(f'hyb {hyb} z_slice {z_slice} channel {channel}')
     print(image.shape)
@@ -122,13 +129,16 @@ def gen_image_figure(
     fig.data[0].text = img_select/2.55
     fig.data[0].hovertemplate = '(%{x}, %{y})<br>%{text:0.1f}'
 
+    logger.info('gen_image_figure: constructed Image figure')
+
     if dots_csv:
         dots_select = pd.read_csv(
             dots_csv[0],
             #dtype={'ch': int, 'z': int, 'hyb': int}
         ).query(dots_query)
 
-        print(f'offsets: {offsets}')
+        logger.info(f'gen_image_figure: read and queried dots CSV file '
+                    f'{dots_csv[0]}')
 
         if 'strictness' in dots_select.columns:
             strictnesses = dots_select['strictness'].values
@@ -175,6 +185,8 @@ def gen_image_figure(
         )
 
         fig.update_layout(coloraxis_showscale=True)
+
+        logger.info('gen_image_figure: constructed and added dots Scatter trace')
 
     return fig
 
@@ -281,6 +293,10 @@ def update_image_params(
     user,
     current_layout
 ):
+    ctx = dash.callback_context
+    trigger = ctx.triggered[0]['prop_id'].split('.')[0]
+    logger.info(f'Entering update_image_params with trigger {trigger}')
+
     # Again test for None explicitly because z, channel, position or hyb might be 0
     if not is_open or any([v is None for v in
             (z, channel, contrast, position, hyb, dataset, user)]):
@@ -288,25 +304,28 @@ def update_image_params(
 
     swap = 'swap' in swap
 
+    logger.info('update_image_params: requesting raw image filename')
     hyb_fov = data_client.request(
         {'user': user, 'dataset': dataset, 'position': position, 'hyb': hyb},
         fields='hyb_fov'
     )['hyb_fov']
+    logger.info('update_image_params: got raw image filename')
 
     if analysis:
+        logger.info('update_image_params: requesting dot locations and offsets')
+
         requests = data_client.request(
             {'user': user, 'dataset': dataset, 'position': position, 'analysis': analysis},
             fields=['dot_locations', 'offsets_json']
         )
         dot_locations = requests['dot_locations']
         offsets_json = requests['offsets_json']
+
+        logger.info('update_image_params: got dot locations and offsets')
+
     else:
         dot_locations = None
         offsets_json = None
-
-    print(f'hyb_fov: {hyb_fov}')
-    print(f'dot locations: {dot_locations}')
-    print(f'offsets json: {offsets_json}')
 
     strictness_options = {}
 
@@ -347,6 +366,8 @@ def update_image_params(
     else:
         offsets = (0, 0)
 
+    logger.info('update_image_params: calling gen_image_figure')
+
     figure = gen_image_figure(
         hyb_fov,
         dot_locations,
@@ -371,6 +392,7 @@ def update_image_params(
                 current_layout['yaxis.range[1]']
             ]
 
+    logger.info('update_image_params: returning updated figure')
     return (cm.component('dd-fig', figure=figure, relayoutData=current_layout),
             [dbc.Label('Strictness <= ', html_for='dd-strictness-slider'),
              cm.component('dd-strictness-slider', **strictness_options)])
@@ -386,6 +408,8 @@ def update_image_params(
     Input('user-select', 'value')
 )
 def select_pos_hyb(swap, position, hyb, dataset, user):
+
+    logger.info('Entering select_pos_hyb')
     # Note we test for None rather than truthiness because a position or hyb of 0
     # evaluates to False when cast to bool, but is in fact a real value.
     is_open = not any([v is None for v in (position, hyb, dataset, user)])
@@ -402,10 +426,12 @@ def select_pos_hyb(swap, position, hyb, dataset, user):
 
     swap = 'swap' in swap
 
+    logger.info('select_pos_hyb: Requesting raw image filename')
     imagefile = data_client.request(
         {'user': user, 'dataset': dataset, 'hyb': hyb, 'position': position},
         fields='hyb_fov'
     )
+    logger.info('select_pos_hyb: got raw image filename')
 
     try:
         image = safe_imread(imagefile['hyb_fov'][0])
@@ -427,6 +453,8 @@ def select_pos_hyb(swap, position, hyb, dataset, user):
                     ], id='dd-strictness-slider-wrapper')
                 ])
 
+    logger.info('select_pos_hyb: read in raw image file')
+
     if swap:
         z_ind = 0
         c_ind = 1
@@ -438,6 +466,8 @@ def select_pos_hyb(swap, position, hyb, dataset, user):
     chan_range = list(range(image.shape[c_ind]))
 
     marks = {a*256: '{:0.1}'.format(a) for a in np.linspace(0, 1, 11)}
+
+    logger.info('select_pos_hyb: returning image_params components')
 
     return True, [
         html.B('Select Z slice'),

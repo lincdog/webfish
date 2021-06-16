@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+import logging
 import plotly.graph_objects as go
 
 import dash_core_components as dcc
@@ -11,6 +12,8 @@ from dash.exceptions import PreventUpdate
 from app import app
 from lib.util import populate_mesh, base64_image, populate_genes, mesh_from_json
 from .common import data_client
+
+logger = logging.getLogger('webfish.' + __name__)
 
 
 def query_df(df, selected_genes):
@@ -41,6 +44,7 @@ def gen_figure(selected_genes, active, color_option):
 
     Returns: plotly.graph_objects.Figure containing the selected data.
     """
+    logger.info('Entering gen_figure')
 
     print(active)
     dots = active.get('dots')
@@ -80,6 +84,8 @@ def gen_figure(selected_genes, active, color_option):
             )
         )
 
+        logger.info('gen_figure: added Scatter3d trace')
+
     # If the mesh is present, populate it.
     # Else, create an empty Mesh3d.
     if mesh is not None:
@@ -96,6 +102,8 @@ def gen_figure(selected_genes, active, color_option):
             )
         )
 
+        logger.info('gen_figure: Added mesh3d trace')
+
     figscene = go.layout.Scene(
         aspectmode='manual',
         aspectratio=dict(x=1, y=1, z=0.07),
@@ -111,6 +119,8 @@ def gen_figure(selected_genes, active, color_option):
     )
 
     fig = go.Figure(data=figdata, layout=figlayout)
+
+    logger.info('gen_figure: returning figure')
 
     return fig
 
@@ -144,6 +154,8 @@ def update_figure(
 
     """
 
+    logger.info('Starting update_figure')
+
     if not all((user, dataset, analysis, pos)):
         raise PreventUpdate
 
@@ -154,12 +166,16 @@ def update_figure(
             'All Real' in selected_genes and 'All Fake' in selected_genes):
         selected_genes = ['All']
 
+    logger.info('update_figure: requesting mesh and dots files')
+
     active = data_client.request({
         'user': user,
         'dataset': dataset,
         'analysis': analysis,
         'position': pos
     }, fields=('mesh', 'dots'))
+
+    logger.info('update_figure: got mesh and dots files')
 
     if (not active['mesh']) and (not active['dots']):
         return [dbc.Alert('Segmented image and dots not found!', color='warning'),
@@ -176,6 +192,8 @@ def update_figure(
         if 'scene.camera' in current_layout:
             fig['layout']['scene']['camera'] = current_layout['scene.camera']
 
+    logger.info('update_figure: returning constructed figure')
+
     return [info, dcc.Graph(id='dv-fig', figure=fig, relayoutData=current_layout)]
 
 
@@ -188,6 +206,7 @@ def update_figure(
     prevent_initial_call=True
 )
 def populate_analytics(pos, analysis, dataset, user):
+    logger.info('Entering populate_analytics')
 
     if not pos:
         raise PreventUpdate
@@ -241,6 +260,8 @@ def populate_analytics(pos, analysis, dataset, user):
                 ),
             ]
         )
+
+    logger.info('Returning from populate_analytics')
 
     return [fp_comp,
             html.Hr(),

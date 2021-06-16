@@ -1,6 +1,8 @@
 import dash
 import dash_bootstrap_components as dbc
 import yaml
+import logging
+
 from lib.core import S3Connect
 
 # Globals

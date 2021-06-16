@@ -1,4 +1,5 @@
 import os
+import logging
 import dash
 import dash_core_components as dcc
 import dash_html_components as html
@@ -14,6 +15,19 @@ from pages.common import (
     get_all_datasets,
     sync_with_s3
 )
+
+# Set up the root logger
+logger = logging.getLogger('webfish')
+logger.setLevel(logging.DEBUG)
+hand = logging.FileHandler('wflogger.log')
+hand.setLevel(logging.DEBUG)
+
+formatter = logging.Formatter(
+        f'[%(asctime)s] %(name)s:%(levelname)s: %(message)s')
+hand.setFormatter(formatter)
+logger.addHandler(hand)
+
+logger.info('At the top of index.py')
 
 # Convenience dict with:
 # - key: shorthand page names, used as tab and URL values
@@ -99,6 +113,8 @@ index_cm = ComponentManager(
         'page-tooltips': list(page_tooltips.keys())
     }
 )
+
+logger.info('Finished importing pages and setting up Index components')
 
 
 @app.callback(
@@ -279,6 +295,8 @@ app.layout = dbc.Container(
 
 
 if __name__ == '__main__':
+    logger.info('Entering server loop')
+
     hostip = os.environ.get('WEBFISH_HOST', '127.0.0.1')
     hostport = os.environ.get('WEBFISH_PORT', '8050')
     app.run_server(

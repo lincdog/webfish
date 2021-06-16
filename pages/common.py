@@ -1,3 +1,4 @@
+import logging
 from copy import copy, deepcopy
 from lib.client import DataClient
 from app import config, s3_client
@@ -5,6 +6,7 @@ import dash_bootstrap_components as dbc
 import dash_core_components as dcc
 import dash_html_components as html
 
+logger = logging.getLogger('webfish.' + __name__)
 
 data_client = DataClient(config=config, s3_client=s3_client)
 
@@ -19,6 +21,8 @@ def get_all_datasets():
 
 
 sync_with_s3()
+
+logger.info('Finished initial S3 sync')
 
 
 class ComponentManager:
