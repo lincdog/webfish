@@ -300,6 +300,8 @@ def gen_pcd_df(
     if genecol != 'gene':
         dots = dots.rename(columns={genecol: 'gene'})
 
+    dots['gene'] = dots['gene'].fillna('<unknown>')
+
     if outfile is not None:
         dots.to_csv(outfile, index=False)
 
