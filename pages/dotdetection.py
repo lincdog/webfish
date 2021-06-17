@@ -70,7 +70,6 @@ def gen_image_figure(
         imfile,
         dots_csv=None,
         offsets=(0, 0),
-        swap=False,
         hyb='0',
         z_slice='0',
         channel='0',
@@ -99,17 +98,11 @@ def gen_image_figure(
     channel_q = channel + 1
 
     if z_slice >= 0:
-        if swap:
-            img_select = image[z_slice, channel]
-        else:
-            img_select = image[channel, z_slice]
+        img_select = image[channel, z_slice]
 
         dots_query = 'hyb == @hyb_q and ch == @channel_q and z == @z_slice_q'
     else:
-        if swap:
-            img_select = np.max(image[:, channel], axis=0)
-        else:
-            img_select = np.max(image[channel], axis=0)
+        img_select = np.max(image[channel], axis=0)
         dots_query = 'hyb == @hyb_q and ch == @channel_q'
 
     if strictness is not None:
@@ -135,9 +128,6 @@ def gen_image_figure(
                 len(fig.data[0].source))
     logger.info('gen_image_figure: total length of JSON serialized figure is: %d',
                 len(fig.to_json()))
-
-    with open('image_figure.json', 'w') as f:
-        fig.write_json(f, pretty=True)
 
     if dots_csv:
         dots_select = pd.read_csv(
@@ -171,7 +161,7 @@ def gen_image_figure(
         else:
             cmin, cmax = 0, 0
 
-        fig.add_trace(go.Scatter(
+        fig.add_trace(go.Scattergl(
             name='detected dots',
             x=dots_select['x'].values - offsets[1],
             y=dots_select['y'].values - offsets[0],
@@ -180,8 +170,8 @@ def gen_image_figure(
             text=color_by,
             hovertemplate='(%{x}, %{y})<br>' + cbar_title + ': %{text}',
             marker=dict(
-                maxdisplayed=1000,
-                size=10,
+                #maxdisplayed=1000,
+                size=5,
                 cmax=cmin,
                 cmin=cmax,
                 colorbar=dict(
@@ -223,12 +213,6 @@ clear_components = {
     'dd-position-select-label': dbc.Label('Select a position', html_for='dd-position-select'),
     'dd-position-select':
         dbc.Select(id='dd-position-select', placeholder='Select a position'),
-    'dd-swap-channels-slices':
-        dbc.Checklist(
-            id='dd-swap-channels-slices',
-            options=[{'label': 'Swap channels and slices', 'value': 'swap'}],
-            value=[]
-        ),
 
     'dd-z-cap': html.B('Select Z slice'),
     'dd-chan-cap': html.B('Select a channel'),
@@ -257,8 +241,8 @@ component_groups = {
     'image-select': ['dd-hyb-select-label',
                      'dd-hyb-select',
                      'dd-position-select-label',
-                     'dd-position-select',
-                     'dd-swap-channels-slices'],
+                     'dd-position-select'
+                     ],
 
     'image-params': ['dd-z-cap',
                      'dd-z-select',
@@ -276,7 +260,6 @@ cm = ComponentManager(clear_components, component_groups=component_groups)
     Output('dd-graph-wrapper', 'children'),
     Output('dd-strictness-slider-wrapper', 'children'),
     Input('dd-image-params-wrapper', 'is_open'),
-    Input('dd-swap-channels-slices', 'value'),
     Input('dd-z-select', 'value'),
     Input('dd-chan-select', 'value'),
     Input('dd-contrast-slider', 'value'),
@@ -290,7 +273,6 @@ cm = ComponentManager(clear_components, component_groups=component_groups)
 )
 def update_image_params(
     is_open,
-    swap,
     z,
     channel,
     contrast,
@@ -313,8 +295,6 @@ def update_image_params(
             cm.component('dd-fig'),
             cm.component('dd-strictness-slider')
         ]
-
-    swap = 'swap' in swap
 
     logger.info('update_image_params: requesting raw image filename')
     hyb_fov = data_client.request(
@@ -388,7 +368,6 @@ def update_image_params(
         hyb_fov,
         dot_locations,
         offsets,
-        swap,
         hyb,
         z,
         channel,
@@ -424,13 +403,12 @@ def update_image_params(
 @app.callback(
     Output('dd-image-params-wrapper', 'is_open'),
     Output('dd-image-params-loader', 'children'),
-    Input('dd-swap-channels-slices', 'value'),
     Input('dd-position-select', 'value'),
     Input('dd-hyb-select', 'value'),
     Input('dataset-select', 'value'),
     Input('user-select', 'value')
 )
-def select_pos_hyb(swap, position, hyb, dataset, user):
+def select_pos_hyb(position, hyb, dataset, user):
 
     logger.info('Entering select_pos_hyb')
     # Note we test for None rather than truthiness because a position or hyb of 0
@@ -446,8 +424,6 @@ def select_pos_hyb(swap, position, hyb, dataset, user):
                         cm.component('dd-strictness-slider')
                     ], id='dd-strictness-slider-wrapper')
                 ])
-
-    swap = 'swap' in swap
 
     logger.info('select_pos_hyb: Requesting raw image filename')
     imagefile = data_client.request(
@@ -478,12 +454,8 @@ def select_pos_hyb(swap, position, hyb, dataset, user):
 
     logger.info('select_pos_hyb: read in raw image file')
 
-    if swap:
-        z_ind = 0
-        c_ind = 1
-    else:
-        z_ind = 1
-        c_ind = 0
+    z_ind = 1
+    c_ind = 0
 
     z_range = list(range(image.shape[z_ind]))
     chan_range = list(range(image.shape[c_ind]))

@@ -139,7 +139,7 @@ def generate_dots(
 
 def gen_mesh(
     imgfilename,
-    px_size=(0.5, 0.11, 0.11),
+    px_size=(1, 1, 1),
     scale_factor=(1., 1. / 16, 1. / 16),
     separate_regions=False,
     region_data=None,
@@ -260,7 +260,7 @@ def gen_mesh(
 
 def gen_pcd_df(
         csv,
-        px_size=(0.5, 0.11, 0.11),
+        px_size=(1, 1, 1),
         cmap='tab20',
         genecol='gene',
         outfile=None
@@ -274,6 +274,11 @@ def gen_pcd_df(
 
     Returns: Pandas DataFrame
     """
+
+    # FIXME: Setting pixel size to 1,1,1 means that we are ignoring the
+    #   Z step size of the data, and plotting all datasets as if they have
+    #   the same Z step size. We should at least have a plotting option
+    #   to specify the pixel - Z step aspect ratio.
 
     if isinstance(csv, str):
         dots = pd.read_csv(csv)

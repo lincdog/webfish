@@ -44,41 +44,53 @@ def query_df(df, selected_genes):
     if 'All' in selected_genes:
         return df
     elif 'All Real' in selected_genes:
-        selected_genes = [gene for gene in df['gene'] if 'fake' not in gene]
+        selected_genes.extend([gene for gene in df['gene'] if 'fake' not in gene])
     elif 'All Fake' in selected_genes:
-        selected_genes = [gene for gene in df['gene'] if 'fake' in gene]
+        selected_genes.extend([gene for gene in df['gene'] if 'fake' in gene])
 
     return df.query('gene in @selected_genes')
 
 
-def gen_figure_2d(selected_genes, active, color_option):
+def gen_figure_2d(selected_genes, active, color_option, channel):
 
     dots = active.get('dots')
 
-    print(active)
+    logger.info('Entering gen_figure_2d')
+
+    fig = go.Figure()
 
     if 'background_im' in active:
-        imfile = active['background_im'][0]
+        imfile = active.get('background_im')
         imtype = 'background_im'
     elif 'presegmentation_im' in active:
-        imfile = active['presegmentation_im'][0]
+        imfile = active.get('presegmentation_im')
         imtype = 'presegmentation_im'
+    else:
+        imfile = None
+        imtype = ''
 
-    img = safe_imread(imfile)
+    if imfile:
+        img = safe_imread(imfile[0])
 
-    if img.ndim == 4:
-        img = np.max(img[0], axis=0)
-    elif img.ndim == 3:
-        img = img[0]
+        logger.info('gen_figure_2d: read in 2d image')
 
-    fig = px.imshow(
-        img,
-        zmin=0,
-        zmax=200,
-        width=1000,
-        height=1000,
-        binary_string=True
-    )
+        # TODO: Allow choosing Z slice?
+        # FIXME: Choose channel or use channel that was used in decoding
+        if img.ndim == 4:
+            img = np.max(img[channel], axis=0)
+        elif img.ndim == 3:
+            img = img[channel]
+
+        fig = px.imshow(
+            img,
+            zmin=0,
+            zmax=200,
+            width=1000,
+            height=1000,
+            binary_string=True
+        )
+
+        logger.info('gen_figure_2d: created image trace')
 
     # If dots is populated, grab it.
     # Otherwise, set the coords to None to create an empty Scatter3d.
@@ -88,29 +100,36 @@ def gen_figure_2d(selected_genes, active, color_option):
         dots_filt = query_df(dots_df, selected_genes).copy()
         del dots_df
 
+        logger.info('gen_figure_2d: read and queried dots DF')
+
         py, p_x = dots_filt[['y', 'x']].values.T
 
         color = dots_filt['geneColor']
         if color_option == 'fake':
-            color = [('#ee2', '#22a')[int('fake' in g)] for g in dots_filt['gene']]
+            real_fake = ('cyan', 'magenta')
+            color = [real_fake[int('fake' in g)] for g in dots_filt['gene']]
 
         hovertext = dots_filt['gene']
 
         fig.add_trace(
-            go.Scatter(
+            go.Scattergl(
                 name='dots',
                 x=p_x, y=py,
                 mode='markers',
                 marker=dict(
-                    size=2,
+                    size=5,
                     color=color,
                     opacity=1,
-                    symbol='circle',
+                    symbol='cross',
                 ),
-                hoverinfo='text',
+                hoverinfo='x+y+text',
                 hovertext=hovertext
             )
         )
+
+        logger.info('gen_figure_2d: created Scattergl trace')
+
+    logger.info('gen_figure_2d: returning updated figure')
 
     return fig
 
@@ -127,7 +146,7 @@ def gen_figure_3d(selected_genes, active, color_option):
 
     Returns: plotly.graph_objects.Figure containing the selected data.
     """
-    logger.info('Entering gen_figure')
+    logger.info('Entering gen_figure_3d')
 
     print(active)
     dots = active.get('dots')
@@ -143,7 +162,9 @@ def gen_figure_3d(selected_genes, active, color_option):
         dots_filt = query_df(dots_df, selected_genes).copy()
         del dots_df
 
-        pz, py, px = dots_filt[['z', 'y', 'x']].values.T
+        logger.info('gen_figure_3d: read and queried dots DF')
+
+        pz, py, p_x = dots_filt[['z', 'y', 'x']].values.T
 
         color = dots_filt['geneColor']
         if color_option == 'fake':
@@ -155,7 +176,7 @@ def gen_figure_3d(selected_genes, active, color_option):
         figdata.append(
             go.Scatter3d(
                 name='dots',
-                x=px, y=py, z=pz,
+                x=p_x, y=py, z=pz,
                 mode='markers',
                 marker=dict(
                     size=2,
@@ -168,7 +189,7 @@ def gen_figure_3d(selected_genes, active, color_option):
             )
         )
 
-        logger.info('gen_figure: added Scatter3d trace')
+        logger.info('gen_figure_3d: added Scatter3d trace')
 
     # If the mesh is present, populate it.
     # Else, create an empty Mesh3d.
@@ -186,7 +207,7 @@ def gen_figure_3d(selected_genes, active, color_option):
             )
         )
 
-        logger.info('gen_figure: Added mesh3d trace')
+        logger.info('gen_figure_3d: Added mesh3d trace')
 
     figscene = go.layout.Scene(
         aspectmode='manual',
@@ -204,7 +225,7 @@ def gen_figure_3d(selected_genes, active, color_option):
 
     fig = go.Figure(data=figdata, layout=figlayout)
 
-    logger.info('gen_figure: returning figure')
+    logger.info('gen_figure_3d: returning figure')
 
     return fig
 
@@ -272,9 +293,7 @@ def update_figure(
 
     logger.info('update_figure: got mesh and dots files')
 
-    if (not active['mesh']) and (not active['dots']):
-        return [dbc.Alert('Segmented image and dots not found!', color='warning'),
-                dcc.Graph(id='dv-fig')]
+    config = {}
 
     if vis_mode == '3d':
         active |= data_client.request({
@@ -285,18 +304,38 @@ def update_figure(
         }, fields='mesh')
 
         if not active['mesh']:
-            info = dbc.Alert('Note: no segmented cell image found', color='warning')
+            info = dbc.Alert('No segmented cell image found', color='warning')
+
+        if (not active['mesh']) and (not active['dots']):
+            return [dbc.Alert('Segmented image and dots not found!', color='warning'),
+                    dcc.Graph(id='dv-fig')]
 
         fig = gen_figure_3d(selected_genes, active, color_option)
 
     else:
+        if source_2d == 'dapi_im':
+            source_2d = 'background_im'
+            channel = -1
+        else:
+            channel = 0
+
         active |= data_client.request({
             'user': user,
             'dataset': dataset,
             'position': pos
         }, fields=source_2d)
 
-        fig = gen_figure_2d(selected_genes, active, color_option)
+        config = {'scrollZoom': True}
+
+        if not active[source_2d]:
+            info = dbc.Alert('No 2D source image of the requested type',
+                             color='warning')
+
+        if (not active[source_2d]) and (not active['dots']):
+            return [dbc.Alert('Source image and dots not found!', color='warning'),
+                    dcc.Graph(id='dv-fig')]
+
+        fig = gen_figure_2d(selected_genes, active, color_option, channel)
 
     if current_layout:
         if 'scene.camera' in current_layout:
@@ -315,7 +354,10 @@ def update_figure(
 
     logger.info('update_figure: returning constructed figure')
 
-    return [info, dcc.Graph(id='dv-fig', figure=fig, relayoutData=current_layout)]
+    return [info, dcc.Graph(id='dv-fig',
+                            figure=fig,
+                            relayoutData=current_layout,
+                            config=config)]
 
 
 @app.callback(
@@ -564,7 +606,9 @@ layout = [
                             {'label': 'Final background image',
                              'value': 'background_im'},
                             {'label': 'Segmentation stain image',
-                             'value': 'presegmentation_im'}
+                             'value': 'presegmentation_im'},
+                            {'label': 'DAPI Max projection',
+                             'value': 'dapi_im'}
                         ],
                     value='background_im',
                     inline=True

@@ -47,14 +47,14 @@ local_store: webfish_data/
 # Specification of pages that use the data infrastructure
 pages:
   datavis:
-    title: "Data Visualization"
+    title: "Decoding & Segmentation"
     description: "Visualize decoded genes and segmentation"
     file: "datavis.py"
     # Variable fields in the files required by this page
     variables: [ "position", "channel" ]
 
   dotdetection:
-    title: "Dot Detection"
+    title: "Dot Detection & Preprocessing"
     description: "Visualize and run dot detection and raw images"
     file: "dotdetection.py"
     variables: [ "hyb", "position" ]
