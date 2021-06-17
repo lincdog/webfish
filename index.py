@@ -303,5 +303,7 @@ if __name__ == '__main__':
         debug=True,
         host=hostip,
         port=hostport,
-        #dev_tools_props_check=False
+        #dev_tools_props_check=False,
+        processes=4,
+        threaded=False
     )

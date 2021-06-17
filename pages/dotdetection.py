@@ -126,10 +126,17 @@ def gen_image_figure(
         binary_backend='pil'
     )
 
-    fig.data[0].text = img_select/2.55
-    fig.data[0].hovertemplate = '(%{x}, %{y})<br>%{text:0.1f}'
+    fig.data[0].customdata = (img_select/2.55).astype(np.uint8)
+    fig.data[0].hovertemplate = '(%{x}, %{y})<br>%{customdata}'
 
     logger.info('gen_image_figure: constructed Image figure')
+    logger.info('gen_image_figure: length of data source: %d',
+                len(fig.data[0].source))
+    logger.info('gen_image_figure: total length of JSON serialized figure is: %d',
+                len(fig.to_json()))
+
+    with open('image_figure.json', 'w') as f:
+        fig.write_json(f, pretty=True)
 
     if dots_csv:
         dots_select = pd.read_csv(
@@ -187,6 +194,8 @@ def gen_image_figure(
         fig.update_layout(coloraxis_showscale=True)
 
         logger.info('gen_image_figure: constructed and added dots Scatter trace')
+        logger.info('gen_image_figure: total length of JSON serialized figure is: %d',
+                    len(fig.to_json()))
 
     return fig
 
