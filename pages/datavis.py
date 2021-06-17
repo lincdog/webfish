@@ -134,7 +134,7 @@ def gen_figure_2d(selected_genes, active, color_option, channel):
     return fig
 
 
-def gen_figure_3d(selected_genes, active, color_option):
+def gen_figure_3d(selected_genes, active, color_option, z_step_size, pixel_size):
     """
     gen_figure_3d:
     Given a list of selected genes and a dataset, generates a Plotly figure with
@@ -191,6 +191,9 @@ def gen_figure_3d(selected_genes, active, color_option):
 
         logger.info('gen_figure_3d: added Scatter3d trace')
 
+    # A sensible default for aesthetic purposes (refers to the ratio between the
+    # total extent in the Z dimension to that in the X or Y direction
+    z_aspect = 0.07
     # If the mesh is present, populate it.
     # Else, create an empty Mesh3d.
     if mesh is not None:
@@ -209,16 +212,24 @@ def gen_figure_3d(selected_genes, active, color_option):
 
         logger.info('gen_figure_3d: Added mesh3d trace')
 
+        if pixel_size and z_step_size:
+            x_extent = pixel_size * (x.max() - x.min())
+            z_extent = z_step_size * (z.max() - z.min())
+
+            z_aspect = z_extent / x_extent
+
+            logger.info(f'gen_figure_3d: px {pixel_size} z {z_step_size} '
+                        f'gives x extent {x_extent} z extent {z_extent} '
+                        f'ratio = {z_aspect}')
+
     figscene = go.layout.Scene(
         aspectmode='manual',
-        aspectratio=dict(x=1, y=1, z=0.07),
+        aspectratio=dict(x=1, y=1, z=z_aspect),
     )
 
     figlayout = go.Layout(
         height=1000,
         width=1000,
-        #plot_bgcolor='black',
-        #paper_bgcolor='white',
         margin=dict(b=10, l=10, r=10, t=10),
         scene=figscene
     )
@@ -238,6 +249,8 @@ def gen_figure_3d(selected_genes, active, color_option):
     Input('dv-color-option', 'value'),
     Input('dv-vis-mode', 'value'),
     Input('dv-2d-source', 'value'),
+    Input('dv-z-step-size', 'value'),
+    Input('dv-pixel-size', 'value'),
     State('dv-pos-select', 'value'),
     State('dv-analysis-select', 'value'),
     State('dataset-select', 'value'),
@@ -250,6 +263,8 @@ def update_figure(
     color_option,
     vis_mode,
     source_2d,
+    z_step_size,
+    pixel_size,
     pos,
     analysis,
     dataset,
@@ -310,7 +325,13 @@ def update_figure(
             return [dbc.Alert('Segmented image and dots not found!', color='warning'),
                     dcc.Graph(id='dv-fig')]
 
-        fig = gen_figure_3d(selected_genes, active, color_option)
+        fig = gen_figure_3d(
+            selected_genes,
+            active,
+            color_option,
+            z_step_size,
+            pixel_size
+        )
 
     else:
         if source_2d == 'dapi_im':
@@ -571,19 +592,6 @@ layout = [
                     id='dv-gene-wrapper'
                 ),
 
-                dbc.FormGroup([
-                    dbc.Label('Color by...', html_for='dv-color-option'),
-                    dbc.RadioItems(
-                        id='dv-color-option',
-                        options=[
-                            {'label': 'Gene', 'value': 'gene'},
-                            {'label': 'On/Off Target', 'value': 'fake'}
-                        ],
-                        value='gene',
-                        inline=True
-                    )
-                ]),
-
             ], id='dv-gene-div'),
 
             dbc.FormGroup([
@@ -598,21 +606,72 @@ layout = [
                         inline=True
                     )
                 ]),
+
             dbc.FormGroup([
-                dbc.Label('2D visualization source', html_for='dv-2d-source'),
-                dbc.RadioItems(
-                    id='dv-2d-source',
-                    options=[
-                            {'label': 'Final background image',
-                             'value': 'background_im'},
-                            {'label': 'Segmentation stain image',
-                             'value': 'presegmentation_im'},
-                            {'label': 'DAPI Max projection',
-                             'value': 'dapi_im'}
+                    dbc.Label('Color genes by...', html_for='dv-color-option'),
+                    dbc.RadioItems(
+                        id='dv-color-option',
+                        options=[
+                            {'label': 'Gene', 'value': 'gene'},
+                            {'label': 'On/Off Target', 'value': 'fake'}
                         ],
-                    value='background_im',
-                    inline=True
-                )
+                        value='gene',
+                        inline=True
+                    )
+                ]),
+
+            html.Details([
+                html.Summary('3D visualization options'),
+                html.Small(html.I('Note: changing these only changes the 3D plot'
+                                  ' aspect ratio')),
+                dbc.Form([
+                    dbc.FormGroup([
+                        dbc.Label('Z step size (microns):', html_for='dv-z-step-size'),
+                        dbc.Input(
+                            id='dv-z-step-size',
+                            type='number',
+                            min=0.1,
+                            max=50,
+                            step=0.1,
+                            value=0.5,
+                            debounce=True,
+                            style={'width': '80px', 'margin': '10px'}
+                        ),
+                    ]),
+                    dbc.FormGroup([
+                        dbc.Label('XY pixel size (microns):', html_for='dv-pixel-size'),
+                        dbc.Input(
+                            id='dv-pixel-size',
+                            type='number',
+                            min=0.05,
+                            max=0.5,
+                            step=0.01,
+                            value=0.11,
+                            debounce=True,
+                            style={'width': '80px', 'margin': '10px'}
+                        ),
+                    ]),
+                ], inline=True)
+            ]),
+
+            html.Details([
+                html.Summary('2D visualization options'),
+                dbc.FormGroup([
+                    dbc.Label('2D visualization source', html_for='dv-2d-source'),
+                    dbc.RadioItems(
+                        id='dv-2d-source',
+                        options=[
+                                {'label': 'Final background image',
+                                 'value': 'background_im'},
+                                {'label': 'Segmentation stain image',
+                                 'value': 'presegmentation_im'},
+                                {'label': 'DAPI Max projection',
+                                 'value': 'dapi_im'}
+                            ],
+                        value='background_im',
+                        inline=True
+                    )
+                ])
             ])
         ], id='dv-selectors-wrapper', style={'margin': '20px'}),
 
