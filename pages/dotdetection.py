@@ -105,9 +105,6 @@ def gen_image_figure(
         img_select = np.max(image[channel], axis=0)
         dots_query = 'hyb == @hyb_q and ch == @channel_q'
 
-    if strictness is not None:
-        dots_query += ' and strictness >= @strictness'
-
     fig = px.imshow(
         img_select,
         zmin=contrast_minmax[0],
@@ -129,10 +126,13 @@ def gen_image_figure(
                 len(fig.to_json()))
 
     if dots_csv:
-        dots_select = pd.read_csv(
-            dots_csv[0],
-            # dtype={'ch': int, 'z': int, 'hyb': int}
-        ).query(dots_query)
+        dots_select = pd.read_csv(dots_csv[0])
+
+        if strictness and 'strictness' in dots_select.columns:
+            smin, smax = strictness
+            dots_query += ' and strictness >= @smin and strictness <= @smax'
+
+        dots_select = dots_select.query(dots_query)
 
         logger.info(f'gen_image_figure: read and queried dots CSV file '
                     f'{dots_csv[0]}')
@@ -202,10 +202,7 @@ def prepare_dotdetection_figure(
     current_layout
 ):
     if any([v is None for v in (z, channel, contrast)]):
-        return [
-            cm.component('dd-fig'),
-            cm.component('dd-strictness-slider')
-        ]
+        return cm.component('dd-fig')
 
     logger.info('prepare_dotdetection_figure: requesting raw image filename')
     hyb_fov = data_client.request(
@@ -229,40 +226,6 @@ def prepare_dotdetection_figure(
     else:
         dot_locations = None
         offsets_json = None
-
-    strictness_options = {}
-
-    update_strictness_slider = False
-
-    if dot_locations:
-        try:
-            strictnesses = pd.read_csv(
-                dot_locations[0],
-                usecols=['strictness'])['strictness'].dropna().values.astype(int)
-
-            strictness_range = [np.min(strictnesses), np.max(strictnesses)]
-
-            if not strictness:
-                update_strictness_slider = True
-                strictness = round(np.median(strictnesses))
-
-            strictness_options = {
-                'min': strictness_range[0],
-                'max': strictness_range[1],
-                'step': 1,
-                'value': strictness,
-                'marks': {
-                    a: '{:d}'.format(round(a)) for a in
-                    strictness_range +
-                    list(np.linspace(strictness_range[0] + 1, strictness_range[1], 10))
-                },
-                'disabled': False
-            }
-
-            print(f'strictness_options: {strictness_options}')
-
-        except ValueError:
-            strictness_options = {}
 
     if offsets_json:
         all_offsets = json.load(open(offsets_json[0]))
@@ -300,14 +263,7 @@ def prepare_dotdetection_figure(
 
     logger.info('prepare_dotdetection_figure: returning updated figure')
 
-    if update_strictness_slider:
-        updated_slider = cm.component('dd-strictness-slider', **strictness_options)
-    else:
-        updated_slider = no_update
-
-    print(updated_slider)
-    return (cm.component('dd-fig', figure=figure, relayoutData=current_layout),
-            updated_slider)
+    return cm.component('dd-fig', figure=figure, relayoutData=current_layout),
 
 
 def prepare_preprocess_figure(
@@ -331,9 +287,11 @@ def prepare_preprocess_figure(
 
     fig = go.Figure()
     fig.update_layout(width=1000, height=1000)
-    fig.add_image(source=base64_image(pp_im[0]))
 
-    return cm.component('dd-fig', figure=fig), cm.component('dd-strictness-slider')
+    if pp_im:
+        fig.add_image(source=base64_image(pp_im[0]))
+
+    return cm.component('dd-fig', figure=fig)
 
 
 def prepare_alignment_figure(
@@ -353,19 +311,23 @@ def prepare_alignment_figure(
 
     logger.info('prepare_alignment_figure: got alignment check file')
 
-    align_im = safe_imread(align_im_file, False, False)
-    logger.info(f'prepare_alignment_figure: read alignment image of shape '
+    fig = go.Figure()
+    fig.update_layout(width=1000, height=1000)
+
+    if align_im_file:
+        align_im = safe_imread(align_im_file, False, False)
+        logger.info(f'prepare_alignment_figure: read alignment image of shape '
                 f'{align_im.shape}')
 
-    fig = px.imshow(
-        align_im,
-        width=1000,
-        height=1000,
-        animation_frame=0,
-        binary_string=True
-    )
+        fig = px.imshow(
+            align_im,
+            width=1000,
+            height=1000,
+            animation_frame=0,
+            binary_string=True
+        )
 
-    return cm.component('dd-fig', figure=fig), cm.component('dd-strictness-slider')
+    return cm.component('dd-fig', figure=fig)
 
 
 clear_components = {
@@ -401,7 +363,18 @@ clear_components = {
     'dd-contrast-note': dcc.Markdown('NOTE: the image intensity is rescaled to '
                                      'use the full range of the datatype before '
                                      'display'),
-    'dd-strictness-slider': dcc.Slider(id='dd-strictness-slider', disabled=True),
+    'dd-strictness-slider': dbc.FormGroup([
+        dbc.Label('Strictness filter', html_for='dd-strictness-slider'),
+        dcc.RangeSlider(
+            id='dd-strictness-slider',
+            min=-20,
+            max=100,
+            step=1,
+            value=[0, 10],
+            allowCross=False,
+            marks={i: str(i) for i in range(-20, 101, 10)}
+        )
+    ]),
 
     'dd-fig': dcc.Graph(
         id='dd-fig',
@@ -438,7 +411,6 @@ cm = ComponentManager(clear_components, component_groups=component_groups)
 
 @app.callback(
     Output('dd-graph-wrapper', 'children'),
-    Output('dd-strictness-slider-wrapper', 'children'),
     Input('dd-detail-tabs-collapse', 'is_open'),
     Input('dd-detail-tabs', 'active_tab'),
     Input('dd-z-select', 'value'),
@@ -473,10 +445,7 @@ def update_visualization(
     # Again test for None explicitly because z, channel, position or hyb might be 0
     if not is_open or any([v is None for v in
                            (active_tab, position, hyb, dataset, user)]):
-        return [
-            cm.component('dd-fig'),
-            cm.component('dd-strictness-slider')
-        ]
+        return cm.component('dd-fig'),
 
     if active_tab == 'dd-tab-dotdetection':
         return prepare_dotdetection_figure(
@@ -488,10 +457,7 @@ def update_visualization(
     elif active_tab == 'dd-tab-alignment':
         return prepare_alignment_figure(position, analysis, dataset, user)
     else:
-        return [
-            cm.component('dd-fig'),
-            cm.component('dd-strictness-slider')
-        ]
+        return cm.component('dd-fig'),
 
 
 @app.callback(

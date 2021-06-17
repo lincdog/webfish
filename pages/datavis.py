@@ -65,6 +65,9 @@ def gen_figure_2d(selected_genes, active, color_option, channel):
     elif 'presegmentation_im' in active:
         imfile = active.get('presegmentation_im')
         imtype = 'presegmentation_im'
+    elif 'hyb_fov' in active:
+        imfile = active.get('hyb_fov')
+        imtype = 'hyb_fov'
     else:
         imfile = None
         imtype = ''
@@ -334,17 +337,28 @@ def update_figure(
         )
 
     else:
+        source_2d_request = {
+            'user': user,
+            'dataset': dataset,
+            'position': pos
+        }
+
         if source_2d == 'dapi_im':
-            source_2d = 'background_im'
+            source_2d = 'hyb_fov'
+
+            first_hyb = data_client.datafiles.query(
+                'user==@user and dataset==@dataset and position==@pos'
+            )['hyb'].dropna().values[0]
+
+            source_2d_request['hyb'] = first_hyb
+
             channel = -1
         else:
             channel = 0
 
-        active |= data_client.request({
-            'user': user,
-            'dataset': dataset,
-            'position': pos
-        }, fields=source_2d)
+        logger.info(f'source_2d_request: {source_2d_request}, {source_2d}')
+
+        active |= data_client.request(source_2d_request, fields=source_2d)
 
         config = {'scrollZoom': True}
 
