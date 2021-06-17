@@ -13,11 +13,7 @@ they take raw input files that are located on the master storage (HPC),
 and perform processing on them before they are uploaded to S3. This function
 is analogous to `generators.py` but happens on the master storage computer,
 *before* the files are uploaded to S3. 
-
-The classes are only namespaces with class/static methods defined; we could
-equally use namedtuples or similar. The `source_files` and `raw_files` sections of
-the Webfish config file for each page can specify a preupload class
-and a function to call for each source or raw file. When the cron job on the HPC
+When the cron job on the HPC
 finds new files that haven't been uploaded to S3 yet, it first calls 
 `server.DataServer.run_preuploads` on them and then only uploads the successfully
 processed results of that. 
@@ -156,4 +152,3 @@ def rescale_using_percentile(
             in_range=(in_start, in_stop),
             out_range=out_range
         )
-
