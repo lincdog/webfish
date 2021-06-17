@@ -104,22 +104,32 @@ def generate_dots(
 
     if 'dots_csv' in inrows['source_key'].values:
         query = 'source_key == "dots_csv"'
-        genecol = 'gene'
     elif 'dots_csv_unseg' in inrows['source_key'].values:
         query = 'source_key == "dots_csv_unseg"'
-        genecol = 'geneID'
+
+    if 'dots_csv_sm' in inrows['source_key'].values:
+        query = query + ' or source_key == "dots_csv_sm"'
+    elif 'dots_csv_sm_unseg' in inrows['source_key'].values:
+        query = query + ' or source_key == "dots_csv_sm_unseg"'
 
     infiles = inrows.query(query)[['channel', 'local_filename']]
 
     for chan, csv in infiles.values:
         pcd_single = pd.read_csv(csv)
+
+        if 'geneID' in pcd_single.columns:
+            pcd_single.rename(columns={'geneID': 'gene'}, inplace=True)
+
+        if not chan:
+            chan = 'sequential'
+
         pcd_single['channel'] = chan
         pcds.append(pcd_single)
 
     pcds_combined = pd.concat(pcds)
     del pcds
 
-    gen_pcd_df(pcds_combined, genecol=genecol, outfile=outfile)
+    gen_pcd_df(pcds_combined, genecol='gene', outfile=outfile)
     del pcds_combined
 
     return outfile

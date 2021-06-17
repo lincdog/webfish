@@ -74,8 +74,12 @@ file_patterns:
       "MMStack_Pos{position}/Segmentation/labeled_img.tif"
     dots_csv:
       "MMStack_Pos{position}/Segmentation/Channel_{channel}/gene_locations_assigned_to_cell.csv"
+    dots_csv_sm:
+      "MMStack_Pos{position}/Segmentation/gene_locations_assigned_to_cell.csv"
     dots_csv_unseg:
       "MMStack_Pos{position}/Decoded/Channel_{channel}/pre_seg_diff_1_minseeds_3_filtered.csv"
+    dots_csv_sm_unseg:
+      "MMStack_Pos{position}/Decoded/sequential_decoding_results.csv"
     cell_info:
       "MMStack_Pos{position}/Segmentation/Channel_{channel}/cell_info.csv"
     onoff_intensity_plot:
@@ -124,5 +128,5 @@ file_patterns:
       generator: "generate_mesh"
     dots:
       pattern: "MMStack_Pos{position}/dots_um_with_colors.csv"
-      requires: ["dots_csv | dots_csv_unseg"]
+      requires: ["dots_csv | dots_csv_unseg | dots_csv_sm | dots_csv_sm_unseg"]
       generator: "generate_dots"

@@ -173,7 +173,7 @@ def update_figure(
         'dataset': dataset,
         'analysis': analysis,
         'position': pos
-    }, fields=('mesh', 'dots'))
+    }, fields=('mesh', 'dots', ''))
 
     logger.info('update_figure: got mesh and dots files')
 
