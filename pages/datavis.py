@@ -64,7 +64,8 @@ def gen_figure(selected_genes, active, color_option):
 
         color = dots_filt['geneColor']
         if color_option == 'fake':
-            color = [('#ee2', '#22a')[int('fake' in g)] for g in dots_filt['gene']]
+            real_fake = ('#1d4', '#22a')
+            color = [real_fake[int('fake' in g)] for g in dots_filt['gene']]
 
         hovertext = dots_filt['gene']
 

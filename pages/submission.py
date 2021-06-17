@@ -143,9 +143,9 @@ clear_components = {
             dbc.Select(
                 id='sb-dot detection-select',
                 options=[
-                    {'label': 'Biggest Jump 3D', 'value': 'biggest jump 3d'},
+                    {'label': 'Biggest Jump Python', 'value': 'biggest jump 3d'},
                     {'label': 'ADCG 2D', 'value': 'adcg 2d'},
-                    {'label': 'Matlab 3D', 'value': 'matlab 3d'}
+                    {'label': 'Biggest Jump Matlab', 'value': 'matlab 3d'}
                 ],
                 value='biggest jump 3d',
                 disabled=False
