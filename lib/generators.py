@@ -100,17 +100,19 @@ def generate_dots(
     pcds = []
 
     genecol = 'gene'
-    query = ''
+    query_parts = []
 
     if 'dots_csv' in inrows['source_key'].values:
-        query = 'source_key == "dots_csv"'
+        query_parts.append('source_key == "dots_csv"')
     elif 'dots_csv_unseg' in inrows['source_key'].values:
-        query = 'source_key == "dots_csv_unseg"'
+        query_parts.append('source_key == "dots_csv_unseg"')
 
     if 'dots_csv_sm' in inrows['source_key'].values:
-        query = query + ' or source_key == "dots_csv_sm"'
+        query_parts.append('source_key == "dots_csv_sm"')
     elif 'dots_csv_sm_unseg' in inrows['source_key'].values:
-        query = query + ' or source_key == "dots_csv_sm_unseg"'
+        query_parts.append('source_key == "dots_csv_sm_unseg"')
+
+    query = ' or '.join(query_parts)
 
     infiles = inrows.query(query)[['channel', 'local_filename']]
 
