@@ -803,41 +803,6 @@ def sanitize(
     return delimiter.join(parts_sanitized)
 
 
-def add_gene_names(
-    analysis_root
-):
-    breakpoint()
-
-    analysis_root = Path(analysis_root)
-
-    sm_key = analysis_root / 'BarcodeKey' / 'sequential_key.csv'
-
-    if not sm_key.exists():
-        raise FileNotFoundError(f'smFISH barcode key {sm_key} not found')
-
-    sm_key_df = pd.read_csv(sm_key, dtype=str)
-
-    seg_pattern = 'MMStack_Pos{position}/Segmentation/' \
-                  'gene_locations_assigned_to_cell.csv'
-    decode_pattern = 'MMStack_Pos{position}/Decoded/sequential_decoding_results.csv'
-
-    seg_files, _, _ = find_matching_files(analysis_root, seg_pattern)
-    dec_files, _, _ = find_matching_files(analysis_root, decode_pattern)
-
-    all_files = seg_files + dec_files
-
-    for file in all_files:
-        file_df = pd.read_csv(file, dtype=str)
-
-        file_df_merged = pd.merge(
-            file_df,
-            sm_key_df,
-            how='left',
-            left_on=['hyb', 'ch'],
-            right_on=['hyb', 'channel']
-        )
-
-
 def ls_recursive(root='.', level=1, ignore=[], dirsonly=True, flat=False):
     if flat:
         result = []

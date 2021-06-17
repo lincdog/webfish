@@ -17,7 +17,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 
 from app import app
-from lib.util import safe_imread
+from lib.util import safe_imread, base64_image
 from .common import ComponentManager, data_client
 
 logger = logging.getLogger('webfish.' + __name__)
@@ -106,8 +106,7 @@ def gen_image_figure(
         dots_query = 'hyb == @hyb_q and ch == @channel_q'
 
     if strictness is not None:
-        smin, smax = strictness
-        dots_query += ' and strictness <= @smax and strictness >= @smin'
+        dots_query += ' and strictness >= @strictness'
 
     fig = px.imshow(
         img_select,
@@ -190,6 +189,185 @@ def gen_image_figure(
     return fig
 
 
+def prepare_dotdetection_figure(
+    z,
+    channel,
+    contrast,
+    strictness,
+    position,
+    hyb,
+    analysis,
+    dataset,
+    user,
+    current_layout
+):
+    if any([v is None for v in (z, channel, contrast)]):
+        return [
+            cm.component('dd-fig'),
+            cm.component('dd-strictness-slider')
+        ]
+
+    logger.info('prepare_dotdetection_figure: requesting raw image filename')
+    hyb_fov = data_client.request(
+        {'user': user, 'dataset': dataset, 'position': position, 'hyb': hyb},
+        fields='hyb_fov'
+    )['hyb_fov']
+    logger.info('prepare_dotdetection_figure: got raw image filename')
+
+    if analysis:
+        logger.info('prepare_dotdetection_figure: requesting dot locations and offsets')
+
+        requests = data_client.request(
+            {'user': user, 'dataset': dataset, 'position': position, 'analysis': analysis},
+            fields=['dot_locations', 'offsets_json']
+        )
+        dot_locations = requests['dot_locations']
+        offsets_json = requests['offsets_json']
+
+        logger.info('prepare_dotdetection_figure: got dot locations and offsets')
+
+    else:
+        dot_locations = None
+        offsets_json = None
+
+    strictness_options = {}
+
+    update_strictness_slider = False
+
+    if dot_locations:
+        try:
+            strictnesses = pd.read_csv(
+                dot_locations[0],
+                usecols=['strictness'])['strictness'].dropna().values.astype(int)
+
+            strictness_range = [np.min(strictnesses), np.max(strictnesses)]
+
+            if not strictness:
+                update_strictness_slider = True
+                strictness = round(np.median(strictnesses))
+
+            strictness_options = {
+                'min': strictness_range[0],
+                'max': strictness_range[1],
+                'step': 1,
+                'value': strictness,
+                'marks': {
+                    a: '{:d}'.format(round(a)) for a in
+                    strictness_range +
+                    list(np.linspace(strictness_range[0] + 1, strictness_range[1], 10))
+                },
+                'disabled': False
+            }
+
+            print(f'strictness_options: {strictness_options}')
+
+        except ValueError:
+            strictness_options = {}
+
+    if offsets_json:
+        all_offsets = json.load(open(offsets_json[0]))
+        offsets = all_offsets.get(
+            f'HybCycle_{hyb}/MMStack_Pos{position}.ome.tif',
+            (0, 0)
+        )
+    else:
+        offsets = (0, 0)
+
+    logger.info('prepare_dotdetection_figure: calling gen_image_figure')
+
+    figure = gen_image_figure(
+        hyb_fov,
+        dot_locations,
+        offsets,
+        hyb,
+        z,
+        channel,
+        contrast,
+        strictness
+    )
+
+    if current_layout:
+        if 'xaxis.range[0]' in current_layout:
+            figure['layout']['xaxis']['range'] = [
+                current_layout['xaxis.range[0]'],
+                current_layout['xaxis.range[1]']
+            ]
+        if 'yaxis.range[0]' in current_layout:
+            figure['layout']['yaxis']['range'] = [
+                current_layout['yaxis.range[0]'],
+                current_layout['yaxis.range[1]']
+            ]
+
+    logger.info('prepare_dotdetection_figure: returning updated figure')
+
+    if update_strictness_slider:
+        updated_slider = cm.component('dd-strictness-slider', **strictness_options)
+    else:
+        updated_slider = no_update
+
+    print(updated_slider)
+    return (cm.component('dd-fig', figure=figure, relayoutData=current_layout),
+            updated_slider)
+
+
+def prepare_preprocess_figure(
+    position,
+    hyb,
+    analysis,
+    dataset,
+    user
+):
+    logger.info('entering prepare_preprocess_figure')
+
+    pp_im = data_client.request({
+        'user': user,
+        'dataset': dataset,
+        'analysis': analysis,
+        'position': position,
+        'hyb': hyb
+    }, fields='preprocess_check')['preprocess_check']
+
+    logger.info('prepare_preprocess_figure: got preprocess check file')
+
+    fig = go.Figure()
+    fig.update_layout(width=1000, height=1000)
+    fig.add_image(source=base64_image(pp_im[0]))
+
+    return cm.component('dd-fig', figure=fig), cm.component('dd-strictness-slider')
+
+
+def prepare_alignment_figure(
+    position,
+    analysis,
+    dataset,
+    user
+):
+    logger.info('Entering prepare_alignment_figure')
+
+    align_im_file = data_client.request({
+        'user': user,
+        'dataset': dataset,
+        'analysis': analysis,
+        'position': position
+    }, fields='alignment_check')['alignment_check']
+
+    logger.info('prepare_alignment_figure: got alignment check file')
+
+    align_im = safe_imread(align_im_file, False, False)
+    logger.info(f'prepare_alignment_figure: read alignment image of shape '
+                f'{align_im.shape}')
+
+    fig = px.imshow(
+        align_im,
+        width=1000,
+        height=1000,
+        animation_frame=0,
+        binary_string=True
+    )
+
+    return cm.component('dd-fig', figure=fig), cm.component('dd-strictness-slider')
+
+
 clear_components = {
 
     'dd-analysis-select':
@@ -223,11 +401,13 @@ clear_components = {
     'dd-contrast-note': dcc.Markdown('NOTE: the image intensity is rescaled to '
                                      'use the full range of the datatype before '
                                      'display'),
-    'dd-strictness-slider': dcc.RangeSlider(id='dd-strictness-slider', disabled=True),
+    'dd-strictness-slider': dcc.Slider(id='dd-strictness-slider', disabled=True),
 
-    'dd-fig': dcc.Graph(id='dd-fig', config={
-        'scrollZoom': True,
-        'modeBarButtonsToRemove': ['zoom2d', 'zoomOut2d', 'zoomIn2d']
+    'dd-fig': dcc.Graph(
+        id='dd-fig',
+        config={
+            'scrollZoom': True,
+            'modeBarButtonsToRemove': ['zoom2d', 'zoomOut2d', 'zoomIn2d']
     })
 }
 
@@ -259,7 +439,8 @@ cm = ComponentManager(clear_components, component_groups=component_groups)
 @app.callback(
     Output('dd-graph-wrapper', 'children'),
     Output('dd-strictness-slider-wrapper', 'children'),
-    Input('dd-image-params-wrapper', 'is_open'),
+    Input('dd-detail-tabs-collapse', 'is_open'),
+    Input('dd-detail-tabs', 'active_tab'),
     Input('dd-z-select', 'value'),
     Input('dd-chan-select', 'value'),
     Input('dd-contrast-slider', 'value'),
@@ -271,8 +452,9 @@ cm = ComponentManager(clear_components, component_groups=component_groups)
     Input('user-select', 'value'),
     State('dd-fig', 'relayoutData')
 )
-def update_image_params(
+def update_visualization(
     is_open,
+    active_tab,
     z,
     channel,
     contrast,
@@ -290,118 +472,30 @@ def update_image_params(
 
     # Again test for None explicitly because z, channel, position or hyb might be 0
     if not is_open or any([v is None for v in
-                           (z, channel, contrast, position, hyb, dataset, user)]):
+                           (active_tab, position, hyb, dataset, user)]):
         return [
             cm.component('dd-fig'),
             cm.component('dd-strictness-slider')
         ]
 
-    logger.info('update_image_params: requesting raw image filename')
-    hyb_fov = data_client.request(
-        {'user': user, 'dataset': dataset, 'position': position, 'hyb': hyb},
-        fields='hyb_fov'
-    )['hyb_fov']
-    logger.info('update_image_params: got raw image filename')
-
-    if analysis:
-        logger.info('update_image_params: requesting dot locations and offsets')
-
-        requests = data_client.request(
-            {'user': user, 'dataset': dataset, 'position': position, 'analysis': analysis},
-            fields=['dot_locations', 'offsets_json']
+    if active_tab == 'dd-tab-dotdetection':
+        return prepare_dotdetection_figure(
+            z, channel, contrast, strictness, position,
+            hyb, analysis, dataset, user, current_layout
         )
-        dot_locations = requests['dot_locations']
-        offsets_json = requests['offsets_json']
-
-        logger.info('update_image_params: got dot locations and offsets')
-
+    elif active_tab == 'dd-tab-preprocess':
+        return prepare_preprocess_figure(position, hyb, analysis, dataset, user)
+    elif active_tab == 'dd-tab-alignment':
+        return prepare_alignment_figure(position, analysis, dataset, user)
     else:
-        dot_locations = None
-        offsets_json = None
-
-    strictness_options = {}
-
-    update_strictness_slider = False
-
-    if dot_locations:
-        try:
-            strictnesses = pd.read_csv(
-                dot_locations[0],
-                usecols=['strictness'])['strictness'].dropna().values.astype(int)
-
-            strictness_range = [np.min(strictnesses), np.max(strictnesses)]
-
-            if not strictness:
-                update_strictness_slider = True
-                strictness = [0, round(np.median(strictnesses))]
-
-            strictness_options = {
-                'min': strictness_range[0],
-                'max': strictness_range[1],
-                'step': 1,
-                'value': strictness,
-                'marks': {
-                    a: '{:d}'.format(round(a)) for a in
-                    strictness_range +
-                    list(np.linspace(strictness_range[0] + 1, strictness_range[1], 10))
-                },
-                'disabled': False
-            }
-
-            print(f'strictness_options: {strictness_options}')
-
-        except ValueError:
-            strictness_options = {}
-
-    if offsets_json:
-        all_offsets = json.load(open(offsets_json[0]))
-        offsets = all_offsets.get(
-            f'HybCycle_{hyb}/MMStack_Pos{position}.ome.tif',
-            (0, 0)
-        )
-    else:
-        offsets = (0, 0)
-
-    logger.info('update_image_params: calling gen_image_figure')
-
-    figure = gen_image_figure(
-        hyb_fov,
-        dot_locations,
-        offsets,
-        hyb,
-        z,
-        channel,
-        contrast,
-        strictness
-    )
-
-    if current_layout:
-        if 'xaxis.range[0]' in current_layout:
-            figure['layout']['xaxis']['range'] = [
-                current_layout['xaxis.range[0]'],
-                current_layout['xaxis.range[1]']
-            ]
-        if 'yaxis.range[0]' in current_layout:
-            figure['layout']['yaxis']['range'] = [
-                current_layout['yaxis.range[0]'],
-                current_layout['yaxis.range[1]']
-            ]
-
-    logger.info('update_image_params: returning updated figure')
-
-    if update_strictness_slider:
-        updated_slider = cm.component('dd-strictness-slider', **strictness_options)
-    else:
-        updated_slider = no_update
-
-    print(updated_slider)
-    return [cm.component('dd-fig', figure=figure, relayoutData=current_layout),
-            updated_slider
-            ]
+        return [
+            cm.component('dd-fig'),
+            cm.component('dd-strictness-slider')
+        ]
 
 
 @app.callback(
-    Output('dd-image-params-wrapper', 'is_open'),
+    Output('dd-detail-tabs-collapse', 'is_open'),
     Output('dd-image-params-loader', 'children'),
     Input('dd-position-select', 'value'),
     Input('dd-hyb-select', 'value'),
@@ -619,6 +713,24 @@ def submit_new_analysis(
         raise PreventUpdate
 
 
+tab_dot_detection = dbc.Spinner([
+    *cm.component_group(
+        'image-params',
+        tolist=True),
+    html.Div(cm.component(
+        'dd-strictness-slider',
+    ), id='dd-strictness-slider-wrapper')
+], id='dd-image-params-loader'),
+
+tab_preprocess_checks = dbc.Alert(
+    'Select different hyb and positions '
+    'to see the preprocess check images at right.', color='success')
+
+tab_alignment_check = dbc.Alert(
+    'Use the slider to navigate through the DAPI alignment check stack.',
+    color='success'
+)
+
 layout = [
     dbc.Col([
         html.Div([
@@ -639,20 +751,19 @@ layout = [
 
         html.Hr(),
 
-        html.Div([
-
-            dbc.Collapse([
-                dbc.Spinner([
-                    *cm.component_group(
-                        'image-params',
-                        tolist=True),
-                    html.Div(cm.component(
-                        'dd-strictness-slider',
-                    ), id='dd-strictness-slider-wrapper')
-                ], id='dd-image-params-loader'),
-            ], is_open=False, id='dd-image-params-wrapper'),
-
-        ], id='dd-image-params-div', style={'margin': '10px'})
+        dbc.Collapse([
+            dbc.Tabs([
+                dbc.Tab(tab_dot_detection,
+                        tab_id='dd-tab-dotdetection',
+                        label='Dot detection'),
+                dbc.Tab(tab_preprocess_checks,
+                        tab_id='dd-tab-preprocess',
+                        label='Preprocessing Checks'),
+                dbc.Tab(tab_alignment_check,
+                        tab_id='dd-tab-alignment',
+                        label='DAPI Alignment Check')
+            ], id='dd-detail-tabs', style={'margin': '10px'}),
+        ], is_open=False, id='dd-detail-tabs-collapse')
 
     ], width=4),
 
