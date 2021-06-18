@@ -33,7 +33,7 @@ file_locations:
 #   server and on client (running instance of webapp)
 sync_folder: monitoring/
 
-analysis_log: /groups/CaiLab/analyses/pipeline_rotating_log.txt
+analysis_log: pipeline_rotating_log.txt
 
 # Location to save files that have been processed with preuploader functions
 preupload_root: /groups/CaiLab/personal/lincoln/webfish_preupload/

@@ -94,6 +94,8 @@ class DataServer(FilePatterns):
 
         self.bucket_name = bucket_name
 
+        self.analysis_log = config.get('analysis_log')
+
         self.sync_contents = {
             # All folders that fit the `dataset_pattern`s supplied for any
             # input file category. Upper bound on actual datasets as these
