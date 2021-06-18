@@ -100,6 +100,11 @@ file_patterns:
       "MMStack_Pos{position}/PreProcess_Check/HybCycle_{hyb}.png"
     alignment_check:
       "MMStack_Pos{position}/Alignment_Checks/Aligned_and_Stacked_DAPI_S.tif"
+    location_check_xy:
+      "MMStack_Pos{position}/Dot_Locations/Location_Checks/Map_of_XY_Locations.png"
+    location_check_z:
+      "MMStack_Pos{position}/Dot_Locations/Location_Checks/Dots_Across_Z_Slices.png"
+
 
   raw:
     hyb_fov:

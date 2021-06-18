@@ -205,10 +205,12 @@ def prepare_dotdetection_figure(
         return cm.component('dd-fig')
 
     logger.info('prepare_dotdetection_figure: requesting raw image filename')
+
     hyb_fov = data_client.request(
         {'user': user, 'dataset': dataset, 'position': position, 'hyb': hyb},
         fields='hyb_fov'
     )['hyb_fov']
+
     logger.info('prepare_dotdetection_figure: got raw image filename')
 
     if analysis:
@@ -290,8 +292,48 @@ def prepare_preprocess_figure(
 
     if pp_im:
         fig.add_image(source=base64_image(pp_im[0]))
+        return cm.component('dd-fig', figure=fig)
+    else:
+        alert = dbc.Alert('No preprocessing check image found', color='warning')
+        return [alert, cm.component('dd-fig', figure=fig)]
 
-    return cm.component('dd-fig', figure=fig)
+
+def prepare_locations_figure(
+    position,
+    analysis,
+    dataset,
+    user
+):
+    logger.info('entering prepare_locations_figure')
+
+    loc_ims = data_client.request({
+        'user': user,
+        'dataset': dataset,
+        'analysis': analysis,
+        'position': position
+    }, fields=('location_check_xy', 'location_check_z'))
+
+    logger.info('prepare_locations_figure: got check filenames')
+
+    results = []
+
+    if loc_ims['location_check_xy']:
+        results.append(
+            html.Img(src=base64_image(loc_ims['location_check_xy'][0]))
+        )
+
+    if loc_ims['location_check_z']:
+        results.append(
+            html.Img(src=base64_image(loc_ims['location_check_z'][0]))
+        )
+
+    if not results:
+        results.append(dbc.Alert('No location checks found for this analysis.'
+                                 , color='warning'))
+
+    results.append(dcc.Graph(id='dd-fig'))
+
+    return results
 
 
 def prepare_alignment_figure(
@@ -327,7 +369,10 @@ def prepare_alignment_figure(
             binary_string=True
         )
 
-    return cm.component('dd-fig', figure=fig)
+        return cm.component('dd-fig', figure=fig)
+    else:
+        alert = dbc.Alert('No alignment check found for this analysis.', color='warning')
+        return [alert, cm.component('dd-fig', figure=fig)]
 
 
 clear_components = {
@@ -456,6 +501,8 @@ def update_visualization(
         return prepare_preprocess_figure(position, hyb, analysis, dataset, user)
     elif active_tab == 'dd-tab-alignment':
         return prepare_alignment_figure(position, analysis, dataset, user)
+    elif active_tab == 'dd-tab-locations':
+        return prepare_locations_figure(position, analysis, dataset, user)
     else:
         return cm.component('dd-fig'),
 
@@ -697,6 +744,11 @@ tab_alignment_check = dbc.Alert(
     color='success'
 )
 
+tab_locations_check = dbc.Alert(
+    'Images of dot locations in XY or across Z slices.',
+    color='success'
+)
+
 layout = [
     dbc.Col([
         html.Div([
@@ -727,7 +779,10 @@ layout = [
                         label='Preprocessing Checks'),
                 dbc.Tab(tab_alignment_check,
                         tab_id='dd-tab-alignment',
-                        label='DAPI Alignment Check')
+                        label='DAPI Alignment Check'),
+                dbc.Tab(tab_locations_check,
+                        tab_id='dd-tab-locations',
+                        label='Dot Locations Check')
             ], id='dd-detail-tabs', style={'margin': '10px'}),
         ], is_open=False, id='dd-detail-tabs-collapse')
 
