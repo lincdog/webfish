@@ -48,19 +48,19 @@ if __name__ == '__main__':
         logger.warning('No log filename defined in config')
         sys.exit(1)
 
-    analysis_log_local = Path(dm.file_locations['source']['root']
-                              / dm.analysis_log)
+    analysis_log_local = Path(dm.file_locations['source']['root'],
+                              dm.analysis_log)
 
     analysis_log_key = Path(dm.sync_folder, dm.analysis_log)
 
     if Path(analysis_log_local).is_file():
-        logger.warning(f'Attempting to upload log file at {analysis_log_local} '
+        logger.info(f'Attempting to upload log file at {analysis_log_local} '
                        f'to key {analysis_log_key}')
         try:
             dm.client.client.upload_file(
                 str(analysis_log_local),
                 Bucket=dm.bucket_name,
-                Key=analysis_log_key
+                Key=str(analysis_log_key)
             )
         except Exception as e:
             logger.error(f'Error uploading log file: {e}')
