@@ -370,7 +370,7 @@ clear_components = {
                 options=[
                     {'label': 'Across channels', 'value': 'across'},
                     {'label': 'Individual channel(s)', 'value': 'individual'},
-                    {'label': 'smFISH (non-barcoded)', 'value': 'smfish'}
+                    {'label': 'smFISH (non-barcoded)', 'value': 'non barcoded'}
                 ],
                 value='individual',
                 inline=True

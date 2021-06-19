@@ -68,4 +68,5 @@ if __name__ == '__main__':
         logger.error(f'Log file {analysis_log_local} does not exist')
         sys.exit(1)
 
+    logger.info('Successfully upload logfile, exiting')
     sys.exit(0)
