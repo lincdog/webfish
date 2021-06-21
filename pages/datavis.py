@@ -85,7 +85,7 @@ def gen_figure_2d(selected_genes, active, color_option, channel):
             img = img[channel]
 
         fig = px.imshow(
-            img,
+            img.T,
             zmin=0,
             zmax=200,
             width=1000,
