@@ -936,3 +936,14 @@ def copy_or_nop(df):
         result = df
 
     return result
+
+
+def sort_as_num_or_str(coll, numtype=int):
+    np_coll = np.array(coll)
+
+    try:
+        result = np.sort(np_coll.astype(numtype)).astype(str)
+    except ValueError:
+        result = np.sort(np_coll.astype(str))
+
+    return result

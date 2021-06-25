@@ -17,7 +17,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 
 from app import app
-from lib.util import safe_imread, base64_image
+from lib.util import safe_imread, base64_image, sort_as_num_or_str
 from .common import ComponentManager, data_client
 
 logger = logging.getLogger('webfish.' + __name__)
@@ -640,12 +640,12 @@ def display_image_selectors(is_open, dataset, user):
     hybs = data_client.datafiles.query(
         'user == @user and dataset == @dataset')['hyb'].dropna().unique()
 
-    hybs_sorted = np.sort(hybs.astype(int)).astype(str)
+    hybs_sorted = sort_as_num_or_str(hybs)
 
     positions = data_client.datafiles.query(
         'user == @user and dataset == @dataset')['position'].dropna().unique()
 
-    positions_sorted = np.sort(positions.astype(int)).astype(str)
+    positions_sorted = sort_as_num_or_str(positions)
 
     return cm.component_group(
         'image-select',
