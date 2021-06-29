@@ -106,6 +106,18 @@ clear_components = {
             dbc.FormText('Select one or more positions, or leave blank to process all.')
         ]),
 
+    'sb-one-z-select':
+        dbc.FormGroup([
+            dbc.Checklist(
+                id='sb-one-z-select',
+                options=[{'label': 'Single Z slice', 'value': '1'}],
+                value=[],
+                switch=True
+            ),
+            dbc.FormText('Check this box if your images contain only '
+                         'a single Z slice.')
+        ]),
+
     # stage selection
     'sb-stage-select':
         dbc.FormGroup([
@@ -134,9 +146,12 @@ clear_components = {
                 options=[{'label': 'DAPI Alignment', 'value': 'matlab dapi'}],
                 disabled=False
             ),
-            dbc.FormText('The underlying MATLAB function is '
-                         '[imregtform](https://www.mathworks.com/help/images/ref/imregtform.html)',
-                         style={'font-size': '10pt'})
+            dbc.FormText(
+                dcc.Markdown(
+                    'The underlying MATLAB function is '
+                    '[imregtform](https://www.mathworks.com/help/images/ref/imregtform.html)'),
+                style={'font-size': '10pt'}
+            )
         ]),
 
     # dot detection
@@ -405,6 +420,7 @@ excluded_status_comps = ['sb-stage-select', 'sb-segmentation-label']
 component_groups = {
     'basic-metadata': ['sb-analysis-name',
                        'sb-position-select',
+                       'sb-one-z-select',
                        'sb-stage-select'],
 
     'alignment': ['sb-alignment-select'],
@@ -433,6 +449,18 @@ component_groups = {
                  'sb-individual-channel-select']
 
 }
+
+def _one_z_process(item, current):
+
+    if item:
+        try:
+            item = item[0]
+        except TypeError:
+            pass
+
+        current['z slices'] = str(item)
+
+    return current
 
 def _position_process(positions, current):
     if not positions:
@@ -493,6 +521,7 @@ id_to_json_key = {
     'dataset-select': 'experiment_name',
 
     'sb-position-select': _position_process,
+    'sb-one-z-select': _one_z_process,
 
     'sb-alignment-select': 'alignment',
 
