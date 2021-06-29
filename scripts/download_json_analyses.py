@@ -169,7 +169,7 @@ def download_s3_analysis_requests(dm):
     return successes, errors
 
 
-def convert_channel_entry(ent):
+def convert_channel_entry(ent, oneway=False):
     """
     convert_channel_entry
     ---------------------
@@ -180,17 +180,19 @@ def convert_channel_entry(ent):
     numbers separated by a pipe |. If we get a string of that form, split it and return
     the dict that would go into the json file.
     """
-    if isinstance(ent, str):
+
+    if isinstance(ent, dict):
+        channels = ent['individual']
+
+        return '|'.join(channels)
+    
+    elif not oneway and isinstance(ent, str):
         if ent == 'across':
             return ent
         else:
             return {
                 'individual': ent.split('|')
             }
-    elif isinstance(ent, dict):
-        channels = ent['individual']
-
-        return '|'.join(channels)
 
     return ent
 
