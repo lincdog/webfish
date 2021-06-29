@@ -169,7 +169,7 @@ def download_s3_analysis_requests(dm):
     return successes, errors
 
 
-def convert_channel_entry(ent, oneway=False):
+def convert_channel_entry(ent):
     """
     convert_channel_entry
     ---------------------
@@ -185,14 +185,6 @@ def convert_channel_entry(ent, oneway=False):
         channels = ent['individual']
 
         return '|'.join(channels)
-    
-    elif not oneway and isinstance(ent, str):
-        if ent == 'across':
-            return ent
-        else:
-            return {
-                'individual': ent.split('|')
-            }
 
     return ent
 
