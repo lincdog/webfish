@@ -278,7 +278,7 @@ def validate_json(fname, history_df, dm, allow_duplicates=False):
     #   as analysis 1).
     duplicates = new_history.duplicated(subset=columns_considered)
 
-    if any(duplicates) and not allow_duplicates:
+    if all(duplicates) and not allow_duplicates:
         dups = new_history.loc[duplicates, 'analysis_name'].values
         raise ValueError(f'Analyses {dups} uses the same parameters '
                          f'as request {new_analysis}.')
