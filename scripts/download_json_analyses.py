@@ -15,16 +15,16 @@ from argparse import ArgumentParser
 """
 download_json_analyses.py
 ------------------------
-This script is intended to be run as a cron job on the HPC or other master 
+This script is intended to be run as a cron job on the HPC or other master
 data repository location. It downloads json files from the supplied S3 bucket
 and directory, performs some basic validation, then copies well-formed files to
 the active directory where Nick's data pipeline scans for new analysis requests.
 
-It keeps a basic record of the analyses that have been submitted in a CSV file 
+It keeps a basic record of the analyses that have been submitted in a CSV file
 (eventually a database). It also limits the number of analyses that can be submitted
 at once, but in the future we will have more validation and security checks.
 
-It takes the location of the live directory for requests, the S3 prefix for the 
+It takes the location of the live directory for requests, the S3 prefix for the
 requests, and the local directory to download them to from environment variables or
 sensible defaults, as seen below.
 """
