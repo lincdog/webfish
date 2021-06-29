@@ -192,7 +192,7 @@ def convert_channel_entry(ent):
 
         return '|'.join(channels)
 
-    raise TypeError(f'Bad decoding specification {ent}')
+    return ent
 
 
 def validate_json(fname, history_df, dm, allow_duplicates=False):
@@ -253,17 +253,16 @@ def validate_json(fname, history_df, dm, allow_duplicates=False):
         assert new_analysis not in relevant_history['analysis_name'], \
             f'Analysis {new_analysis} already exists for this dataset and user.'
 
-    # Convert the "decoding" key to a string if it is a dict, for writing to the history file.
-    if 'decoding' in new_json.keys():
-        encoded_channels = convert_channel_entry(new_json['decoding'])
-        new_json['decoding'] = encoded_channels
-
     # Add an analysis_name column for the history file.
     new_json['analysis_name'] = new_analysis
 
     # Append the new analysis row to the history dataframe
     new_history = pd.concat([history_df,
                              pd.DataFrame([new_json])])
+
+    if 'decoding' in new_history.columns:
+        new_history['decoding'] = [convert_channel_entry(e)
+                                   for e in new_history['decoding']]
 
     # This gives us all columns except the user, dataset and analysis names.
     columns_considered = new_history.columns.difference([
