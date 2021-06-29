@@ -304,6 +304,6 @@ if __name__ == '__main__':
         host=hostip,
         port=hostport,
         #dev_tools_props_check=False,
-        processes=4,
-        threaded=False
+        #processes=4,
+        #threaded=False
     )

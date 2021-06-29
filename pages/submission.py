@@ -134,6 +134,9 @@ clear_components = {
                 options=[{'label': 'DAPI Alignment', 'value': 'matlab dapi'}],
                 disabled=False
             ),
+            dbc.FormText('The underlying MATLAB function is '
+                         '[imregtform](https://www.mathworks.com/help/images/ref/imregtform.html)',
+                         style={'font-size': '10pt'})
         ]),
 
     # dot detection
@@ -203,6 +206,8 @@ clear_components = {
                 ],
                 value='cellpose'
             ),
+            dbc.FormText('For more information about Cellpose: '
+                         'https://github.com/MouseLand/cellpose')
         ]),
     'sb-segmentation-checklist':
         dbc.Checklist(

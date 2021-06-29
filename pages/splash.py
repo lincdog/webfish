@@ -11,6 +11,13 @@ example_barcode_key = pd.DataFrame({
     'hyb4': [2, 6, 8, 8, 2]
 })
 
+
+example_sm_key = pd.DataFrame({
+    'gene': ['ADARB2', 'AIF1', 'APOD', 'APOE', 'AQP4'],
+    'hyb':  [2, 3, 4, 5, 6],
+    'channel': [3, 3, 3, 3, 3]
+})
+
 layout = [
     dbc.Col([
         dbc.Jumbotron([
@@ -83,7 +90,13 @@ layout = [
                             '*If doing smFISH*: A folder named **`non_barcoded_key`** '
                             'with a file named'
                             ' **`sequential_key.csv`** containing the hyb and gene mapping'
-                        )
+                        ),
+                        html.Div(html.Details([
+                            html.Summary(html.B('smFISH key example')),
+                            dbc.Table.from_dataframe(example_sm_key, striped=True, size='sm')
+                        ]), style={'width': '50%',
+                                   'font-size': '10pt',
+                                   'margin': '20px'})
                     ]),
                     html.Li(dcc.Markdown(
                         '(optional) a folder named **`final_background`** '
