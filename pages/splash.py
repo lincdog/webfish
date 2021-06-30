@@ -42,85 +42,147 @@ layout = [
                              '("experiment_name" field). Then navigate using the tabs '
                              'to explore the data or submit a new analysis run.')
             ])
-        ], style={'margin-top': '10px'}),
+        ]),
+
+        dbc.Card([
+            dbc.CardHeader('Note about the syncing process'),
+            dbc.CardBody([
+                html.Ul([
+                    html.Li(dcc.Markdown(
+                        '**On HPC:** Every **10 minutes**, a script '
+                        'runs to search for any new or modified files that are '
+                        'displayed by the webapp. When these are found, they are '
+                        'preprocessed and then uploaded to a cloud storage respository. '
+                        'Once **all** uploads complete, the manifest of files is updated '
+                        'and also uploaded to the cloud.\n\n The upload process may take '
+                        '30-60 minutes if many files are found at once (especially raw images), '
+                        'and during this time the manifest is not currently updated at all. '
+                        'So during these events, seeing the new files/datasets on the webapp '
+                        'may have a large delay while the HPC finishes uploading **all** files.'
+                    )),
+                    html.Li(dcc.Markdown(
+                        '**On the Webfish server:** When you click **Sync data and analyses**, '
+                        'or every 5 minutes, the server downloads the manifest from the cloud, '
+                        'and updates the available users/datasets/analysis lists. The server '
+                        'only downloads data files as needed, so when you choose to visualize '
+                        'a dataset for the first time, there is some delay as it downloads the files '
+                        'from the cloud storage.'
+                    ))
+                ])
+            ])
+        ], style={'margin-top': '10px'})
 
     ], width=6),
+
     dbc.Col([
         dbc.Card([
             dbc.CardHeader('Uploading Data'),
             dbc.CardBody([
-                html.H3('Location'),
-                dcc.Markdown('To use the pipeline and this site, upload the raw data'
-                             ' from each of your experiments to: \n\n**`/groups/CaiLab/personal/'
-                             '<user name>/raw/<experiment name>/`**\n\n where you insert '
-                             'your name and each experiment\'s name. '
-                             '*Use `/central/groups/CaiLab/personal/nrezaee/raw/2020-08-08-takei` as an example.*'),
-                dcc.Markdown('*Download a tool like [Cyberduck](https://cyberduck.io/) '
-                             'to upload your data using an easy, graphical interface.*'),
-                html.H3('Directory Structure'),
-                dcc.Markdown('The required directory structure of your dataset is '
-                             'essentially the same as the output from an automation '
-                             'experiment. The contents of each experiment directory should be:'),
-                html.Ul([
-                    html.Li(dcc.Markdown('A series of folders, one for each hyb cycle, named **`HybCycle_#`**. '
-                                         'Make sure you do not have any other files with `HybCycle_` in the name.')),
-                    html.Li(dcc.Markdown(
-                        'Within each HybCycle folder, a series of TIFF stacks, '
-                        'one for each position, named **`MMStack_Pos#.ome.tif`.**. '
-                        'Do not add folders that have `HybCycle_#` in the name unless they have '
-                        '`MMStack_Pos#.ome.tif` files in them.')),
-                    html.Li([
-                        dcc.Markdown(
-                            '*If barcoding*: A folder named **`barcode_key`** containing one or more files '
-                            'named **`channel_#.csv`** that specify the barcode assigned '
-                            'to each gene in each barcoding channel in your experiment.'
-                            ' Note that **channels start from 1**. Click the arrow below '
-                            'for an example of barcode key formatting, and also see the folder '
-                            '`/central/groups/CaiLab/personal/nrezaee/raw/2020-08-08-takei/barcode_key`.'
-                        ),
-                        html.Div(html.Details([
-                            html.Summary(html.B('Barcode key example')),
-                            dbc.Table.from_dataframe(example_barcode_key, striped=True, size='sm')
-                        ]), style={'width': '50%',
-                                   'font-size': '10pt',
-                                   'margin': '20px'})
+
+                dbc.ListGroup([
+                    dbc.ListGroupItem([
+                        dbc.ListGroupItemHeading('Location'),
+                        dbc.ListGroupItemText([
+                            dcc.Markdown(
+                                'To use the pipeline and this site, upload the raw data'
+                                ' from each of your experiments to: \n\n**`/groups/CaiLab/personal/'
+                                '<user name>/raw/<experiment name>/`**\n\n where you insert '
+                                'your name and each experiment\'s name. '
+                                '*Use `/central/groups/CaiLab/personal/nrezaee/raw/2020-08-08-takei` as an example.*'),
+                            dcc.Markdown('*Download a tool like [Cyberduck](https://cyberduck.io/) '
+                                         'to upload your data using an easy, graphical interface.*')
+                        ])
                     ]),
-                    html.Li([
-                        dcc.Markdown(
-                            '*If doing smFISH*: A folder named **`non_barcoded_key`** '
-                            'with a file named'
-                            ' **`sequential_key.csv`** containing the hyb and gene mapping'
-                        ),
-                        html.Div(html.Details([
-                            html.Summary(html.B('smFISH key example')),
-                            dbc.Table.from_dataframe(example_sm_key, striped=True, size='sm')
-                        ]), style={'width': '50%',
-                                   'font-size': '10pt',
-                                   'margin': '20px'})
+
+                    dbc.ListGroupItem([
+                        dbc.ListGroupItemHeading('Directory Structure'),
+                        dbc.ListGroupItemText([
+                            dcc.Markdown('The required directory structure of your dataset is '
+                                         'essentially the same as the output from an automation '
+                                         'experiment. The contents of each experiment directory should be:'),
+                            html.Ul([
+                                html.Li(dcc.Markdown(
+                                    'A series of folders, one for each hyb cycle, named **`HybCycle_#`**. '
+                                    'Make sure you do not have any other files with `HybCycle_` in the name.'
+                                )),
+                                html.Li(dcc.Markdown(
+                                    'Within each HybCycle folder, a series of TIFF stacks, '
+                                    'one for each position, named **`MMStack_Pos#.ome.tif`**. '
+                                    'Do not add folders that have `HybCycle_#` in the name unless they have '
+                                    '`MMStack_Pos#.ome.tif` files in them.'
+                                ))
+                            ])
+                        ])
                     ]),
-                    html.Li(dcc.Markdown(
-                        '(optional) a folder named **`final_background`** '
-                        'containing background images of each position '
-                        '(**`MMStack_Pos#.ome.tif`**) for background subtraction'
-                    )),
-                    html.Li(dcc.Markdown(
-                        '(optional) A folder named **`segmentation`** which contains '
-                        'images to be used for segmentation - e.g. membrane stains. '
-                        'These images should be named identically to the hyb round images: '
-                        '`MMStack_Pos#.ome.tif` for each position.'
-                    )),
-                    html.Li(dcc.Markdown(
-                        '(optional) A folder named **`Labeled_Images`** containing '
-                        '*existing* segmentation masks produced off-line.'
-                    )),
-                    html.Li(dcc.Markdown(
-                        'A positions file from the microscope, '
-                        'ending in **`.pos`**, which is used to display the '
-                        'experiment overview in the correct arrangement.'
-                    ))
+
+                    dbc.ListGroupItem([
+                        dbc.ListGroupItemHeading('Barcode key instructions'),
+                        dbc.ListGroupItemText([
+                            dcc.Markdown(
+                                'Create a folder named **`barcode_key`** containing one or more files '
+                                'named (for **individual** decoding) **`channel_#.csv`** or '
+                                '(for **across** decoding) **`barcode.csv`** '
+                                'that specify the barcode assigned to each gene in your experiment.'
+                                ' Note that **channels start from 1**. Click the arrow below '
+                                'for an example of barcode key formatting, and also see the folder '
+                                '`/central/groups/CaiLab/personal/nrezaee/raw/2020-08-08-takei/barcode_key`.'
+                            ),
+                            html.Div(html.Details([
+                                html.Summary(html.B('Barcode key example')),
+                                dbc.Table.from_dataframe(example_barcode_key, striped=True, size='sm')
+                            ]), style={'width': '50%',
+                                       'font-size': '10pt',
+                                       'margin': '20px'})
+                        ])
+                    ]),
+
+                    dbc.ListGroupItem([
+                        dbc.ListGroupItemHeading('smFISH/sequential key instructions'),
+                        dbc.ListGroupItemText([
+                            dcc.Markdown(
+                                'Create a folder named **`non_barcoded_key`** '
+                                'with a file named'
+                                ' **`sequential_key.csv`** containing the hyb and gene mapping'
+                            ),
+                            html.Div(html.Details([
+                                html.Summary(html.B('smFISH key example')),
+                                dbc.Table.from_dataframe(example_sm_key, striped=True, size='sm')
+                            ]), style={'width': '50%',
+                                       'font-size': '10pt',
+                                       'margin': '20px'})
+                        ])
+                    ])
                 ]),
 
-            ])
+                dbc.ListGroupItem([
+                    dbc.ListGroupItemHeading('Background, Segmentation, Positions'),
+
+                    dbc.ListGroupItemText([
+                        html.Ul([
+                            html.Li(dcc.Markdown(
+                                '(optional) a folder named **`final_background`** '
+                                'containing background images of each position '
+                                '(**`MMStack_Pos#.ome.tif`**) for background subtraction'
+                            )),
+                            html.Li(dcc.Markdown(
+                                '(optional) A folder named **`segmentation`** which contains '
+                                'images to be used for segmentation - e.g. membrane stains. '
+                                'These images should be named identically to the hyb round images: '
+                                '`MMStack_Pos#.ome.tif` for each position.'
+                            )),
+                            html.Li(dcc.Markdown(
+                                '(optional) A folder named **`Labeled_Images`** containing '
+                                '*existing* segmentation masks produced off-line.'
+                            )),
+                            html.Li(dcc.Markdown(
+                                'A positions file from the microscope, '
+                                'ending in **`.pos`**, which is used to display the '
+                                'experiment overview in the correct arrangement.'
+                            ))
+                        ])
+                    ])
+                ]),
+            ]),
         ], style={'margin-top': '10px'})
     ], width=6)
 ]

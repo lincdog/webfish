@@ -64,10 +64,17 @@ dataset_form = {
     'dataset-select': dbc.Select(id='dataset-select', placeholder='Select a dataset'),
     's3-sync-button':
         dbc.Button(
-            'Sync with S3',
+            'Sync data and analyses',
             id='s3-sync-button',
             n_clicks=0,
             color='primary'
+        ),
+    's3-sync-tooltip':
+        dbc.Tooltip(
+            'Update the app\'s manifest of analysis and raw image files. '
+            'Automatically runs every 5 minutes as well.',
+            target='s3-sync-button',
+            placement='bottom',
         ),
     # Interval that fires every 5 minutes (units in milliseconds) to sync with s3
     's3-sync-interval':
@@ -77,7 +84,7 @@ dataset_form = {
 
 def get_users():
     return [{'label': u, 'value': u}
-                 for u in sorted(get_all_datasets()['user'].unique())]
+            for u in sorted(get_all_datasets()['user'].unique())]
 
 
 page_tabs = {}
@@ -266,6 +273,7 @@ app.layout = dbc.Container(
                     index_cm.component('dataset-select', disabled=True),
                     html.Div([
                         index_cm.component('s3-sync-button'),
+                        index_cm.component('s3-sync-tooltip'),
                         index_cm.component('s3-sync-interval')
                     ], id='s3-sync-div'),
                 ]), style={'margin-top': '10px'}),
