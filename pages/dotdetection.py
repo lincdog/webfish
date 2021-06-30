@@ -638,12 +638,14 @@ def display_image_selectors(is_open, dataset, user):
     print(user, dataset)
 
     hybs = data_client.datafiles.query(
-        'user == @user and dataset == @dataset')['hyb'].dropna().unique()
+        'user == @user and dataset == @dataset '
+        'and source_key == "hyb_fov"')['hyb'].dropna().unique()
 
     hybs_sorted = sort_as_num_or_str(hybs)
 
     positions = data_client.datafiles.query(
-        'user == @user and dataset == @dataset')['position'].dropna().unique()
+        'user == @user and dataset == @dataset '
+        'and source_key == "hyb_fov"')['position'].dropna().unique()
 
     positions_sorted = sort_as_num_or_str(positions)
 
