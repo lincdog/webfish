@@ -6,7 +6,77 @@ from lib.util import sanitize
 from pages._page_util import PageHelper
 
 
-# TODO: move this to DataClient
+# Helper functions for form item processing used by SubmissionHelper
+def _one_z_process(item, current):
+
+    if item:
+        try:
+            item = item[0]
+        except TypeError:
+            pass
+
+        current['z slices'] = str(item)
+
+    return current
+
+
+def _position_process(positions, current):
+    if not positions:
+        current['positions'] = ''
+    else:
+        current['positions'] = ','.join([str(p) for p in positions])
+
+    return current
+
+
+def _checklist_process(checked, current):
+    update = {k: "true" for k in checked}
+
+    current.update(update)
+
+    return current
+
+
+def _decoding_channel_process(arg, current):
+
+    cur_decoding = current.get('decoding', None)
+    print(f'cd: {cur_decoding}, {arg}')
+
+    if cur_decoding is None:
+        # If there is not yet a decoding key, add it and return the dict
+        current['decoding'] = str(arg)
+
+        return current
+
+    elif cur_decoding == 'individual':
+        if isinstance(arg, list):
+            # Individual is selected and we are handling the list of selected
+            # channels.
+            current['decoding'] = {
+                'individual': [str(a) for a in arg]
+            }
+        elif not arg:
+            raise ValueError('Must specify at least one channel to decode '
+                             'if "individual" is selected')
+        return current
+    else:
+        return current
+
+
+def _dotdetection_threshold_process(arg, current):
+    cur_dd = current.get('dot detection', None)
+
+    if cur_dd is None:
+        current['dot detection'] = str(arg)
+
+        return current
+
+    elif cur_dd != 'matlab 3d':
+        current['threshold'] = str(arg)
+
+    return current
+
+
 class SubmissionHelper(PageHelper):
 
     def __init__(self, *args, **kwargs):
@@ -54,76 +124,10 @@ class SubmissionHelper(PageHelper):
 
         return analysis_sanitized
 
-    @staticmethod
-    def _one_z_process(item, current):
-
-        if item:
-            try:
-                item = item[0]
-            except TypeError:
-                pass
-
-            current['z slices'] = str(item)
-
-        return current
-
-    @staticmethod
-    def _position_process(positions, current):
-        if not positions:
-            current['positions'] = ''
-        else:
-            current['positions'] = ','.join([str(p) for p in positions])
-
-        return current
-
-    @staticmethod
-    def _checklist_process(checked, current):
-        update = {k: "true" for k in checked}
-
-        current.update(update)
-
-        return current
-
-    @staticmethod
-    def _decoding_channel_process(arg, current):
-
-        cur_decoding = current.get('decoding', None)
-        print(f'cd: {cur_decoding}, {arg}')
-
-        if cur_decoding is None:
-            # If there is not yet a decoding key, add it and return the dict
-            current['decoding'] = str(arg)
-
-            return current
-
-        elif cur_decoding == 'individual':
-            if isinstance(arg, list):
-                # Individual is selected and we are handling the list of selected
-                # channels.
-                current['decoding'] = {
-                    'individual': [str(a) for a in arg]
-                }
-            elif not arg:
-                raise ValueError('Must specify at least one channel to decode '
-                                 'if "individual" is selected')
-            return current
-        else:
-            return current
-
-    @staticmethod
-    def _dotdetection_threshold_process(arg, current):
-        cur_dd = current.get('dot detection', None)
-
-        if cur_dd is None:
-            current['dot detection'] = str(arg)
-
-            return current
-
-        elif cur_dd != 'matlab 3d':
-            current['threshold'] = str(arg)
-
-        return current
-
+    # staticmethods are wrapped in a descriptor protocol, so we need
+    # to access the underlying function in order to make this dict work
+    # properly. An alternative would be to assign the dict as a class
+    # variable after the class definition,
     id_to_json_key = {
         'user-select': 'personal',
         'dataset-select': 'experiment_name',
