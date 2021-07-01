@@ -12,15 +12,13 @@ from dash.dependencies import Input, Output, State, MATCH, ALL
 from dash.exceptions import PreventUpdate
 
 from app import app
-from lib.util import (
-    populate_mesh,
+
+from pages._page_util import (
+    DatavisHelper,
     base64_image,
     populate_genes,
-    mesh_from_json,
-    safe_imread
 )
-
-from .common import ComponentManager, data_client
+from pages.common import ComponentManager, data_client
 
 
 clear_components = {
@@ -33,218 +31,8 @@ clear_components = {
 }
 
 logger = logging.getLogger('webfish.' + __name__)
+helper = DatavisHelper(data_client, ComponentManager({}), logger=logger)
 
-
-def query_df(df, selected_genes):
-    """
-    query_df:
-
-    returns: Filtered DataFrame
-    """
-    if 'All' in selected_genes:
-        return df
-    elif 'All Real' in selected_genes:
-        selected_genes.extend([gene for gene in df['gene'] if 'fake' not in gene])
-    elif 'All Fake' in selected_genes:
-        selected_genes.extend([gene for gene in df['gene'] if 'fake' in gene])
-
-    return df.query('gene in @selected_genes')
-
-
-def gen_figure_2d(selected_genes, active, color_option, channel):
-
-    dots = active.get('dots')
-
-    logger.info('Entering gen_figure_2d')
-
-    fig = go.Figure()
-
-    if 'background_im' in active:
-        imfile = active.get('background_im')
-        imtype = 'background_im'
-    elif 'presegmentation_im' in active:
-        imfile = active.get('presegmentation_im')
-        imtype = 'presegmentation_im'
-    elif 'hyb_fov' in active:
-        imfile = active.get('hyb_fov')
-        imtype = 'hyb_fov'
-    else:
-        imfile = None
-        imtype = ''
-
-    if imfile:
-        img = safe_imread(imfile[0])
-
-        logger.info('gen_figure_2d: read in 2d image')
-
-        # TODO: Allow choosing Z slice?
-        # FIXME: Choose channel or use channel that was used in decoding
-        if img.ndim == 4:
-            img = np.max(img[channel], axis=0)
-        elif img.ndim == 3:
-            img = img[channel]
-
-        fig = px.imshow(
-            img.T,
-            zmin=0,
-            zmax=200,
-            width=1000,
-            height=1000,
-            binary_string=True
-        )
-
-        logger.info('gen_figure_2d: created image trace')
-
-    # If dots is populated, grab it.
-    # Otherwise, set the coords to None to create an empty Scatter3d.
-    if dots is not None:
-
-        dots_df = pd.read_csv(dots)
-        dots_filt = query_df(dots_df, selected_genes).copy()
-        del dots_df
-
-        logger.info('gen_figure_2d: read and queried dots DF')
-
-        py, p_x = dots_filt[['y', 'x']].values.T
-
-        color = dots_filt['geneColor']
-        if color_option == 'fake':
-            real_fake = ('cyan', 'magenta')
-            color = [real_fake[int('fake' in g)] for g in dots_filt['gene']]
-
-        hovertext = dots_filt['gene']
-
-        fig.add_trace(
-            go.Scattergl(
-                name='dots',
-                x=p_x, y=py,
-                mode='markers',
-                marker=dict(
-                    size=5,
-                    color=color,
-                    opacity=1,
-                    symbol='cross',
-                ),
-                hoverinfo='x+y+text',
-                hovertext=hovertext
-            )
-        )
-
-        logger.info('gen_figure_2d: created Scattergl trace')
-
-    logger.info('gen_figure_2d: returning updated figure')
-
-    return fig
-
-
-def gen_figure_3d(selected_genes, active, color_option, z_step_size, pixel_size):
-    """
-    gen_figure_3d:
-    Given a list of selected genes and a dataset, generates a Plotly figure with
-    Scatter3d and Mesh3d traces for dots and cells, respectively. Memoizes using the
-    gene selection and active dataset name.
-
-    If ACTIVE_DATA is not set, as it isn't at initialization, this function
-    generates a figure with an empty Mesh3d and Scatter3d.
-
-    Returns: plotly.graph_objects.Figure containing the selected data.
-    """
-    logger.info('Entering gen_figure_3d')
-
-    print(active)
-    dots = active.get('dots')
-    mesh = active.get('mesh')
-
-    figdata = []
-
-    # If dots is populated, grab it.
-    # Otherwise, set the coords to None to create an empty Scatter3d.
-    if dots is not None:
-
-        dots_df = pd.read_csv(dots)
-        dots_filt = query_df(dots_df, selected_genes).copy()
-        del dots_df
-
-        logger.info('gen_figure_3d: read and queried dots DF')
-
-        pz, py, p_x = dots_filt[['z', 'y', 'x']].values.T
-
-        color = dots_filt['geneColor']
-        if color_option == 'fake':
-            real_fake = ('#1d4', '#22a')
-            color = [real_fake[int('fake' in g)] for g in dots_filt['gene']]
-
-        hovertext = dots_filt['gene']
-
-        figdata.append(
-            go.Scatter3d(
-                name='dots',
-                x=p_x, y=py, z=pz,
-                mode='markers',
-                marker=dict(
-                    size=2,
-                    color=color,
-                    opacity=1,
-                    symbol='circle',
-                ),
-                hoverinfo='text',
-                hovertext=hovertext
-            )
-        )
-
-        logger.info('gen_figure_3d: added Scatter3d trace')
-
-    # A sensible default for aesthetic purposes (refers to the ratio between the
-    # total extent in the Z dimension to that in the X or Y direction
-    z_aspect = 0.07
-    # If the mesh is present, populate it.
-    # Else, create an empty Mesh3d.
-    if mesh is not None:
-
-        x, y, z, i, j, k = populate_mesh(mesh_from_json(mesh))
-
-        figdata.append(
-            go.Mesh3d(
-                x=x, y=y, z=z,
-                i=i, j=j, k=k,
-                color='lightgray',
-                opacity=0.6,
-                hoverinfo='skip',
-            )
-        )
-
-        logger.info('gen_figure_3d: Added mesh3d trace')
-
-        if pixel_size and z_step_size:
-            x_extent = pixel_size * (x.max() - x.min())
-            z_extent = z_step_size * (z.max() - z.min())
-
-            z_aspect = z_extent / x_extent
-
-            logger.info(f'gen_figure_3d: px {pixel_size} z {z_step_size} '
-                        f'gives x extent {x_extent} z extent {z_extent} '
-                        f'ratio = {z_aspect}')
-
-    figscene = go.layout.Scene(
-        aspectmode='manual',
-        aspectratio=dict(x=1, y=1, z=z_aspect),
-    )
-
-    figlayout = go.Layout(
-        height=1000,
-        width=1000,
-        margin=dict(b=10, l=10, r=10, t=10),
-        scene=figscene
-    )
-
-    fig = go.Figure(data=figdata, layout=figlayout)
-
-    logger.info('gen_figure_3d: returning figure')
-
-    return fig
-
-
-####### Callbacks #######
 
 @app.callback(
     Output('dv-graph-wrapper', 'children'),
@@ -328,7 +116,7 @@ def update_figure(
             return [dbc.Alert('Segmented image and dots not found!', color='warning'),
                     dcc.Graph(id='dv-fig')]
 
-        fig = gen_figure_3d(
+        fig = helper.gen_figure_3d(
             selected_genes,
             active,
             color_option,
@@ -370,7 +158,7 @@ def update_figure(
             return [dbc.Alert('Source image and dots not found!', color='warning'),
                     dcc.Graph(id='dv-fig')]
 
-        fig = gen_figure_2d(selected_genes, active, color_option, channel)
+        fig = helper.gen_figure_2d(selected_genes, active, color_option, channel)
 
     if current_layout:
         if 'scene.camera' in current_layout:
@@ -574,7 +362,9 @@ def select_dataset(dataset, user):
             options=[{'label': i, 'value': i} for i in sorted(analyses)],
             value=None,
             placeholder='Select an analysis run',
-            clearable=False
+            clearable=False,
+            persistence=True,
+            persistence_type='session'
         )
     ]
 
@@ -587,7 +377,11 @@ layout = [
         html.Div([
             html.H2('Data selection'),
             html.Div([
-                dcc.Dropdown(id='dv-analysis-select')
+                dcc.Dropdown(
+                    id='dv-analysis-select',
+                    persistence=True,
+                    persistence_type='session'
+                )
             ], id='dv-analysis-select-div')
         ], id='dv-analysis-selectors-div'),
 

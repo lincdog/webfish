@@ -60,8 +60,18 @@ for k, v in config['pages'].items():
 
 # The global user and dataset selectors, as well as the Sync with S3 button
 dataset_form = {
-    'user-select': dbc.Select(id='user-select', placeholder='Select a user'),
-    'dataset-select': dbc.Select(id='dataset-select', placeholder='Select a dataset'),
+    'user-select': dbc.Select(
+        id='user-select',
+        placeholder='Select a user',
+        persistence=True,
+        persistence_type='session'
+    ),
+    'dataset-select': dbc.Select(
+        id='dataset-select',
+        placeholder='Select a dataset',
+        persistence=True,
+        persistence_type='session'
+    ),
     's3-sync-button':
         dbc.Button(
             'Sync data and analyses',

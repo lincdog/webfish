@@ -14,54 +14,11 @@ from dash import no_update
 
 from app import app
 from lib.util import sanitize, f2k
-from .common import ComponentManager, data_client, get_all_datasets
+from pages.common import ComponentManager, data_client, get_all_datasets
+from pages._submission_util import SubmissionHelper
 
 
-data_client = data_client
 all_datasets = get_all_datasets()
-
-# TODO: move this to DataClient
-def put_analysis_request(
-    user,
-    dataset,
-    analysis_name,
-    dot_detection='biggest jump 3d'
-):
-    analysis_dict = {
-        'personal': user,
-        'experiment_name': dataset,
-        'dot detection': dot_detection,
-        'dot detection test': 'true',
-        'visualize dot detection': 'true',
-        'strictness': 'multiple',
-        'clusters': {
-            'ntasks': '1',
-            'mem-per-cpu': '10G',
-            'email': 'nrezaee@caltech.edu'
-        }
-    }
-
-    dict_bytes = io.BytesIO(json.dumps(analysis_dict).encode())
-    # These are "characters to avoid" in keys according to AWS docs
-    # \, {, }, ^, [, ], %, `, <, >, ~, #, |
-    # TODO: Sanitize filenames on server side before uploading too; mostly
-    #   potential problem for user-defined dataset/analysis names
-    analysis_sanitized = re.sub('[\\\\{^}%` \\[\\]>~<#|]', '', analysis_name)
-    keyname = f'json_analyses/{analysis_sanitized}.json'
-
-    try:
-        data_client.client.client.upload_fileobj(
-            dict_bytes,
-            Bucket=data_client.bucket_name,
-            Key=keyname
-        )
-    except Exception as e:
-        return str(e)
-
-    print(f'analysis_dict: {json.dumps(analysis_dict, indent=2)}')
-
-    return analysis_sanitized
-
 
 pipeline_stages = [
     'alignment',
@@ -450,176 +407,9 @@ component_groups = {
 
 }
 
-def _one_z_process(item, current):
-
-    if item:
-        try:
-            item = item[0]
-        except TypeError:
-            pass
-
-        current['z slices'] = str(item)
-
-    return current
-
-def _position_process(positions, current):
-    if not positions:
-        current['positions'] = ''
-    else:
-        current['positions'] = ','.join([str(p) for p in positions])
-
-    return current
-
-def _checklist_process(checked, current):
-    update = {k: "true" for k in checked}
-
-    current.update(update)
-
-    return current
-
-def _decoding_channel_process(arg, current):
-
-    cur_decoding = current.get('decoding', None)
-    print(f'cd: {cur_decoding}, {arg}')
-
-    if cur_decoding is None:
-        # If there is not yet a decoding key, add it and return the dict
-        current['decoding'] = str(arg)
-
-        return current
-
-    elif cur_decoding == 'individual':
-        if isinstance(arg, list):
-            # Individual is selected and we are handling the list of selected
-            # channels.
-            current['decoding'] = {
-                'individual': [str(a) for a in arg]
-            }
-        elif not arg:
-            raise ValueError('Must specify at least one channel to decode '
-                             'if "individual" is selected')
-        return current
-    else:
-        return current
-
-
-def _dotdetection_threshold_process(arg, current):
-    cur_dd = current.get('dot detection', None)
-
-    if cur_dd is None:
-        current['dot detection'] = str(arg)
-
-        return current
-
-    elif cur_dd != 'matlab 3d':
-        current['threshold'] = str(arg)
-
-    return current
-
-id_to_json_key = {
-    'user-select': 'personal',
-    'dataset-select': 'experiment_name',
-
-    'sb-position-select': _position_process,
-    'sb-one-z-select': _one_z_process,
-
-    'sb-alignment-select': 'alignment',
-
-    'sb-dot detection-select': _dotdetection_threshold_process,
-    'sb-bg-subtraction': _checklist_process,
-    'sb-strictness-select': 'strictness',
-    'sb-threshold-select': _dotdetection_threshold_process,
-
-    'sb-segmentation-select': 'segmentation',
-    'sb-segmentation-checklist': _checklist_process,
-    'sb-edge-deletion': 'edge deletion',
-    'sb-nuclei-distance': 'distance between nuclei',
-    'sb-nuclei-channel': 'nuclei channel number',
-    'sb-cyto-channel': 'cyto channel number',
-    'sb-cyto-radius': 'cyto radius',
-    'sb-cyto-cell-prob-threshold': 'cyto cell prob threshold',
-    'sb-cyto-flow-threshold': 'cyto flow threshold',
-    'sb-nuclei-radius': 'nuclei radius',
-    'sb-cell-prob-threshold': 'cell_prob_threshold',
-    'sb-flow-threshold': 'flow_threshold',
-
-    'sb-decoding-select': _decoding_channel_process,
-    'sb-individual-channel-select': _decoding_channel_process
-}
-
-
-def form_to_json_output(form_status, selected_stages):
-    """
-    form_to_json_output
-    -------------------
-    Takes the status of the form (a dict where the keys are the DOM
-    id of each form element and the values are the value of that form
-    element) and performs the necessary processing to generate a dict
-    that will be written as a JSON file to submit to the pipeline.
-
-    The id_to_json_key dict (above) is crucial because it specifies either
-    * the mapping from the form element id to the pipeline JSON input key,
-        leaving the value unchanged
-    or:
-    * a callable that takes the value of the form element and returns a dict
-        that will be used to update() the JSON dict in progress.
-
-    """
-
-    # The clusters key is always the same (at least for now)
-    out = {
-        "clusters": {
-            "ntasks": "1",
-            "mem-per-cpu": "10G",
-            "email": "nrezaee@caltech.edu"
-        },
-        "__ERRORS__": []
-    }
-
-    # This is special as it is not in the final dict but becoems the
-    # filename of the JSON file.
-    analysis_name = ''
-
-    selected_stages.append('basic-metadata')
-
-    if 'segmentation' in selected_stages:
-        selected_stages.append('segmentation-advanced')
-
-    selected_form_ids = ['user-select', 'dataset-select']
-    for s in selected_stages:
-        selected_form_ids.extend(component_groups[s])
-
-    # For each form-id: form-value pair
-    for k in selected_form_ids:
-
-        v = form_status.get(k, '__NONE__')
-
-        if v =='__NONE__':
-            continue
-
-        if k == 'sb-analysis-name' and v:
-            analysis_name = sanitize(v, delimiter_allowed=False)
-        elif k in id_to_json_key.keys():
-            # If the form-id is in the id_to_json_key dict, fetch
-            # the corresponding value (a string or a function)
-            prekey = id_to_json_key[k]
-
-            if callable(prekey):
-                # If a function, directly set the dictionary to the
-                # result of calling the function on the current output dict
-                try:
-                    out = prekey(v, out)
-                except ValueError as e:
-                    out['__ERRORS__'].append(e)
-            else:
-                # else (a string), make a one-element dict that just
-                # assigns the form value to the JSON key
-                out.update({prekey: str(v)})
-
-    return analysis_name, out
-
 
 cm = ComponentManager(clear_components, component_groups=component_groups)
+helper = SubmissionHelper(data_client, cm)  # No default graph or logger needed
 
 
 @app.callback(
@@ -698,7 +488,7 @@ def submit_new_analysis(n_clicks, user, dataset, stage_select, *values):
     status = {'user-select': user, 'dataset-select': dataset}
     status.update({c: v for c, v in zip(relevant_comps, values)})
 
-    analysis_name, submission = form_to_json_output(status, stage_select)
+    analysis_name, submission = helper.form_to_json_output(status, stage_select)
     sub_errors = submission.pop('__ERRORS__')
 
     for stage in set(pipeline_stages):

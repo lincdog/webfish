@@ -19,366 +19,16 @@ import plotly.graph_objects as go
 from app import app
 from lib.util import (
     safe_imread,
-    base64_image,
     sort_as_num_or_str,
-    aggregate_dot_dfs
 )
 
-from .common import ComponentManager, data_client
+from pages._page_util import (
+    aggregate_dot_dfs,
+    DotDetectionHelper,
+)
+from pages.common import ComponentManager, data_client
 
 logger = logging.getLogger('webfish.' + __name__)
-
-
-# TODO: move this to DataClient
-def put_analysis_request(
-        user,
-        dataset,
-        analysis_name,
-        dot_detection='biggest jump 3d'
-):
-    analysis_dict = {
-        'personal': user,
-        'experiment_name': dataset,
-        'dot detection': dot_detection,
-        'dot detection test': 'true',
-        'visualize dot detection': 'true',
-        'strictness': 'multiple',
-        'clusters': {
-            'ntasks': '1',
-            'mem-per-cpu': '10G',
-            'email': 'nrezaee@caltech.edu'
-        }
-    }
-
-    dict_bytes = io.BytesIO(json.dumps(analysis_dict).encode())
-    # These are "characters to avoid" in keys according to AWS docs
-    # \, {, }, ^, [, ], %, `, <, >, ~, #, |
-    # TODO: Sanitize filenames on server side before uploading too; mostly
-    #   potential problem for user-defined dataset/analysis names
-    analysis_sanitized = re.sub('[\\\\{^}%` \\[\\]>~<#|]', '', analysis_name)
-    keyname = f'json_analyses/{analysis_sanitized}.json'
-
-    try:
-        data_client.client.client.upload_fileobj(
-            dict_bytes,
-            Bucket=data_client.bucket_name,
-            Key=keyname
-        )
-    except Exception as e:
-        return str(e)
-
-    print(f'analysis_dict: {json.dumps(analysis_dict, indent=2)}')
-
-    return analysis_sanitized
-
-
-def gen_image_figure(
-    imfile,
-    dots_csv=None,
-    offsets=(0, 0),
-    hyb='0',
-    z_slice='0',
-    channel='0',
-    contrast_minmax=(0, 2000),
-    strictness=None
-):
-    logger.info('Entering gen_image_figure')
-
-    if len(imfile) > 0:
-        image = safe_imread(imfile[0])
-    else:
-        return {}
-
-    logger.info(f'gen_image_figure: Read image from {imfile[0]}')
-
-    print(f'hyb {hyb} z_slice {z_slice} channel {channel}')
-    print(image.shape)
-
-    hyb = int(hyb)
-    hyb_q = hyb
-    # 'z' column in locations.csv starts at 0
-    z_slice = int(z_slice)
-    z_slice_q = z_slice
-    # 'ch' column in locations.csv starts at 1
-    channel = int(channel)
-    channel_q = channel + 1
-
-    if z_slice >= 0:
-        img_select = image[channel, z_slice]
-
-        dots_query = 'hyb == @hyb_q and ch == @channel_q and z == @z_slice_q'
-    else:
-        img_select = np.max(image[channel], axis=0)
-        dots_query = 'hyb == @hyb_q and ch == @channel_q'
-
-    fig = px.imshow(
-        img_select,
-        zmin=contrast_minmax[0],
-        zmax=contrast_minmax[1],
-        width=1000,
-        height=1000,
-        binary_string=True,
-        binary_compression_level=4,
-        binary_backend='pil'
-    )
-
-    fig.data[0].customdata = (img_select/2.55).astype(np.uint8)
-    fig.data[0].hovertemplate = '(%{x}, %{y})<br>%{customdata}'
-
-    logger.info('gen_image_figure: constructed Image figure')
-    logger.info('gen_image_figure: length of data source: %d',
-                len(fig.data[0].source))
-    logger.info('gen_image_figure: total length of JSON serialized figure is: %d',
-                len(fig.to_json()))
-
-    if dots_csv:
-        dots_select = pd.read_csv(dots_csv[0])
-
-        if strictness and 'strictness' in dots_select.columns:
-            smin, smax = strictness
-            dots_query += ' and strictness >= @smin and strictness <= @smax'
-
-        dots_select = dots_select.query(dots_query)
-
-        logger.info(f'gen_image_figure: read and queried dots CSV file '
-                    f'{dots_csv[0]}')
-
-        if 'strictness' in dots_select.columns:
-            strictnesses = dots_select['strictness'].values
-
-            color_by = np.nan_to_num(strictnesses, nan=0)
-            cbar_title = 'Strictness'
-        else:
-            color_by = dots_select['z'].values
-            cbar_title = 'Z slice'
-
-        if 'int' in dots_select.columns:
-            intensities = dots_select['int'].values
-            hovertext = ['{0}: {1:.0f} <br>Intensity: {2:.0f}'.format(
-                cbar_title, cb, i) for cb, i in zip(color_by, intensities)]
-        else:
-            hovertext = ['{0}: {1:.0f}'.format(cbar_title, cb) for cb in color_by]
-
-        if len(set(color_by)) > 1:
-            cmin, cmax = min(color_by), max(color_by)
-        elif len(set(color_by)) == 1:
-            cmin, cmax = color_by[0], color_by[0]
-        else:
-            cmin, cmax = 0, 0
-
-        fig.add_trace(go.Scattergl(
-            name='detected dots',
-            x=dots_select['x'].values - offsets[1],
-            y=dots_select['y'].values - offsets[0],
-            mode='markers',
-            marker_symbol='cross',
-            text=color_by,
-            hovertemplate='(%{x}, %{y})<br>' + cbar_title + ': %{text}',
-            marker=dict(
-                #maxdisplayed=1000,
-                size=5,
-                cmax=cmin,
-                cmin=cmax,
-                colorbar=dict(
-                    title=cbar_title
-                ),
-                colorscale="Viridis",
-                color=color_by))
-        )
-
-        fig.update_layout(coloraxis_showscale=True)
-
-        logger.info('gen_image_figure: constructed and added dots Scatter trace')
-        logger.info('gen_image_figure: total length of JSON serialized figure is: %d',
-                    len(fig.to_json()))
-
-    return fig
-
-
-def prepare_dotdetection_figure(
-    z,
-    channel,
-    contrast,
-    strictness,
-    position,
-    hyb,
-    analysis,
-    dataset,
-    user,
-    current_layout
-):
-    if any([v is None for v in (z, channel, contrast)]):
-        return cm.component('dd-fig')
-
-    logger.info('prepare_dotdetection_figure: requesting raw image filename')
-
-    hyb_fov = data_client.request(
-        {'user': user, 'dataset': dataset, 'position': position, 'hyb': hyb},
-        fields='hyb_fov'
-    )['hyb_fov']
-
-    logger.info('prepare_dotdetection_figure: got raw image filename')
-
-    if analysis:
-        logger.info('prepare_dotdetection_figure: requesting dot locations and offsets')
-
-        requests = data_client.request(
-            {'user': user, 'dataset': dataset, 'position': position, 'analysis': analysis},
-            fields=['dot_locations', 'offsets_json']
-        )
-        dot_locations = requests['dot_locations']
-        offsets_json = requests['offsets_json']
-
-        logger.info('prepare_dotdetection_figure: got dot locations and offsets')
-
-    else:
-        dot_locations = None
-        offsets_json = None
-
-    if offsets_json:
-        all_offsets = json.load(open(offsets_json[0]))
-        offsets = all_offsets.get(
-            f'HybCycle_{hyb}/MMStack_Pos{position}.ome.tif',
-            (0, 0)
-        )
-    else:
-        offsets = (0, 0)
-
-    logger.info('prepare_dotdetection_figure: calling gen_image_figure')
-
-    figure = gen_image_figure(
-        hyb_fov,
-        dot_locations,
-        offsets,
-        hyb,
-        z,
-        channel,
-        contrast,
-        strictness
-    )
-
-    if current_layout:
-        if 'xaxis.range[0]' in current_layout:
-            figure['layout']['xaxis']['range'] = [
-                current_layout['xaxis.range[0]'],
-                current_layout['xaxis.range[1]']
-            ]
-        if 'yaxis.range[0]' in current_layout:
-            figure['layout']['yaxis']['range'] = [
-                current_layout['yaxis.range[0]'],
-                current_layout['yaxis.range[1]']
-            ]
-
-    logger.info('prepare_dotdetection_figure: returning updated figure')
-
-    return cm.component('dd-fig', figure=figure, relayoutData=current_layout),
-
-
-def prepare_preprocess_figure(
-    position,
-    hyb,
-    analysis,
-    dataset,
-    user
-):
-    logger.info('entering prepare_preprocess_figure')
-
-    pp_im = data_client.request({
-        'user': user,
-        'dataset': dataset,
-        'analysis': analysis,
-        'position': position,
-        'hyb': hyb
-    }, fields='preprocess_check')['preprocess_check']
-
-    logger.info('prepare_preprocess_figure: got preprocess check file')
-
-    fig = go.Figure()
-    fig.update_layout(width=1000, height=1000)
-
-    if pp_im:
-        fig.add_image(source=base64_image(pp_im[0]))
-        return cm.component('dd-fig', figure=fig)
-    else:
-        alert = dbc.Alert('No preprocessing check image found', color='warning')
-        return [alert, cm.component('dd-fig', figure=fig)]
-
-
-def prepare_locations_figure(
-    position,
-    analysis,
-    dataset,
-    user
-):
-    logger.info('entering prepare_locations_figure')
-
-    loc_ims = data_client.request({
-        'user': user,
-        'dataset': dataset,
-        'analysis': analysis,
-        'position': position
-    }, fields=('location_check_xy', 'location_check_z'))
-
-    logger.info('prepare_locations_figure: got check filenames')
-
-    results = []
-
-    if loc_ims['location_check_xy']:
-        results.append(
-            html.Img(src=base64_image(loc_ims['location_check_xy'][0]))
-        )
-
-    if loc_ims['location_check_z']:
-        results.append(
-            html.Img(src=base64_image(loc_ims['location_check_z'][0]))
-        )
-
-    if not results:
-        results.append(dbc.Alert('No location checks found for this analysis.'
-                                 , color='warning'))
-
-    results.append(dcc.Graph(id='dd-fig'))
-
-    return results
-
-
-def prepare_alignment_figure(
-    position,
-    analysis,
-    dataset,
-    user
-):
-    logger.info('Entering prepare_alignment_figure')
-
-    align_im_file = data_client.request({
-        'user': user,
-        'dataset': dataset,
-        'analysis': analysis,
-        'position': position
-    }, fields='alignment_check')['alignment_check']
-
-    logger.info('prepare_alignment_figure: got alignment check file')
-
-    fig = go.Figure()
-    fig.update_layout(width=1000, height=1000)
-
-    if align_im_file:
-        align_im = safe_imread(align_im_file, False, False)
-        logger.info(f'prepare_alignment_figure: read alignment image of shape '
-                f'{align_im.shape}')
-
-        fig = px.imshow(
-            align_im,
-            width=1000,
-            height=1000,
-            animation_frame=0,
-            binary_string=True
-        )
-
-        return cm.component('dd-fig', figure=fig)
-    else:
-        alert = dbc.Alert('No alignment check found for this analysis.', color='warning')
-        return [alert, cm.component('dd-fig', figure=fig)]
 
 
 clear_components = {
@@ -386,17 +36,10 @@ clear_components = {
     'dd-analysis-select':
         dbc.Select(
             id='dd-analysis-select',
-            placeholder='Select an analysis'
+            placeholder='Select an analysis',
+            persistence=True,
+            persistence_type='session'
         ),
-
-    'dd-new-analysis-name': dcc.Input(type='text', id='dd-new-analysis-name'),
-    'dd-submit-new-analysis-provider':
-        dcc.ConfirmDialogProvider(
-            html.Button('Submit new dot detection preview', n_clicks=0),
-            id='dd-submit-new-analysis-provider',
-            message='Confirm submission of new dot detection preview'
-        ),
-    'dd-new-analysis-text': html.Div(id='dd-new-analysis-text'),
 
     'dd-hyb-select-label': dbc.Label('Select a hyb round', html_for='dd-hyb-select'),
     'dd-hyb-select':
@@ -416,13 +59,12 @@ clear_components = {
                                      'display'),
     'dd-strictness-slider': dbc.FormGroup([
         dbc.Label('Strictness filter', html_for='dd-strictness-slider'),
-        dcc.RangeSlider(
+        dcc.Slider(
             id='dd-strictness-slider',
             min=-20,
             max=100,
             step=1,
-            value=[0, 10],
-            allowCross=False,
+            value=0,
             marks={i: str(i) for i in range(-20, 101, 10)}
         )
     ]),
@@ -438,10 +80,6 @@ clear_components = {
 
 component_groups = {
     'dataset-info': ['dd-analysis-select'],
-
-    'new-analysis': ['dd-new-analysis-name',
-                     'dd-submit-new-analysis-provider',
-                     'dd-new-analysis-text'],
 
     'image-select': ['dd-hyb-select-label',
                      'dd-hyb-select',
@@ -459,6 +97,7 @@ component_groups = {
 }
 
 cm = ComponentManager(clear_components, component_groups=component_groups)
+helper = DotDetectionHelper(data_client, cm, 'dd-fig', logger)
 
 
 @app.callback(
@@ -497,21 +136,28 @@ def update_visualization(
     # Again test for None explicitly because z, channel, position or hyb might be 0
     if not is_open or any([v is None for v in
                            (active_tab, position, hyb, dataset, user)]):
-        return cm.component('dd-fig'),
+        return helper.dash_graph()
 
     if active_tab == 'dd-tab-dotdetection':
-        return prepare_dotdetection_figure(
+        return helper.prepare_dotdetection_figure(
             z, channel, contrast, strictness, position,
             hyb, analysis, dataset, user, current_layout
         )
     elif active_tab == 'dd-tab-preprocess':
-        return prepare_preprocess_figure(position, hyb, analysis, dataset, user)
+        return helper.prepare_preprocess_figure(
+            position, hyb,
+            analysis, dataset, user
+        )
     elif active_tab == 'dd-tab-alignment':
-        return prepare_alignment_figure(position, analysis, dataset, user)
+        return helper.prepare_alignment_figure(
+            position, analysis, dataset, user
+        )
     elif active_tab == 'dd-tab-locations':
-        return prepare_locations_figure(position, analysis, dataset, user)
+        return helper.prepare_locations_figure(
+            position, analysis, dataset, user
+        )
     else:
-        return cm.component('dd-fig'),
+        return helper.dash_graph()
 
 
 @app.callback(
@@ -709,7 +355,7 @@ def display_image_selectors(is_open, dataset, user):
 
 
 @app.callback(
-    [Output('dd-new-analysis-div', 'children'),
+    [
      Output('dd-image-select-wrapper', 'is_open'),
      Output('dd-analysis-select', 'value'),
      ],
@@ -718,60 +364,13 @@ def display_image_selectors(is_open, dataset, user):
      ]
 )
 def reset_dependents(dataset, user):
-    # Always reset the new-analysis-div on user/dataset change
-    new_analysis = cm.component_group('new-analysis', tolist=True)
-
     # Close the image-select wrapper if either is not defined
     image_select_open = dataset and user
 
     # Always reset the analysis value
     analysis_value = None
 
-    return new_analysis, image_select_open, analysis_value
-
-
-@app.callback(
-    Output('dd-new-analysis-text', 'children'),
-    Input('dd-submit-new-analysis-provider', 'submit_n_clicks'),
-    State('dd-new-analysis-name', 'value'),
-    State('user-select', 'value'),
-    State('dataset-select', 'value'),
-    State('dd-analysis-select', 'options')
-)
-def submit_new_analysis(
-        confirm_n_clicks,
-        new_analysis_name,
-        user,
-        dataset,
-        analysis_options
-):
-    if not all((new_analysis_name, user, dataset, analysis_options)):
-        raise PreventUpdate
-
-    analyses = [o['value'] for o in analysis_options]
-
-    if new_analysis_name in analyses:
-        return dbc.Alert(f'Analysis {new_analysis_name} already exists. '
-                         f'Please choose a unique name.', color='error')
-
-    if confirm_n_clicks == 1:
-        new_analysis_future = put_analysis_request(
-            user,
-            dataset,
-            new_analysis_name
-        )
-
-        if isinstance(new_analysis_future, Exception):
-            return [dbc.Alert(f'Failure: failed to submit request for new '
-                              f'analysis. Exception: ', color='error'),
-                    html.Pre(new_analysis_future)
-                    ]
-
-        return dbc.Alert(f'Success! New dot detection test will be at '
-                         f'{user}/{dataset}/{new_analysis_future} '
-                         f'in 5-10 minutes.', color='success')
-    else:
-        raise PreventUpdate
+    return image_select_open, analysis_value
 
 
 tab_dot_detection = dbc.Spinner([
@@ -801,13 +400,6 @@ layout = [
     dbc.Col([
         html.Div([
             *cm.component_group('dataset-info', tolist=True),
-
-            html.Details([
-                html.Summary('Submit new preview run'),
-                html.Div([
-                    *cm.component_group('new-analysis', tolist=True)
-                ], id='dd-new-analysis-div')
-            ]),
 
             dbc.Collapse([
                 *cm.component_group('image-select', tolist=True)

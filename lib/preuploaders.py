@@ -3,7 +3,7 @@ import numpy as np
 import skimage.util as skiu
 import skimage.exposure as skie
 from pathlib import Path
-from lib.util import ImageMeta, safe_imwrite
+from lib.util import pil_imread, safe_imwrite
 
 """
 preuploaders.py
@@ -89,7 +89,7 @@ def compress_8bit(
             return arr
 
     try:
-        im = ImageMeta(imgfilename)
+        im = pil_imread(imgfilename)
         imarr = im.asarray()
 
         safe_imwrite(
