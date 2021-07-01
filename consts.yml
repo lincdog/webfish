@@ -97,7 +97,7 @@ file_patterns:
     biggest_jump:
       "MMStack_Pos{position}/Dot_Locations/Biggest_Jump_Histograms/HybCycle_{hyb}_Jump.png"
     preprocess_check:
-      "MMStack_Pos{position}/Pre_Dot_Detection_Check/HybCycle_{hyb}_channel_{channel}.png"
+      "MMStack_Pos{position}/Pre_Dot_Detection_Checks/HybCycle_{hyb}_channel_{channel}.png"
     alignment_check:
       "MMStack_Pos{position}/Alignment_Checks/Aligned_and_Stacked_DAPI_S.tif"
     location_check_xy:
