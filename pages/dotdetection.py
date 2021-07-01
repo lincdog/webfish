@@ -1,9 +1,6 @@
 import dash
 import numpy as np
-import pandas as pd
-import io
-import json
-import re
+
 import logging
 
 import dash_core_components as dcc
@@ -12,9 +9,6 @@ import dash_bootstrap_components as dbc
 from dash.dependencies import Input, Output, State, MATCH, ALL
 from dash.exceptions import PreventUpdate
 from dash import no_update
-
-import plotly.express as px
-import plotly.graph_objects as go
 
 from app import app
 from lib.util import (
@@ -49,10 +43,13 @@ clear_components = {
         dbc.Select(id='dd-position-select', placeholder='Select a position'),
 
     'dd-z-cap': html.B('Select Z slice'),
-    'dd-chan-cap': html.B('Select a channel'),
+    'dd-chan-cap': 'Select a channel',
     'dd-contrast-cap': html.B('Adjust contrast'),
     'dd-z-select': dcc.Slider(id='dd-z-select'),
-    'dd-chan-select': dbc.Select(id='dd-chan-select'),
+    'dd-chan-select': dbc.Select(
+        id='dd-chan-select',
+        options=[{'label': str(c), 'value': str(c)} for c in range(5)]
+        ),
     'dd-contrast-slider': dcc.RangeSlider(id='dd-contrast-slider'),
     'dd-contrast-note': dcc.Markdown('NOTE: the image intensity is rescaled to '
                                      'use the full range of the datatype before '
@@ -84,13 +81,13 @@ component_groups = {
     'image-select': ['dd-hyb-select-label',
                      'dd-hyb-select',
                      'dd-position-select-label',
-                     'dd-position-select'
+                     'dd-position-select',
+                     'dd-chan-cap',
+                     'dd-chan-select',
                      ],
 
     'image-params': ['dd-z-cap',
                      'dd-z-select',
-                     'dd-chan-cap',
-                     'dd-chan-select',
                      'dd-contrast-cap',
                      'dd-contrast-slider',
                      'dd-contrast-note']
@@ -145,7 +142,7 @@ def update_visualization(
         )
     elif active_tab == 'dd-tab-preprocess':
         return helper.prepare_preprocess_figure(
-            position, hyb,
+            position, hyb, channel,
             analysis, dataset, user
         )
     elif active_tab == 'dd-tab-alignment':
@@ -201,6 +198,7 @@ def populate_breakdown_table(
 
 @app.callback(
     Output('dd-detail-tabs-collapse', 'is_open'),
+    Output('dd-chan-select', 'options'),
     Output('dd-image-params-loader', 'children'),
     Input('dd-position-select', 'value'),
     Input('dd-hyb-select', 'value'),
@@ -216,13 +214,16 @@ def select_pos_hyb(position, hyb, dataset, user):
 
     # Close the collapser and reset the components
     if not is_open:
-        return (False,
-                [
-                    *cm.component_group('image-params', tolist=True),
-                    html.Div([
-                        cm.component('dd-strictness-slider')
-                    ], id='dd-strictness-slider-wrapper')
-                ])
+        return (
+            False,
+            no_update,
+            [
+                *cm.component_group('image-params', tolist=True),
+                html.Div([
+                    cm.component('dd-strictness-slider')
+                ], id='dd-strictness-slider-wrapper')
+            ]
+        )
 
     logger.info('select_pos_hyb: Requesting raw image filename')
     imagefile = data_client.request(
@@ -236,20 +237,23 @@ def select_pos_hyb(position, hyb, dataset, user):
         assert image.ndim == 4, 'Must have 4 dimensions'
     except (AssertionError, IndexError, RuntimeError) as e:
         print(e, type(e))
-        return (True,
-                [
-                    dbc.Alert(f'No image file for dataset {user}/{dataset} '
-                              f'hyb {hyb} position {position} found!', color='warning'),
+        return (
+            True,
+            no_update,
+            [
+                dbc.Alert(f'No image file for dataset {user}/{dataset} '
+                          f'hyb {hyb} position {position} found!', color='warning'),
 
-                    *cm.component_group(
-                        'image-params',
-                        tolist=True,
-                        options=dict(disabled=True)
-                    ),
-                    html.Div([
-                        cm.component('dd-strictness-slider')
-                    ], id='dd-strictness-slider-wrapper')
-                ])
+                *cm.component_group(
+                    'image-params',
+                    tolist=True,
+                    options=dict(disabled=True)
+                ),
+                html.Div([
+                    cm.component('dd-strictness-slider')
+                ], id='dd-strictness-slider-wrapper')
+            ]
+        )
 
     logger.info('select_pos_hyb: read in raw image file')
 
@@ -263,42 +267,41 @@ def select_pos_hyb(position, hyb, dataset, user):
 
     logger.info('select_pos_hyb: returning image_params components')
 
-    return True, [
-        html.B('Select Z slice'),
-        cm.component(
-            'dd-z-select',
-            min=-1,
-            max=z_range[-1],
-            step=1,
-            value=0,
-            marks={-1: 'Max'} | {z: str(z) for z in z_range}
-        ),
-
-        html.B('Select channel'),
-        cm.component(
-            'dd-chan-select',
-            placeholder='Select channel',
-            options=[{'label': str(c), 'value': str(c)} for c in chan_range],
-            value='0'
-        ),
-
-        html.B('Adjust contrast'),
-        html.Div([
+    return (
+        # is_open
+        True,
+        # dd-chan-select.options
+        [{'label': str(c), 'value': str(c)} for c in chan_range],
+        # image params children
+        [
+            html.B('Select Z slice'),
             cm.component(
-                'dd-contrast-slider',
-                min=0,
-                max=255,
+                'dd-z-select',
+                min=-1,
+                max=z_range[-1],
                 step=1,
-                marks=marks,
-                value=[0, 200],
-                allowCross=False
+                value=0,
+                marks={-1: 'Max'} | {z: str(z) for z in z_range}
             ),
-            cm.component('dd-contrast-note')
-        ], id='dd-contrast-div'),
-        html.Div([
-            cm.component('dd-strictness-slider')
-        ], id='dd-strictness-slider-wrapper')
-    ]
+
+            html.B('Adjust contrast'),
+            html.Div([
+                cm.component(
+                    'dd-contrast-slider',
+                    min=0,
+                    max=255,
+                    step=1,
+                    marks=marks,
+                    value=[0, 200],
+                    allowCross=False
+                ),
+                cm.component('dd-contrast-note')
+            ], id='dd-contrast-div'),
+            html.Div([
+                cm.component('dd-strictness-slider')
+            ], id='dd-strictness-slider-wrapper')
+        ]
+    )
 
 
 @app.callback(
@@ -327,8 +330,6 @@ def display_image_selectors(is_open, dataset, user):
     if not is_open:
         return cm.component_group('image-select', tolist=True)
 
-    print(user, dataset)
-
     hybs = data_client.datafiles.query(
         'user == @user and dataset == @dataset '
         'and source_key == "hyb_fov"')['hyb'].dropna().unique()
@@ -349,7 +350,7 @@ def display_image_selectors(is_open, dataset, user):
             'dd-hyb-select':
                 dict(options=[{'label': h, 'value': h} for h in hybs_sorted]),
             'dd-position-select':
-                dict(options=[{'label': p, 'value': p} for p in positions_sorted])
+                dict(options=[{'label': p, 'value': p} for p in positions_sorted]),
         }
     )
 

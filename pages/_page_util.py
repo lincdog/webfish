@@ -259,6 +259,7 @@ class DotDetectionHelper(PageHelper):
         self,
         position,
         hyb,
+        channel,
         analysis,
         dataset,
         user
@@ -270,7 +271,8 @@ class DotDetectionHelper(PageHelper):
             'dataset': dataset,
             'analysis': analysis,
             'position': position,
-            'hyb': hyb
+            'hyb': hyb,
+            'channel': channel
         }, fields='preprocess_check')['preprocess_check']
     
         self.logger.info('prepare_preprocess_figure: got preprocess check file')
