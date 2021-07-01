@@ -21,18 +21,20 @@ def pil_imopen(fname, metadata=False):
         return im
 
 
-def pil_imread(fname, metadata=False):
+def pil_imread(fname, metadata=False, swapaxes=False):
 
     im = pil_imopen(fname)
     md = pil_getmetadata(im)
 
     imarr = pil_frames_to_ndarray(im)
 
+    if swapaxes:
+        imarr = imarr.swapaxes(0, 1)
+
     if metadata:
         return imarr, md
     else:
         return imarr
-
 
 
 def pil_getmetadata(im, relevant_keys=None):
@@ -945,5 +947,49 @@ def sort_as_num_or_str(coll, numtype=int):
         result = np.sort(np_coll.astype(numtype)).astype(str)
     except ValueError:
         result = np.sort(np_coll.astype(str))
+
+    return result
+
+
+def aggregate_dot_dfs(locations_csvs, hyb, position, take_column='int'):
+
+    position_temp = []
+    rename = {take_column: 'Dot Count', 'ch': 'Channel'}
+
+    if position is None:
+        groupby = ['ch']
+        columns = ['Position', 'Channel', 'Dot Count']
+
+    else:
+        groupby = ['ch', 'z']
+        rename['z'] = 'Z slice'
+        columns = ['Position', 'Channel', 'Z slice', 'Dot Count']
+
+    result = pd.DataFrame(columns=columns)
+
+    for csvname in locations_csvs:
+        m = re.search('MMStack_Pos(\\d+)', str(csvname))
+
+        if len(m.groups()) > 0:
+            curpos = int(m.groups()[0])
+        else:
+            continue
+
+        hyb_q = int(hyb)
+
+        dots_df = pd.read_csv(csvname).query('hyb == @hyb_q')
+
+        dots_count = dots_df.groupby(groupby)[take_column].count().reset_index()
+        dots_count.rename(columns=rename, inplace=True)
+
+        dots_count['Channel'] = dots_count['Channel'] - 1
+        dots_count['Position'] = curpos
+
+        position_temp.append(dots_count)
+
+        del dots_df
+
+    if position_temp:
+        result = pd.concat(position_temp)[columns].sort_values(by=columns[:-1])
 
     return result

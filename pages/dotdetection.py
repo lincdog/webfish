@@ -17,7 +17,13 @@ import plotly.express as px
 import plotly.graph_objects as go
 
 from app import app
-from lib.util import safe_imread, base64_image, sort_as_num_or_str
+from lib.util import (
+    safe_imread,
+    base64_image,
+    sort_as_num_or_str,
+    aggregate_dot_dfs
+)
+
 from .common import ComponentManager, data_client
 
 logger = logging.getLogger('webfish.' + __name__)
@@ -67,14 +73,14 @@ def put_analysis_request(
 
 
 def gen_image_figure(
-        imfile,
-        dots_csv=None,
-        offsets=(0, 0),
-        hyb='0',
-        z_slice='0',
-        channel='0',
-        contrast_minmax=(0, 2000),
-        strictness=None
+    imfile,
+    dots_csv=None,
+    offsets=(0, 0),
+    hyb='0',
+    z_slice='0',
+    channel='0',
+    contrast_minmax=(0, 2000),
+    strictness=None
 ):
     logger.info('Entering gen_image_figure')
 
@@ -426,7 +432,8 @@ clear_components = {
         config={
             'scrollZoom': True,
             'modeBarButtonsToRemove': ['zoom2d', 'zoomOut2d', 'zoomIn2d']
-    })
+        }
+    )
 }
 
 component_groups = {
@@ -505,6 +512,45 @@ def update_visualization(
         return prepare_locations_figure(position, analysis, dataset, user)
     else:
         return cm.component('dd-fig'),
+
+
+@app.callback(
+    Output('dd-dot-breakdown-wrapper', 'children'),
+    Input('dd-detail-tabs-collapse', 'is_open'),
+    Input('dd-hyb-select', 'value'),
+    Input('dd-position-select', 'value'),
+    Input('dd-analysis-select', 'value'),
+    Input('dataset-select', 'value'),
+    Input('user-select', 'value'),
+)
+def populate_breakdown_table(
+    is_open,
+    hyb,
+    position,
+    analysis,
+    dataset,
+    user
+):
+
+    if not all([hyb is not None, analysis, dataset, user]):
+        return []
+
+    request = {'user': user, 'dataset': dataset, 'analysis': analysis}
+
+    if position is not None:
+        request.update({'position': position})
+
+    locations_csvs = data_client.request(
+        request,
+        fields='dot_locations'
+    )['dot_locations']
+
+    if locations_csvs:
+        df = aggregate_dot_dfs(locations_csvs, hyb, position)
+
+        return dbc.Table.from_dataframe(df, striped=True, size='sm')
+    else:
+        return []
 
 
 @app.callback(
@@ -770,6 +816,16 @@ layout = [
         ], id='dd-dataset-select-div', style={'margin': '10px'}),
 
         html.Hr(),
+
+        html.Details([
+            html.Summary('Breakdown by position+channel of detected dots'),
+            dbc.Card([
+                dbc.CardHeader('Detected dots breakdown'),
+                dbc.CardBody(
+                    dbc.Spinner(html.Div(id='dd-dot-breakdown-wrapper'))
+                ),
+            ]),
+        ]),
 
         dbc.Collapse([
             dbc.Tabs([
