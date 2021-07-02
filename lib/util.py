@@ -21,17 +21,29 @@ def pil_imopen(fname, metadata=False):
         return im
 
 
-def pil_imread(fname, metadata=False, swapaxes=False):
+def pil_imread(
+    fname,
+    metadata=False,
+    swapaxes=False,
+    backup=tif.imread,
+    **kwargs
+):
+    md = None
 
-    im = pil_imopen(fname)
-    md = pil_getmetadata(im)
-
-    imarr = pil_frames_to_ndarray(im)
+    try:
+        im = pil_imopen(fname)
+        md = pil_getmetadata(im)
+        imarr = pil_frames_to_ndarray(im)
+    except ValueError as e:
+        if callable(backup):
+            imarr = backup(fname, **kwargs)
+        else:
+            raise e
 
     if swapaxes:
         imarr = imarr.swapaxes(0, 1)
 
-    if metadata:
+    if metadata and md:
         return imarr, md
     else:
         return imarr
@@ -71,7 +83,6 @@ def pil_getmetadata(im, relevant_keys=None):
 
     frame_metadata = []
 
-
     for frame in ImageSequence.Iterator(im):
 
         # The JSON string is stored in a key named "unknown",
@@ -84,7 +95,7 @@ def pil_getmetadata(im, relevant_keys=None):
             if relevant_keys:
                 # Only keep the relevant keys
                 rel_dict = {
-                    k: jsdict[k] 
+                    k: jsdict.get(k)
                     for k in relevant_keys
                 }
             else:
@@ -123,6 +134,15 @@ def pil_frames_to_ndarray(im, dtype=np.uint16):
     cinds = jmespath.search('[].ChannelIndex', metadata)
     # Gives a list of SliceIndex for each frame
     zinds = jmespath.search('[].SliceIndex', metadata)
+
+    if (len(cinds) != len(zinds)
+        or any([c is None for c in cinds])
+        or any([z is None for z in zinds])
+    ):
+        raise ValueError('SuppliedImage lacks `ChannelIndex` or '
+                         '`SliceIndex` metadata required to form '
+                         'properly shaped numpy array. Was the image not '
+                         'taken directly from ImageJ/MicroManager?')
 
     ncs = max(cinds) + 1
     nzs = max(zinds) + 1
