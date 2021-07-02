@@ -106,9 +106,9 @@ def pil_getmetadata(im, relevant_keys=None):
     return frame_metadata
 
 
-def pil2numpy(im, shape=(2048, 2048), dtype=np.uint16):
+def pil2numpy(im, dtype=np.uint16):
 
-    return np.frombuffer(im.tobytes(), dtype=dtype).reshape(shape)
+    return np.frombuffer(im.tobytes(), dtype=dtype).reshape(im.size)
 
 
 def pil_frames_to_ndarray(im, dtype=np.uint16):
