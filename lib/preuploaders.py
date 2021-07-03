@@ -82,7 +82,6 @@ def compress_8bit(
     """
     err = None
     im = None
-    imarr = None
 
     if not callable(rescaler):
         def rescaler(arr):
@@ -90,19 +89,17 @@ def compress_8bit(
 
     try:
         im = pil_imread(imgfilename)
-        imarr = im.asarray()
 
         safe_imwrite(
-            skiu.img_as_ubyte(rescaler(imarr)),
+            skiu.img_as_ubyte(rescaler(im)),
             outfile,
             compression=compression
         )
     except (PermissionError, IOError, OSError) as e:
         err = e
     finally:
-        del imarr
+        del im
         gc.collect()
-        im.close()
 
     if err:
         raise err

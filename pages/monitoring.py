@@ -67,7 +67,7 @@ def update_logging_table(n_intervals):
         data_client.analysis_log
     )
 
-    log_df = parse_log_file(data_client.analysis_log, nlines=100).drop(
+    log_df = parse_log_file(data_client.analysis_log, nlines=400).drop(
         columns=['level']
     )
 
