@@ -28,7 +28,7 @@ class PageHelper:
         logger=None
     ):
         
-        self.logger = logger or logging.getLogger('webfish_' + __name__)
+        self.logger = logger or logging.getLogger('webfish.' + __name__)
         self.data_client = data_client
         self.cm = component_manager
         
@@ -164,7 +164,7 @@ class DotDetectionHelper(PageHelper):
                     colorbar=dict(
                         title=cbar_title
                     ),
-                    colorscale="Viridis",
+                    colorscale='YlOrRd_r',
                     color=color_by))
             )
     
@@ -698,6 +698,10 @@ def aggregate_dot_dfs(locations_csvs, hyb, position, take_column='int'):
         dots_count.rename(columns=rename, inplace=True)
 
         dots_count['Channel'] = dots_count['Channel'] - 1
+
+        if 'Z slice' in dots_count.columns:
+            dots_count['Z slice'] = dots_count['Z slice'] - 1
+
         dots_count['Position'] = curpos
 
         position_temp.append(dots_count)

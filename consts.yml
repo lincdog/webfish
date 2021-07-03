@@ -64,6 +64,11 @@ pages:
     description: "Select parameters to submit a new analysis run on the HPC"
     file: "submission.py"
 
+  monitoring:
+    title: "Monitoring"
+    description: "Monitor currently-running analyses and view log outputs"
+    file: "monitoring.py"
+
 # Listing of files from master_root / dataset_root (i.e. analyzed data files)
 # Note that this is an abbreviated format, can also specify pattern,
 #   preupload function as done below for dot detection
