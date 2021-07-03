@@ -28,7 +28,7 @@ class PageHelper:
         logger=None
     ):
         
-        self.logger = logger or logging.getLogger('webfish_' + __name__)
+        self.logger = logger or logging.getLogger('webfish.' + __name__)
         self.data_client = data_client
         self.cm = component_manager
         

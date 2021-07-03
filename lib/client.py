@@ -39,6 +39,10 @@ class DataClient(FilePatterns):
         self.sync_folder.mkdir(parents=True, exist_ok=True)
 
         self.local_store = Path(config.get('local_store', 'webfish_data/'))
+        self.analysis_log = Path(
+            self.sync_folder,
+            config.get('analysis_log', 'pipeline_rotating_log.txt')
+        )
 
         self.bucket_name = config['bucket_name']
 
