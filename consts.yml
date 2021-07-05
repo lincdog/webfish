@@ -76,52 +76,52 @@ pages:
 file_patterns:
   source:
     segmentation:
-      "MMStack_Pos{position}/Segmentation/labeled_img.tif"
+      "{position}/Segmentation/labeled_img.tif"
     dots_csv:
-      "MMStack_Pos{position}/Segmentation/Channel_{channel}/gene_locations_assigned_to_cell.csv"
+      "{position}/Segmentation/Channel_{channel}/gene_locations_assigned_to_cell.csv"
     dots_csv_sm:
-      "MMStack_Pos{position}/Segmentation/gene_locations_assigned_to_cell.csv"
+      "{position}/Segmentation/gene_locations_assigned_to_cell.csv"
     dots_csv_unseg:
-      "MMStack_Pos{position}/Decoded/Channel_{channel}/pre_seg_diff_1_minseeds_3_filtered.csv"
+      "{position}/Decoded/Channel_{channel}/pre_seg_diff_1_minseeds_3_filtered.csv"
     dots_csv_sm_unseg:
-      "MMStack_Pos{position}/Decoded/sequential_decoding_results.csv"
+      "{position}/Decoded/sequential_decoding_results.csv"
     cell_info:
-      "MMStack_Pos{position}/Segmentation/Channel_{channel}/cell_info.csv"
+      "{position}/Segmentation/Channel_{channel}/cell_info.csv"
     onoff_intensity_plot:
-      "MMStack_Pos{position}/False_Positive_Rate_Analysis/Channel_{channel}/On-Off-Barcode-Intensity-Analysis.png"
+      "{position}/False_Positive_Rate_Analysis/Channel_{channel}/On-Off-Barcode-Intensity-Analysis.png"
     onoff_sorted_plot:
-      "MMStack_Pos{position}/On_Off_Barcode_Plot/Channel_{channel}/On_Off_Sorted_Barcode_Plot.png"
+      "{position}/On_Off_Barcode_Plot/Channel_{channel}/On_Off_Sorted_Barcode_Plot.png"
     falsepositive_txt:
-      "MMStack_Pos{position}/False_Positive_Rate_Analysis/Channel_{channel}/false_positives_after_segmentation.txt"
+      "{position}/False_Positive_Rate_Analysis/Channel_{channel}/false_positives_after_segmentation.txt"
     offsets_json:
-      "MMStack_Pos{position}/offsets.json"
+      "{position}/offsets.json"
     dot_locations:
-      "MMStack_Pos{position}/Dot_Locations/locations.csv"
+      "{position}/Dot_Locations/locations.csv"
     avg_brightness:
-      "MMStack_Pos{position}/Dot_Locations/Average_Brightness_Analysis.csv"
+      "{position}/Dot_Locations/Average_Brightness_Analysis.csv"
     biggest_jump:
-      "MMStack_Pos{position}/Dot_Locations/Biggest_Jump_Histograms/HybCycle_{hyb}_Jump.png"
+      "{position}/Dot_Locations/Biggest_Jump_Histograms/HybCycle_{hyb}_Jump.png"
     preprocess_check:
-      "MMStack_Pos{position}/Pre_Dot_Detection_Checks/HybCycle_{hyb}_channel_{channel}.png"
+      "{position}/Pre_Dot_Detection_Checks/HybCycle_{hyb}_channel_{channel}.png"
     alignment_check:
-      "MMStack_Pos{position}/Alignment_Checks/Aligned_and_Stacked_DAPI_S.tif"
+      "{position}/Alignment_Checks/Aligned_and_Stacked_DAPI_S.tif"
     location_check_xy:
-      "MMStack_Pos{position}/Dot_Locations/Location_Checks/Map_of_XY_Locations.png"
+      "{position}/Dot_Locations/Location_Checks/Map_of_XY_Locations.png"
     location_check_z:
-      "MMStack_Pos{position}/Dot_Locations/Location_Checks/Dots_Across_Z_Slices.png"
+      "{position}/Dot_Locations/Location_Checks/Dots_Across_Z_Slices.png"
 
 
   raw:
     hyb_fov:
-      pattern: "HybCycle_{hyb}/MMStack_Pos{position}.ome.tif"
+      pattern: "HybCycle_{hyb}/{position}.ome.tif"
       preupload: "compress_raw_im_2"
     positions:
       pattern: "{posfilename}.pos"
     background_im:
-      pattern: "final_background/MMStack_Pos{position}.ome.tif"
+      pattern: "final_background/{position}.ome.tif"
       preupload: "compress_raw_im_2"
     presegmentation_im:
-      pattern: "segmentation/MMStack_Pos{position}.ome.tif"
+      pattern: "segmentation/{position}.ome.tif"
       preupload: "compress_raw_im_2"
 
   # Listing of output files generated from the source files
@@ -133,10 +133,10 @@ file_patterns:
   #   that will produce the output file from the input files.
   output:
     mesh:
-      pattern: "MMStack_Pos{position}/labeled_mesh.json"
+      pattern: "{position}/labeled_mesh.json"
       requires: ["segmentation"]
       generator: "generate_mesh"
     dots:
-      pattern: "MMStack_Pos{position}/dots_um_with_colors.csv"
+      pattern: "{position}/dots_um_with_colors.csv"
       requires: ["dots_csv | dots_csv_unseg | dots_csv_sm | dots_csv_sm_unseg"]
       generator: "generate_dots"
