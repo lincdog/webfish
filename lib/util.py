@@ -356,7 +356,11 @@ def find_matching_files(base, fmt, paths=None):
         m = reg.match(str(f.relative_to(base)))
 
         if m:
-            mtimes.append(os.stat(f).st_mtime)
+            try:
+                mtimes.append(os.stat(f).st_mtime)
+            except (PermissionError, OSError):
+                mtimes.append(-1)
+
             files.append(f)
 
             for k, v in m.groupdict().items():
