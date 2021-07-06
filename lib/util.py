@@ -5,11 +5,9 @@ import json
 import re
 import os
 import string
-import numbers
 from pathlib import Path, PurePath
-import base64
 import jmespath
-from PIL import Image, ImageSequence
+from PIL import Image, ImageSequence, UnidentifiedImageError
 
 
 def pil_imopen(fname, metadata=False):
@@ -34,7 +32,7 @@ def pil_imread(
         im = pil_imopen(fname)
         md = pil_getmetadata(im)
         imarr = pil_frames_to_ndarray(im)
-    except ValueError as e:
+    except (ValueError, UnidentifiedImageError) as e:
         if callable(backup):
             imarr = backup(fname, **kwargs)
         else:
