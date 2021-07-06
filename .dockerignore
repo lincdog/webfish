@@ -8,3 +8,4 @@ env.yaml
 **/__pycache__
 monitoring
 webfish_data
+build

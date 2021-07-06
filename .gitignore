@@ -12,3 +12,4 @@ ec2/*.ipynb
 *monitoring
 *.log
 *credentials
+build

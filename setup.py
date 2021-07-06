@@ -27,8 +27,8 @@ setuptools.setup(
     classifiers=[
         'Programming Language :: Python :: 3',
     ],
-    package_dir={'': 'lib'},
-    packages=setuptools.find_packages(where='lib'),
+    #package_dir={'': '.'},
+    packages=['lib'],
     python_requires='>=3.9',
     install_requires=requirements
 )
