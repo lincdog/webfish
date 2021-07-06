@@ -325,7 +325,7 @@ def select_analysis(analysis, dataset, user):
         raise PreventUpdate
 
     positions = data_client.datafiles.query(
-        'user==@user and dataset==@dataset and analysis==@analysis')['position'].unique()
+        'user==@user and dataset==@dataset and analysis==@analysis')['position'].dropna().unique()
 
     positions_sorted = np.sort(positions.astype(int)).astype(str)
 

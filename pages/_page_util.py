@@ -426,7 +426,7 @@ class DatavisHelper(PageHelper):
                 img = img[channel]
 
             fig = px.imshow(
-                img.T,
+                img,
                 zmin=0,
                 zmax=200,
                 width=1000,
@@ -446,7 +446,7 @@ class DatavisHelper(PageHelper):
 
             self.logger.info('gen_figure_2d: read and queried dots DF')
 
-            py, p_x = dots_filt[['y', 'x']].values.T
+            p_x, py = dots_filt[['x', 'y']].values.T
 
             color = dots_filt['geneColor']
             if color_option == 'fake':
@@ -458,7 +458,7 @@ class DatavisHelper(PageHelper):
             fig.add_trace(
                 go.Scattergl(
                     name='dots',
-                    x=p_x, y=py,
+                    x=py, y=p_x,
                     mode='markers',
                     marker=dict(
                         size=5,
