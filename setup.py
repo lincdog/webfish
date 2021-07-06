@@ -27,8 +27,8 @@ setuptools.setup(
     classifiers=[
         'Programming Language :: Python :: 3',
     ],
-    #package_dir={'': '.'},
-    packages=['lib'],
+    package_dir={'webfish_tools': './lib'},
+    packages=['webfish_tools'],
     python_requires='>=3.9',
     install_requires=requirements
 )
