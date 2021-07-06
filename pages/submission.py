@@ -178,8 +178,8 @@ clear_components = {
                 ],
                 value='cellpose'
             ),
-            dbc.FormText('For more information about Cellpose: '
-                         'https://github.com/MouseLand/cellpose')
+            dbc.FormText(dcc.Markdown('For more information about Cellpose: '
+                         'https://github.com/MouseLand/cellpose'))
         ]),
     'sb-segmentation-checklist':
         dbc.Checklist(
@@ -268,7 +268,7 @@ clear_components = {
                 id='sb-nuclei-radius',
                 type='number',
                 min=0,
-                max=100,
+                max=1000,
                 step=1,
                 value=0
             ),
@@ -305,7 +305,7 @@ clear_components = {
                 id='sb-cyto-radius',
                 type='number',
                 min=0,
-                max=100,
+                max=1000,
                 step=1,
                 value=0
             ),
