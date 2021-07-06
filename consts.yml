@@ -76,52 +76,70 @@ pages:
 file_patterns:
   source:
     segmentation:
-      "{position}/Segmentation/labeled_img.tif"
+      "MMStack_Pos{position}/Segmentation/labeled_img.tif"
     dots_csv:
-      "{position}/Segmentation/Channel_{channel}/gene_locations_assigned_to_cell.csv"
+      "MMStack_Pos{position}/Segmentation/Channel_{channel}/gene_locations_assigned_to_cell.csv"
     dots_csv_sm:
-      "{position}/Segmentation/gene_locations_assigned_to_cell.csv"
+      "MMStack_Pos{position}/Segmentation/gene_locations_assigned_to_cell.csv"
     dots_csv_unseg:
-      "{position}/Decoded/Channel_{channel}/pre_seg_diff_1_minseeds_3_filtered.csv"
+      "MMStack_Pos{position}/Decoded/Channel_{channel}/pre_seg_diff_1_minseeds_3_filtered.csv"
     dots_csv_sm_unseg:
-      "{position}/Decoded/sequential_decoding_results.csv"
+      "MMStack_Pos{position}/Decoded/sequential_decoding_results.csv"
     cell_info:
-      "{position}/Segmentation/Channel_{channel}/cell_info.csv"
+      "MMStack_Pos{position}/Segmentation/Channel_{channel}/cell_info.csv"
     onoff_intensity_plot:
-      "{position}/False_Positive_Rate_Analysis/Channel_{channel}/On-Off-Barcode-Intensity-Analysis.png"
+      "MMStack_Pos{position}/False_Positive_Rate_Analysis/Channel_{channel}/On-Off-Barcode-Intensity-Analysis.png"
     onoff_sorted_plot:
-      "{position}/On_Off_Barcode_Plot/Channel_{channel}/On_Off_Sorted_Barcode_Plot.png"
+      "MMStack_Pos{position}/On_Off_Barcode_Plot/Channel_{channel}/On_Off_Sorted_Barcode_Plot.png"
     falsepositive_txt:
-      "{position}/False_Positive_Rate_Analysis/Channel_{channel}/false_positives_after_segmentation.txt"
+      "MMStack_Pos{position}/False_Positive_Rate_Analysis/Channel_{channel}/false_positives_after_segmentation.txt"
     offsets_json:
-      "{position}/offsets.json"
+      "MMStack_Pos{position}/offsets.json"
     dot_locations:
-      "{position}/Dot_Locations/locations.csv"
+      "MMStack_Pos{position}/Dot_Locations/locations.csv"
     avg_brightness:
-      "{position}/Dot_Locations/Average_Brightness_Analysis.csv"
+      "MMStack_Pos{position}/Dot_Locations/Average_Brightness_Analysis.csv"
     biggest_jump:
-      "{position}/Dot_Locations/Biggest_Jump_Histograms/HybCycle_{hyb}_Jump.png"
+      "MMStack_Pos{position}/Dot_Locations/Biggest_Jump_Histograms/HybCycle_{hyb}_Jump.png"
     preprocess_check:
-      "{position}/Pre_Dot_Detection_Checks/HybCycle_{hyb}_channel_{channel}.png"
+      "MMStack_Pos{position}/Pre_Dot_Detection_Checks/HybCycle_{hyb}_channel_{channel}.png"
     alignment_check:
-      "{position}/Alignment_Checks/Aligned_and_Stacked_DAPI_S.tif"
+      "MMStack_Pos{position}/Alignment_Checks/Aligned_and_Stacked_DAPI_S.tif"
     location_check_xy:
-      "{position}/Dot_Locations/Location_Checks/Map_of_XY_Locations.png"
+      "MMStack_Pos{position}/Dot_Locations/Location_Checks/Map_of_XY_Locations.png"
     location_check_z:
-      "{position}/Dot_Locations/Location_Checks/Dots_Across_Z_Slices.png"
+      "MMStack_Pos{position}/Dot_Locations/Location_Checks/Dots_Across_Z_Slices.png"
+    allpos_falsepositive_png:
+      "All_Positions/False_Positive_Rate_Analysis/All_Normalized_False_Positives.png"
+    allpos_falsepositive_txt:
+      "All_Positions/False_Positive_Rate_Analysis/False_Positive_Rate_Analytics.txt"
+    allpos_genecorr_clustered:
+      "All_Positions/clustered_corr_plot.png"
+    allpos_genecorr_unclustered:
+      "All_Positions/unclustered_corr_plot.png"
+    allpos_onoff_plot:
+      "All_Positions/On_Off_Barcode_Plot/on_off_barcode_plot_all_pos.png"
+    allpos_percentagedots_txt:
+      "All_Positions/Percentage_of_Dots_Used/percentage_of_dots_used_analytics.txt"
+    allpos_percentagedots_png:
+      "All_Positions/Percentage_of_Dots_Used/percentage_of_dots_used_plot.png"
+    allpos_genespercell_txt:
+      "All_Positions/Segmentation/genes_per_cell_analytics.txt"
+    allpos_genespercell_png:
+      "All_Positions/Segmentation/Genes_per_cell_all_pos.png"
 
 
   raw:
     hyb_fov:
-      pattern: "HybCycle_{hyb}/{position}.ome.tif"
+      pattern: "HybCycle_{hyb}/MMStack_Pos{position}.ome.tif"
       preupload: "compress_raw_im_2"
     positions:
       pattern: "{posfilename}.pos"
     background_im:
-      pattern: "final_background/{position}.ome.tif"
+      pattern: "final_background/MMStack_Pos{position}.ome.tif"
       preupload: "compress_raw_im_2"
     presegmentation_im:
-      pattern: "segmentation/{position}.ome.tif"
+      pattern: "segmentation/MMStack_Pos{position}.ome.tif"
       preupload: "compress_raw_im_2"
 
   # Listing of output files generated from the source files
@@ -133,10 +151,10 @@ file_patterns:
   #   that will produce the output file from the input files.
   output:
     mesh:
-      pattern: "{position}/labeled_mesh.json"
+      pattern: "MMStack_Pos{position}/labeled_mesh.json"
       requires: ["segmentation"]
       generator: "generate_mesh"
     dots:
-      pattern: "{position}/dots_um_with_colors.csv"
+      pattern: "MMStack_Pos{position}/dots_um_with_colors.csv"
       requires: ["dots_csv | dots_csv_unseg | dots_csv_sm | dots_csv_sm_unseg"]
       generator: "generate_dots"
