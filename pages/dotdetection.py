@@ -13,6 +13,7 @@ from dash import no_update
 from app import app
 from lib.util import (
     safe_imread,
+    pil_imread,
     sort_as_num_or_str,
 )
 
@@ -233,8 +234,10 @@ def select_pos_hyb(position, hyb, dataset, user):
     logger.info('select_pos_hyb: got raw image filename')
 
     try:
-        image = safe_imread(imagefile['hyb_fov'][0])
-        assert image.ndim == 4, 'Must have 4 dimensions'
+        image = pil_imread(imagefile['hyb_fov'][0])
+        if image.ndim == 3:
+            image = image[:, None, :]
+
     except (AssertionError, IndexError, RuntimeError) as e:
         print(e, type(e))
         return (

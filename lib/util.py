@@ -23,6 +23,7 @@ def pil_imread(
     fname,
     metadata=False,
     swapaxes=False,
+    ensure_4d=True,
     backup=tif.imread,
     **kwargs
 ):
@@ -38,7 +39,11 @@ def pil_imread(
         else:
             raise e
 
-    if swapaxes:
+    if ensure_4d:
+        # assumes 1 Z
+        imarr = imarr[:, None, :]
+
+    if swapaxes and imarr.ndim == 4:
         imarr = imarr.swapaxes(0, 1)
 
     if metadata and md:

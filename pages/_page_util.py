@@ -14,7 +14,7 @@ from copy import deepcopy
 from pathlib import PurePath, Path
 
 from lib.util import (
-    safe_imread,
+    pil_imread,
 )
 
 
@@ -68,7 +68,7 @@ class DotDetectionHelper(PageHelper):
         self.logger.info('Entering gen_image_figure')
     
         if len(imfile) > 0:
-            image = safe_imread(imfile[0])
+            image = pil_imread(imfile[0])
         else:
             return {}
     
@@ -347,7 +347,7 @@ class DotDetectionHelper(PageHelper):
         fig.update_layout(width=1000, height=1000)
     
         if align_im_file:
-            align_im = safe_imread(align_im_file, False, False)
+            align_im = pil_imread(align_im_file, False, False)
             self.logger.info(f'prepare_alignment_figure: read alignment image of shape '
                     f'{align_im.shape}')
     
@@ -414,7 +414,7 @@ class DatavisHelper(PageHelper):
             imtype = ''
 
         if imfile:
-            img = safe_imread(imfile[0])
+            img = pil_imread(imfile[0])
 
             self.logger.info('gen_figure_2d: read in 2d image')
 
