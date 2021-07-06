@@ -20,5 +20,4 @@ imagecodecs
 matplotlib
 jmespath~=0.10.0
 Pillow~=8.1.2
-yaml~=0.2.5
 python-dateutil~=2.8.1
