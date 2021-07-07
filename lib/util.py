@@ -39,7 +39,7 @@ def pil_imread(
         else:
             raise e
 
-    if ensure_4d:
+    if ensure_4d and imarr.ndim == 3:
         # assumes 1 Z
         imarr = imarr[:, None, :]
 
