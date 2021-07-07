@@ -79,12 +79,16 @@ class DotDetectionHelper(PageHelper):
     
         hyb = int(hyb)
         hyb_q = hyb
-        # 'z' column in locations.csv starts at 0
+        # 'z' column in locations.csv starts at 1
         z_slice = int(z_slice)
         z_slice_q = z_slice + 1
         # 'ch' column in locations.csv starts at 1
         channel = int(channel)
         channel_q = channel + 1
+
+        if image.shape[1] == 1:
+            z_slice = 0
+            z_slice_q = 0
     
         if z_slice >= 0:
             img_select = image[channel, z_slice]
