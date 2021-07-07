@@ -29,6 +29,9 @@ def pil_imread(
 ):
     md = None
 
+    import warnings
+    warnings.simplefilter('ignore', UserWarning)
+
     try:
         im = pil_imopen(fname)
         md = pil_getmetadata(im)
