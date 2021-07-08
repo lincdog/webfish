@@ -66,13 +66,17 @@ def _decoding_channel_process(arg, current):
 def _dotdetection_threshold_process(arg, current):
     cur_dd = current.get('dot detection', None)
 
-    if cur_dd is None:
-        current['dot detection'] = str(arg)
-
-        return current
-
-    elif cur_dd != 'matlab 3d':
+    if cur_dd != 'matlab 3d':
         current['threshold'] = str(arg)
+
+    return current
+
+
+def _dotdetection_radius_process(arg, current):
+    cur_dd = current.get('dot detection', None)
+
+    if cur_dd != 'matlab 3d':
+        current['dot radius'] = str(arg)
 
     return current
 
@@ -137,10 +141,11 @@ class SubmissionHelper(PageHelper):
 
         'sb-alignment-select': 'alignment',
 
-        'sb-dot detection-select': _dotdetection_threshold_process,
+        'sb-dot detection-select': 'dot detection',
         'sb-bg-subtraction': _checklist_process,
         'sb-strictness-select': 'strictness',
         'sb-threshold-select': _dotdetection_threshold_process,
+        'sb-dot-radius': _dotdetection_radius_process,
 
         'sb-segmentation-select': 'segmentation',
         'sb-segmentation-checklist': _checklist_process,

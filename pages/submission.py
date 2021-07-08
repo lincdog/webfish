@@ -166,6 +166,19 @@ clear_components = {
             ),
             dbc.FormText('Set a threshold of the LoG filter. Default is usually fine.')
         ]),
+    'sb-dot-radius':
+        dbc.FormGroup([
+            dbc.Label('Dot Radius', html_for='sb-dot-radius'),
+            dbc.Input(
+                id='sb-dot-radius',
+                type='number',
+                min=0.5,
+                max=10,
+                step=0.5,
+                value=1
+            ),
+            dbc.FormText('Set a dot_radius parameter for the blob_log dot detection. Default is 1.')
+        ]),
 
     # segmentation
     'sb-segmentation-select':
@@ -385,7 +398,8 @@ component_groups = {
     'dot detection': ['sb-dot detection-select',
                       'sb-bg-subtraction',
                       'sb-strictness-select',
-                      'sb-threshold-select'],
+                      'sb-threshold-select',
+                      'sb-dot-radius'],
 
     'segmentation': ['sb-segmentation-select',
                      'sb-segmentation-checklist',
