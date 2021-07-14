@@ -11,6 +11,7 @@ import atexit
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from argparse import ArgumentParser
+SLURM_JOB_ID = os.environ.get('SLURM_JOB_ID', None)
 
 """
 download_json_analyses.py
@@ -393,3 +394,15 @@ if __name__ == '__main__':
     main(10, args.allow_duplicates)
 
     lock.unlink(missing_ok=True)
+
+    if SLURM_JOB_ID:
+        try:
+            exval = os.system(f'scancel {SLURM_JOB_ID}')
+            if exval == 0 :
+                logger.info('Canceled srun job')
+            else:
+                raise OSError(f'Nonzero exist status {exval} from scancel')
+        except Exception as e:
+            logger.warning(f'Unable to cancel srun job: {e}')
+    else:
+        logger.info('No environment variable SLURM_JOB_ID, nothing to cancel.')

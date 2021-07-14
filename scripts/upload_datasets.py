@@ -11,7 +11,7 @@ WF_HOME = os.environ.get('WF_HOME', '/home/lombelet/cron/webfish_sandbox/webfish
 sys.path.append(WF_HOME)
 from lib.server import DataServer
 from lib.core import S3Connect
-
+SLURM_JOB_ID = os.environ.get('SLURM_JOB_ID', None)
 
 """
 upload_datasets.py
@@ -22,8 +22,8 @@ match any of the patterns given in the config file for Webfish ('consts.yml'),
 as well as optionally checking S3 to compare with this list. It then chooses files
 to upload to S3 on these conditions:
 
- - It will usually use os.stat() to compare the modification time of the found 
-    files with the TIMESTAMP file, which records when this script last ran, 
+ - It will usually use os.stat() to compare the modification time of the found
+    files with the TIMESTAMP file, which records when this script last ran,
     and only upload files modified since the last run of this script.
  - If --fresh is specified, all existing monitoring files are deleted before
     running the scans. Therefore, unless --use-s3-only is specified, ALL files
@@ -40,9 +40,9 @@ to upload to S3 on these conditions:
  - If --dryrun is specified, the file list determination will take place as above
     but nothing will actually be uploaded. Preupload functions (see below) will also
     not be run.
-    
+
 For any file keys specified in consts.yml that include preupload functions, the
-script runs them in parallel using 5 processes by default. Each time it runs, it 
+script runs them in parallel using 5 processes by default. Each time it runs, it
 attempts to run these functions on the files. It is up to the preupload functions to
 quickly return the existing filename if they have already run and the processed file
 exists in the preupload root.
@@ -204,3 +204,18 @@ if __name__ == '__main__':
     args = process_args()
     logger.info(f'upload_datasets: starting with arguments: {args}')
     main(args)
+
+    if SLURM_JOB_ID:
+        try:
+            exval = os.system(f'scancel {SLURM_JOB_ID}')
+            if exval == 0:
+                logger.info('Canceled srun job')
+            else:
+                raise OSError(f'Nonzero exit status {exval} from scancel')
+        except Exception as e:
+            logger.warning(f'Unable to cancel srun job: {e}')
+    else:
+        logger.info('No environment variable SLURM_JOB_ID '
+                    'set, nothing to cancel')
+
+
