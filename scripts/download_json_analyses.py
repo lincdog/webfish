@@ -397,7 +397,7 @@ if __name__ == '__main__':
 
     if SLURM_JOB_ID:
         try:
-            exval = os.system(f'scancel {SLURM_JOB_ID}')
+            exval = os.system(f'scancel -Q {SLURM_JOB_ID} >/dev/null 2>&1')
             if exval == 0 :
                 logger.info('Canceled srun job')
             else:
