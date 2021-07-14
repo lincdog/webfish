@@ -109,6 +109,7 @@ file_patterns:
       "MMStack_Pos{position}/Dot_Locations/Location_Checks/Map_of_XY_Locations.png"
     location_check_z:
       "MMStack_Pos{position}/Dot_Locations/Location_Checks/Dots_Across_Z_Slices.png"
+
     allpos_falsepositive_png:
       "All_Positions/False_Positive_Rate_Analysis/All_Normalized_False_Positives.png"
     allpos_falsepositive_txt:

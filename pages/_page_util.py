@@ -79,12 +79,16 @@ class DotDetectionHelper(PageHelper):
     
         hyb = int(hyb)
         hyb_q = hyb
-        # 'z' column in locations.csv starts at 0
+        # 'z' column in locations.csv starts at 1
         z_slice = int(z_slice)
-        z_slice_q = z_slice
+        z_slice_q = z_slice + 1
         # 'ch' column in locations.csv starts at 1
         channel = int(channel)
         channel_q = channel + 1
+
+        if image.shape[1] == 1:
+            z_slice = 0
+            z_slice_q = 0
     
         if z_slice >= 0:
             img_select = image[channel, z_slice]
@@ -587,6 +591,27 @@ class DatavisHelper(PageHelper):
         fig = go.Figure(data=figdata, layout=figlayout)
 
         self.logger.info('gen_figure_3d: returning figure')
+
+        return fig
+
+    def gen_figure_allpos(self, active):
+        from plotly.subplots import make_subplots
+
+        fig = make_subplots(rows=3, cols=2)
+
+        for i, (k, v) in enumerate(active.items()):
+            row = 1 + (i // 2)
+            col = 1 + (i % 2)
+
+            print(row, col)
+
+            if v:
+                fig.add_image(
+                    source=base64_image(v[0]),
+                    row=row,
+                    col=col,
+
+                )
 
         return fig
 
