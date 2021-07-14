@@ -4,7 +4,12 @@ import json
 import logging
 import jmespath
 import lib.preuploaders
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import (
+    ProcessPoolExecutor,
+    ThreadPoolExecutor,
+    as_completed,
+    TimeoutError
+)
 from collections import defaultdict
 from time import time
 from pprint import pformat
@@ -708,34 +713,59 @@ class DataServer(FilePatterns):
         if dryrun:
             return file_df, 0
 
-        server_logger.info(f'upload_to_s3: commencing uploading {total} files')
+        max_workers = 2*nthreads
+        server_logger.info(f'upload_to_s3: commencing uploading {total} '
+                           f'files with {max_workers} threads')
 
-        for row in file_df.itertuples():
-            if progress and p % progress == 0:
-                server_logger.info(f'upload_to_s3: {p} files done out of {total}')
-            p += 1
+        futures = []
+        with ThreadPoolExecutor(max_workers=max_workers) as exe:
 
-            s3_type, root, dataset, key_prefix, pattern = self.key_info(row.source_key)
-
-            if row.source_key in self.has_preupload:
-                root = Path(self.preupload_root)
-
-            keyname = Path(key_prefix, row.filename)
-            filename = Path(root, row.filename)
-
-            try:
-                self.client.client.upload_file(
-                    str(filename),
-                    Bucket=self.bucket_name,
-                    Key=str(keyname)
+            for row in file_df.itertuples():
+                futures.append(
+                    exe.submit(self.upload_one_file, row)
                 )
 
-                self.pending.drop(index=row.Index, inplace=True)
-                self.s3_keys[key_prefix].append(
-                  self._preupload_revert(row.filename))
+            for fut in as_completed(futures):
+                try:
+                    ind2drop, key_prefix, filename, err = fut.result(1)
+                except TimeoutError:
+                    ind2drop, key_prefix, filename, err = None, None, None, TimeoutError
 
-            except Exception as ex:
-                server_logger.warning(f'problem uploading file {row.filename}: {ex}')
+                if err or not all((ind2drop is not None, key_prefix, filename)):
+                    server_logger.warning(f'problem uploading file {filename}: {err}')
+                else:
+                    p += 1
+
+                    self.pending.drop(index=ind2drop, inplace=True)
+                    self.s3_keys[key_prefix].append(
+                        self._preupload_revert(filename))
+
+                    if progress and p % progress == 0:
+                        server_logger.info(f'upload_to_s3: {p} files done out of {total}.')
+                        server_logger.info(f'upload_to_s3: Latest file uploaded: {filename}')
 
         return self.pending, p
 
+    def upload_one_file(
+        self,
+        row,
+    ):
+        s3_type, root, dataset, key_prefix, pattern = self.key_info(row.source_key)
+
+        if row.source_key in self.has_preupload:
+            root = Path(self.preupload_root)
+
+        keyname = Path(key_prefix, row.filename)
+        filename = Path(root, row.filename)
+
+        try:
+            self.client.client.upload_file(
+                str(filename),
+                Bucket=self.bucket_name,
+                Key=str(keyname)
+            )
+
+            return row.Index, key_prefix, self._preupload_revert(row.filename), None
+
+        except Exception as ex:
+            return None, None, row.filename, ex
