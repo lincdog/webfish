@@ -8,9 +8,7 @@ import boto3
 import botocore.exceptions as boto3_exc
 import jmespath
 
-from lib.util import process_file_entries, process_file_locations, fmt2regex
-import lib.generators as generators
-import lib.preuploaders as preuploaders
+from lib.util import process_file_entries, process_file_locations
 
 
 class Page:

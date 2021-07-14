@@ -89,15 +89,30 @@ def update_figure(
     logger.info('update_figure: requesting mesh and dots files')
 
     info = None
+    active = {}
 
-    active = data_client.request({
-        'user': user,
-        'dataset': dataset,
-        'analysis': analysis,
-        'position': pos
-    }, fields='dots')
+    if vis_mode == 'all':
+        active |= data_client.request({
+            'user': user,
+            'dataset': dataset,
+            'analysis': analysis
+        }, fields=[
+            'allpos_falsepositive_png',
+            'allpos_genecorr_clustered',
+            'allpos_genecorr_unclustered',
+            'allpos_onoff_plot',
+            'allpos_percentagedots_png',
+            'allpos_genespercell_png'
+        ])
+    else:
+        active |= data_client.request({
+            'user': user,
+            'dataset': dataset,
+            'analysis': analysis,
+            'position': pos
+        }, fields='dots')
 
-    logger.info('update_figure: got mesh and dots files')
+        logger.info('update_figure: got dots file')
 
     config = {}
 
@@ -124,7 +139,7 @@ def update_figure(
             pixel_size
         )
 
-    else:
+    elif vis_mode == '2d':
         source_2d_request = {
             'user': user,
             'dataset': dataset,
@@ -159,6 +174,13 @@ def update_figure(
                     dcc.Graph(id='dv-fig')]
 
         fig = helper.gen_figure_2d(selected_genes, active, color_option, channel)
+
+    elif vis_mode == 'all':
+        logger.info(f'Generating all position analytics figure')
+
+        current_layout = None
+
+        fig = helper.gen_figure_allpos(active)
 
     if current_layout:
         if 'scene.camera' in current_layout:
@@ -408,7 +430,8 @@ layout = [
                         id='dv-vis-mode',
                         options=[
                             {'label': '3D (one position)', 'value': '3d'},
-                            {'label': '2D (multi position)', 'value': '2d'}
+                            {'label': '2D (multi position)', 'value': '2d'},
+                            {'label': 'All position analytics', 'value': 'all'}
                         ],
                         value='2d',
                         inline=True
