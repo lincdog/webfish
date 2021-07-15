@@ -395,14 +395,3 @@ if __name__ == '__main__':
 
     lock.unlink(missing_ok=True)
 
-    if SLURM_JOB_ID:
-        try:
-            exval = os.system(f'scancel -Q {SLURM_JOB_ID} >/dev/null 2>&1')
-            if exval == 0 :
-                logger.info('Canceled srun job')
-            else:
-                raise OSError(f'Nonzero exist status {exval} from scancel')
-        except Exception as e:
-            logger.warning(f'Unable to cancel srun job: {e}')
-    else:
-        logger.info('No environment variable SLURM_JOB_ID, nothing to cancel.')

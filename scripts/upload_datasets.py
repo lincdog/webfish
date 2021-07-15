@@ -205,17 +205,3 @@ if __name__ == '__main__':
     logger.info(f'upload_datasets: starting with arguments: {args}')
     main(args)
 
-    if SLURM_JOB_ID:
-        try:
-            exval = os.system(f'scancel -Q {SLURM_JOB_ID} >/dev/null 2>&1')
-            if exval == 0:
-                logger.info('Canceled srun job')
-            else:
-                raise OSError(f'Nonzero exit status {exval} from scancel')
-        except Exception as e:
-            logger.warning(f'Unable to cancel srun job: {e}')
-    else:
-        logger.info('No environment variable SLURM_JOB_ID '
-                    'set, nothing to cancel')
-
-

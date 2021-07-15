@@ -5,10 +5,11 @@ PATH=/home/lombelet/miniconda3/bin:/usr/bin:/usr/sbin:/central/slurm/install/cur
 CRON_HOME="/home/lombelet/cron"
 WF_HOME="/home/lombelet/cron/webfish"
 
-SRUN_RUN="srun --mem 8G -t 01:30:00 -n 1 -N 1 -c 6"
-#SRUN_RUN=""
+SLURM_RUN="salloc -t 02:30:00 -n 1 -N 1"
+HI_RES="--mem 16G -c 6"
+LO_RES="--mem 8G -c 2"
 
-*/5 * * * *  $SRUN_RUN ${CRON_HOME}/cron/bin/python ${WF_HOME}/scripts/upload_datasets.py >>${CRON_HOME}/cron.log 2>&1 
-2  */1 * * * $SRUN_RUN ${CRON_HOME}/cron/bin/python ${WF_HOME}/scripts/upload_datasets.py --fresh --use-s3-only --check-s3 >>${CRON_HOME}/cron.log 2>&1
+*/5 * * * *  $SLURM_RUN $HI_RES ${CRON_HOME}/cron/bin/python ${WF_HOME}/scripts/upload_datasets.py >>${CRON_HOME}/cron.log 2>&1 
+2  */1 * * * $SLURM_RUN $HI_RES ${CRON_HOME}/cron/bin/python ${WF_HOME}/scripts/upload_datasets.py --fresh --use-s3-only --check-s3 >>${CRON_HOME}/cron.log 2>&1
 
-* * * * * ${SRUN_RUN} ${WF_HOME}/scripts/json_analyses_and_logging.sh 
+* * * * * $SLURM_RUN $LO_RES ${WF_HOME}/scripts/json_analyses_and_logging.sh 
