@@ -5,7 +5,7 @@ PATH=/home/lombelet/miniconda3/bin:/usr/bin:/usr/sbin:/central/slurm/install/cur
 CRON_HOME="/home/lombelet/cron"
 WF_HOME="/home/lombelet/cron/webfish"
 
-SLURM_RUN="salloc -t 02:30:00 -n 1 -N 1"
+SLURM_RUN="salloc --quiet -t 02:30:00 -n 1 -N 1"
 HI_RES="--mem 16G -c 6"
 LO_RES="--mem 8G -c 2"
 
