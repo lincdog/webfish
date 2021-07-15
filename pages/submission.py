@@ -328,16 +328,18 @@ clear_components = {
                  'value': 'only decode dots in cells'},
                 {'label': 'Run all post-analyses',
                  'value': 'all post analyses'},
-                {'label': 'Segment nuclei',
+                {'label': 'Nuclear segmentation '
+                          '(uses Labeled_Images directory if present)',
                  'value': 'nuclei labeled image'},
-                {'label': 'Segment cytoplasm',
+                {'label': 'Cytoplasm segmentation '
+                          '(uses Labeled_Images directory if present)',
                  'value': 'cyto labeled image'},
                 {'label': 'Match nuclear and cytoplasm segmentation',
                  'value': 'nuclei cyto match'}
             ],
             value=['only decode dots in cells',
                    'all post analyses',
-                   'nuclei labeled image'],
+                   ],
             switch=True
         ),
     'sb-segmentation-label':

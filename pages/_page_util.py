@@ -518,7 +518,7 @@ class DatavisHelper(PageHelper):
 
             self.logger.info('gen_figure_3d: read and queried dots DF')
 
-            pz, py, p_x = dots_filt[['z', 'y', 'x']].values.T
+            pz, p_x, py = dots_filt[['z', 'y', 'x']].values.T
 
             color = dots_filt['geneColor']
             if color_option == 'fake':
@@ -655,7 +655,7 @@ def populate_mesh(cell_mesh):
     if cell_mesh is None:
         return None, None, None, None, None, None
 
-    z, x, y = np.array(cell_mesh['verts']).T
+    z, y, x = np.array(cell_mesh['verts']).T
     i, j, k = np.array(cell_mesh['faces']).T
 
     return x, y, z, i, j, k

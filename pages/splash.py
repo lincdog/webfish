@@ -49,7 +49,7 @@ layout = [
             dbc.CardBody([
                 html.Ul([
                     html.Li(dcc.Markdown(
-                        '**On HPC:** Every **10 minutes**, a script '
+                        '**On HPC:** Every **5 minutes**, a script '
                         'runs to search for any new or modified files that are '
                         'displayed by the webapp. When these are found, they are '
                         'preprocessed and then uploaded to a cloud storage respository. '
@@ -67,6 +67,12 @@ layout = [
                         'only downloads data files as needed, so when you choose to visualize '
                         'a dataset for the first time, there is some delay as it downloads the files '
                         'from the cloud storage.'
+                    )),
+                    html.Li(dcc.Markdown(
+                        '**When you submit a new analysis**, the generated JSON file '
+                        'gets uploaded to a cloud storage location. **Every minute**, '
+                        'a script on the HPC checks this location for new JSON files and '
+                        'downloads, validates, and submits them to the pipeline.'
                     ))
                 ])
             ])
