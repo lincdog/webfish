@@ -168,6 +168,11 @@ class SubmissionHelper(PageHelper):
 
         'sb-alignment-select': 'alignment',
 
+        'sb-preprocessing-checklist': _checklist_process,
+        'sb-tophat-kernel-size': 'tophat kernel size',
+        'sb-rollingball-kernel-size': 'rolling ball kernel size',
+        'sb-blur-kernel-size': 'blur kernel size',
+
         'sb-dot detection-select': 'dot detection',
         'sb-bg-subtraction': _checklist_process,
         'sb-strictness-select': 'strictness',

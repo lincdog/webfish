@@ -22,6 +22,7 @@ all_datasets = get_all_datasets()
 
 pipeline_stages = [
     'alignment',
+    'preprocessing',
     'dot detection',
     'segmentation',
     'decoding',
@@ -29,6 +30,7 @@ pipeline_stages = [
 ]
 stage_ids = [
     'alignment',
+    'preprocessing',
     'dot detection',
     'segmentation',
     'decoding',
@@ -36,6 +38,7 @@ stage_ids = [
 ]
 stage_headers = [
     'Alignment Options',
+    'Preprocessing Options',
     'Dot Detection Options',
     'Segmentation Options',
     'Decoding Options',
@@ -83,14 +86,81 @@ clear_components = {
                 id='sb-stage-select',
                 options=[
                     {'label': 'Alignment', 'value': 'alignment'},
+                    {'label': 'Preprocessing', 'value': 'preprocessing'},
                     {'label': 'Dot Detection', 'value': 'dot detection'},
                     {'label': 'Segmentation', 'value': 'segmentation'},
                     {'label': 'Decoding', 'value': 'decoding'}
                 ],
-                value=['alignment', 'dot detection', 'segmentation', 'decoding'],
+                value=['alignment', 'preprocessing', 'dot detection', 'segmentation', 'decoding'],
                 switch=True
             ),
             dbc.FormText('Select which stage(s) of the pipeline you want to run. ')
+        ]),
+
+    'sb-preprocessing-checklist':
+        dbc.Checklist(
+            id='sb-preprocessing-checklist',
+            options=[
+                {'label': 'Tophat transform (removes large, bright objects)',
+                 'value': 'tophat preprocessing'},
+                {'label': 'Rolling ball background subtraction',
+                 'value': 'rolling ball preprocessing'},
+                {'label': 'Apply slight blur (remove hot pixels)',
+                 'value': 'blur preprocessing'},
+            ],
+            value=['tophat preprocessing',
+                   'rolling ball preprocessing',
+                   'blur preprocessing'],
+            switch=True
+        ),
+    'sb-tophat-kernel-size':
+        dbc.FormGroup([
+            dbc.Label('Tophat kernel size', html_for='sb-tophat-kernel-size'),
+            dbc.Input(
+                id='sb-tophat-kernel-size',
+                type='number',
+                min=0,
+                max=200,
+                step=1,
+                value=10,
+                disabled=False
+            ),
+            dbc.FormText('Sets the tophat kernel size in pixels. This should be '
+                         'between the expected dot radius and the expected radius of '
+                         'undesirable large blobs such as autofluorescence.')
+        ]),
+    'sb-rollingball-kernel-size':
+        dbc.FormGroup([
+            dbc.Label('Rolling ball kernel size', html_for='sb-rollingball-kernel-size'),
+            dbc.Input(
+                id='sb-rollingball-kernel-size',
+                type='number',
+                min=1,
+                max=2000,
+                step=1,
+                value=1000,
+                disabled=False
+            ),
+            dbc.FormText('Sets the rolling ball kernel radius. A smaller value '
+                         'generally results in higher background estimated at each pixel'
+                         ' and more variance of the estimated background.')
+        ]),
+    'sb-blur-kernel-size':
+        dbc.FormGroup([
+            dbc.Label('Blur kernel size', html_for='sb-blur-kernel-size'),
+            dbc.Input(
+                id='sb-blur-kernel-size',
+                type='number',
+                min=0,
+                max=20,
+                step=1,
+                value=3,
+                disabled=False
+            ),
+            dbc.FormText('Sets the blur kernel radius in pixels. In general, '
+                         'features smaller than this radius will be removed or '
+                         'attenuated by the blur. So it should be just below the '
+                         'expected real dot size.')
         ]),
 
     # alignment
@@ -451,6 +521,11 @@ component_groups = {
 
     'alignment': ['sb-alignment-select'],
 
+    'preprocessing': ['sb-preprocessing-checklist',
+                      'sb-tophat-kernel-size',
+                      'sb-rollingball-kernel-size',
+                      'sb-blur-kernel-size'],
+
     'dot detection': ['sb-dot detection-select',
                       'sb-bg-subtraction',
                       'sb-strictness-select',
@@ -702,7 +777,7 @@ def upload_generated_json(
 )
 def reset_to_defaults(n_clicks):
     if n_clicks:
-        return col1_clear, col2_clear
+        return col1_clear, col2_clear, col3_clear
     else:
         raise PreventUpdate
 
@@ -721,6 +796,14 @@ col1_clear = [
     ),
     html.Hr(),
     html.Details(
+        [html.Summary('Preprocessing options')] +
+        cm.component_group('preprocessing', tolist=True),
+        open=True, id='sb-preprocessing-wrapper'
+    )
+]
+
+col2_clear = [
+    html.Details(
         [html.Summary('Dot detection options')] +
         cm.component_group('dot detection', tolist=True),
         open=True, id='sb-dot detection-wrapper'
@@ -731,7 +814,7 @@ col1_clear = [
     )
 ]
 
-col2_clear = [
+col3_clear = [
     html.Details(
         [html.Summary('Segmentation Options')] +
         cm.component_group('segmentation', tolist=True),
@@ -762,7 +845,8 @@ col2_clear = [
 
 layout = [
     dbc.Col(col1_clear, id='sb-col-1', width=4),
-    dbc.Col(col2_clear, id='sb-col-2', width=4)
+    dbc.Col(col2_clear, id='sb-col-2', width=4),
+    dbc.Col(col3_clear, id='sb-col-3', width=4)
 ]
 
 
