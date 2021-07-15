@@ -178,7 +178,8 @@ layout = [
                             )),
                             html.Li(dcc.Markdown(
                                 '(optional) A folder named **`Labeled_Images`** containing '
-                                '*existing* segmentation masks produced off-line.'
+                                '*existing* segmentation masks produced off-line. The axis order of '
+                                'these when opened in Python should be **`(Z, X, Y)`**.'
                             )),
                             html.Li(dcc.Markdown(
                                 'A positions file from the microscope, '
