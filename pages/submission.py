@@ -166,18 +166,74 @@ clear_components = {
             ),
             dbc.FormText('Set a threshold of the LoG filter. Default is usually fine.')
         ]),
-    'sb-dot-radius':
+    'sb-minsigma-dotdetection':
         dbc.FormGroup([
-            dbc.Label('Dot Radius', html_for='sb-dot-radius'),
+            dbc.Label('Minimum sigma for Python dot detection',
+                      html_for='sb-minsigma-dotdetection'),
             dbc.Input(
-                id='sb-dot-radius',
+                id='sb-minsigma-dotdetection',
                 type='number',
-                min=0.5,
-                max=10,
-                step=0.5,
+                min=0,
+                max=20,
+                step=0.1,
                 value=1
             ),
-            dbc.FormText('Set a dot_radius parameter for the blob_log dot detection. Default is 1.')
+            dbc.FormText(dcc.Markdown(
+                'Sets the `min_sigma` parameter for [`skimage.feature.blob_log`]'
+                '(https://scikit-image.org/docs/dev/api/skimage.feature.html#skimage.feature.blob_log), '
+                'in pixels. Defines the rough minimum radius of detected dots'))
+        ]),
+    'sb-maxsigma-dotdetection':
+        dbc.FormGroup([
+            dbc.Label('Maximum sigma for Python dot detection',
+                      html_for='sb-maxsigma-dotdetection'),
+            dbc.Input(
+                id='sb-maxsigma-dotdetection',
+                type='number',
+                min=0,
+                max=20,
+                step=0.1,
+                value=2
+            ),
+            dbc.FormText(dcc.Markdown(
+                'Sets the `max_sigma` parameter for [`skimage.feature.blob_log`]'
+                '(https://scikit-image.org/docs/dev/api/skimage.feature.html#skimage.feature.blob_log), '
+                'in pixels. Defines the rough maximum radius of detected dots'))
+        ]),
+    'sb-numsigma-dotdetection':
+        dbc.FormGroup([
+            dbc.Label('Number of sigma steps for Python dot detection',
+                      html_for='sb-numsigma-dotdetection'),
+            dbc.Input(
+                id='sb-numsigma-dotdetection',
+                type='number',
+                min=0,
+                max=20,
+                step=1,
+                value=2
+            ),
+            dbc.FormText(dcc.Markdown(
+                'Sets the `num_sigma` parameter for [`skimage.feature.blob_log`]'
+                '(https://scikit-image.org/docs/dev/api/skimage.feature.html#skimage.feature.blob_log), '
+                'the number of sigma steps between `min_sigma` and `max_sigma` that the '
+                'function uses for detecting dots.'))
+        ]),
+    'sb-overlap-dotdetection':
+        dbc.FormGroup([
+            dbc.Label('Overlap parameter for Python dot detection',
+                      html_for='sb-overlap-dotdetection'),
+            dbc.Input(
+                id='sb-overlap-dotdetection',
+                type='number',
+                min=0,
+                max=1,
+                step=0.01,
+                value=0.5
+            ),
+            dbc.FormText(dcc.Markdown(
+                'Sets the `overlap` parameter for [`skimage.feature.blob_log`]'
+                '(https://scikit-image.org/docs/dev/api/skimage.feature.html#skimage.feature.blob_log), '
+                ' from 0-1. Defines maximum allowed overlap between two candidate dots.'))
         ]),
 
     # segmentation
@@ -398,8 +454,12 @@ component_groups = {
     'dot detection': ['sb-dot detection-select',
                       'sb-bg-subtraction',
                       'sb-strictness-select',
-                      'sb-threshold-select',
-                      'sb-dot-radius'],
+                      'sb-threshold-select'],
+
+    'dot detection-python': ['sb-minsigma-dotdetection',
+                             'sb-maxsigma-dotdetection',
+                             'sb-numsigma-dotdetection',
+                             'sb-overlap-dotdetection'],
 
     'segmentation': ['sb-segmentation-select',
                      'sb-segmentation-checklist',
@@ -665,6 +725,10 @@ col1_clear = [
         cm.component_group('dot detection', tolist=True),
         open=True, id='sb-dot detection-wrapper'
     ),
+    html.Details(
+        [html.Summary('Dot detection options (Python dot detection only)')] +
+        cm.component_group('dot detection-python', tolist=True)
+    )
 ]
 
 col2_clear = [

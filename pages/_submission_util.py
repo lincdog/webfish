@@ -72,11 +72,38 @@ def _dotdetection_threshold_process(arg, current):
     return current
 
 
-def _dotdetection_radius_process(arg, current):
+def _dotdetection_minsigma_process(arg, current):
     cur_dd = current.get('dot detection', None)
 
-    if cur_dd != 'matlab 3d':
-        current['dot radius'] = str(arg)
+    if cur_dd == 'biggest jump 3d':
+        current['min sigma dot detection'] = str(arg)
+
+    return current
+
+
+def _dotdetection_maxsigma_process(arg, current):
+    cur_dd = current.get('dot detection', None)
+
+    if cur_dd == 'biggest jump 3d':
+        current['max sigma dot detection'] = str(arg)
+
+    return current
+
+
+def _dotdetection_numsigma_process(arg, current):
+    cur_dd = current.get('dot detection', None)
+
+    if cur_dd == 'biggest jump 3d':
+        current['num sigma dot detection'] = str(arg)
+
+    return current
+
+
+def _dotdetection_overlap_process(arg, current):
+    cur_dd = current.get('dot detection', None)
+
+    if cur_dd == 'biggest jump 3d':
+        current['overlap'] = str(arg)
 
     return current
 
@@ -145,7 +172,11 @@ class SubmissionHelper(PageHelper):
         'sb-bg-subtraction': _checklist_process,
         'sb-strictness-select': 'strictness',
         'sb-threshold-select': _dotdetection_threshold_process,
-        'sb-dot-radius': _dotdetection_radius_process,
+
+        'sb-minsigma-dotdetection': _dotdetection_minsigma_process,
+        'sb-maxsigma-dotdetection': _dotdetection_maxsigma_process,
+        'sb-numsigma-dotdetection': _dotdetection_numsigma_process,
+        'sb-overlap-dotdetection': _dotdetection_overlap_process,
 
         'sb-segmentation-select': 'segmentation',
         'sb-segmentation-checklist': _checklist_process,
@@ -199,7 +230,16 @@ class SubmissionHelper(PageHelper):
         selected_stages.append('basic-metadata')
 
         if 'segmentation' in selected_stages:
-            selected_stages.append('segmentation-advanced')
+            selected_stages.insert(
+                selected_stages.index('segmentation')+1,
+                'segmentation-advanced'
+            )
+
+        if 'dot detection' in selected_stages:
+            selected_stages.insert(
+                selected_stages.index('dot detection')+1,
+                'dot detection-python'
+            )
 
         selected_form_ids = ['user-select', 'dataset-select']
         for s in selected_stages:
