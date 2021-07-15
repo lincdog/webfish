@@ -1,6 +1,7 @@
 from pathlib import Path
 import pandas as pd
 import json
+import gc
 import logging
 import jmespath
 import lib.preuploaders
@@ -22,6 +23,8 @@ from lib.util import (
     empty_or_false,
     process_file_entries
 )
+
+gc.enable()
 
 server_logger = logging.getLogger(__name__)
 # Suppress tifffile warnings
@@ -336,6 +339,8 @@ class DataServer(FilePatterns):
         self.datasets = pd.concat(set_dfs).reset_index(
             drop=True).drop_duplicates(subset=self.all_fields, ignore_index=True)
 
+        gc.collect()
+
         return self.datafiles, self.datasets
 
     @staticmethod
@@ -498,6 +503,8 @@ class DataServer(FilePatterns):
                 Key=str(page_file_table)
             )
 
+        gc.collect()
+
     def _preupload_newname(
         self,
         oldname,
@@ -563,6 +570,7 @@ class DataServer(FilePatterns):
             in_format = str(Path(data_root, self.input_patterns[key]))
             out_format = self._preupload_newname(in_format, key)
 
+            gc.collect()
             with ProcessPoolExecutor(max_workers=nthreads) as exe:
                 futures = {}
 
@@ -614,6 +622,7 @@ class DataServer(FilePatterns):
             keep='last', inplace=True, ignore_index=True
         )
 
+        gc.collect()
         self.have_run_preuploads = True
 
         return output_df, errors
@@ -718,6 +727,8 @@ class DataServer(FilePatterns):
                            f'files with {max_workers} threads')
 
         futures = []
+        gc.collect()
+
         with ThreadPoolExecutor(max_workers=max_workers) as exe:
 
             for row in file_df.itertuples():
