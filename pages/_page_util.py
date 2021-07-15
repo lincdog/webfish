@@ -462,7 +462,7 @@ class DatavisHelper(PageHelper):
             fig.add_trace(
                 go.Scattergl(
                     name='dots',
-                    x=py, y=p_x,
+                    x=p_x, y=py,
                     mode='markers',
                     marker=dict(
                         size=5,
