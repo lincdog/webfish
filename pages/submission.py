@@ -222,9 +222,26 @@ clear_components = {
             dbc.FormText('Higher strictness sets a '
                          'higher minimum intensity threshold for dot detection.')
         ]),
+
+    'sb-remove-bright-dots':
+        dbc.FormGroup([
+            dbc.Checklist(
+                id='sb-remove-bright-dots',
+                options=[
+                   {'label': 'Keep abnormally bright dots',
+                    'value': 'keep'}
+                ],
+                value=['keep'],
+                switch=True
+                ),
+            dbc.FormText('Select to preserve dots which are much brighter than '
+                         'the other dots in the image. Deselect to throw these '
+                         'out.')
+        ]),
+
     'sb-threshold-select':
         dbc.FormGroup([
-            dbc.Label('Laplacian Threshold (advanced)', html_for='sb-threshold-select'),
+            dbc.Label('Laplacian Threshold', html_for='sb-threshold-select'),
             dbc.Input(
                 id='sb-threshold-select',
                 type='number',
@@ -530,10 +547,11 @@ component_groups = {
 
     'dot detection': ['sb-dot detection-select',
                       'sb-bg-subtraction',
-                      'sb-strictness-select',
-                      'sb-threshold-select'],
+                      'sb-strictness-select'],
 
-    'dot detection-python': ['sb-minsigma-dotdetection',
+    'dot detection-python': ['sb-remove-bright-dots',
+                             'sb-threshold-select',
+                             'sb-minsigma-dotdetection',
                              'sb-maxsigma-dotdetection',
                              'sb-numsigma-dotdetection',
                              'sb-overlap-dotdetection'],

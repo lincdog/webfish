@@ -63,6 +63,18 @@ def _decoding_channel_process(arg, current):
         return current
 
 
+def _dotdetection_bright_dots(arg, current):
+    cur_dd = current.get('dot detection', None)
+
+    if cur_dd == 'biggest jump 3d':
+        if 'keep' in arg:
+            current['remove very bright dots'] = 'False'
+        else:
+            current['remove very bright dots'] = 'True'
+
+    return current
+
+
 def _dotdetection_threshold_process(arg, current):
     cur_dd = current.get('dot detection', None)
 
@@ -176,8 +188,9 @@ class SubmissionHelper(PageHelper):
         'sb-dot detection-select': 'dot detection',
         'sb-bg-subtraction': _checklist_process,
         'sb-strictness-select': 'strictness',
-        'sb-threshold-select': _dotdetection_threshold_process,
 
+        'sb-remove-bright-dots': _dotdetection_bright_dots,
+        'sb-threshold-select': _dotdetection_threshold_process,
         'sb-minsigma-dotdetection': _dotdetection_minsigma_process,
         'sb-maxsigma-dotdetection': _dotdetection_maxsigma_process,
         'sb-numsigma-dotdetection': _dotdetection_numsigma_process,
