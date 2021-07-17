@@ -349,7 +349,7 @@ clear_components = {
                           '(uses Labeled_Images directory if present)',
                  'value': 'nuclei labeled image'},
                 {'label': 'Cytoplasm segmentation '
-                          '(uses Labeled_Images directory if present)',
+                          '(uses Labeled_Images_Cytoplasm directory if present)',
                  'value': 'cyto labeled image'},
                 {'label': 'Match nuclear and cytoplasm segmentation',
                  'value': 'nuclei cyto match'}
