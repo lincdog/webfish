@@ -123,6 +123,11 @@ class DotDetectionHelper(PageHelper):
     
             if strictness and 'strictness' in dots_select.columns:
                 dots_query += ' and strictness >= @strictness'
+
+            minz, maxz = dots_select['z'].min(), dots_select['z'].max()
+
+            if minz == 0:
+                z_slice_q -= 1
     
             dots_select = dots_select.query(dots_query)
     
@@ -725,7 +730,8 @@ def aggregate_dot_dfs(locations_csvs, hyb, position, take_column='int'):
         dots_count['Channel'] = dots_count['Channel'] - 1
 
         if 'Z slice' in dots_count.columns:
-            dots_count['Z slice'] = dots_count['Z slice'] - 1
+            if dots_count['Z slice'].min() == 1:
+                dots_count['Z slice'] -= 1
 
         dots_count['Position'] = curpos
 
