@@ -135,7 +135,7 @@ def search_and_upload(
         do_pending=True,
         run_preuploads=False,
         do_s3_diff=True,
-        use_s3_only=False,
+        use_s3_only=use_s3_only,
         dryrun=True
     )
 
