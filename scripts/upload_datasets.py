@@ -39,7 +39,15 @@ to upload to S3 on these conditions:
     consistent with what is *actually* available on the S3.
  - If --dryrun is specified, the file list determination will take place as above
     but nothing will actually be uploaded. Preupload functions (see below) will also
-    not be run.
+    not be run. The results of the file determination will be written to a CSV file named
+    <PID of process>-files-to-upload.csv.
+ - The --max-uploads option sets an upper bound on the number of files that we will 
+   attempt to upload in one go. This helps prevent cases where the monitoring files are 
+   deleted but not rewritten due to an error, or (possible) when the HPC filesystem daemons
+   update the mtime of all files (this seems to happen occasionally and results in this
+   program thinking it needs to upload **all** files again). If the number of files to upload
+   exceeds the maximum, the --use-s3-only option is set to True so that only the S3 difference
+   will be uploaded. 
 
 For any file keys specified in consts.yml that include preupload functions, the
 script runs them in parallel using 5 processes by default. Each time it runs, it
@@ -71,6 +79,12 @@ def process_args():
                              'but missing from s3 - ignore modification times,'
                              ' new input patterns, and any current pending files')
 
+    parser.add_argument('--max-uploads', action='store', type=int,
+                        help='Sets an upper bound on the number of files that will '
+                             'be preprocessed and uploaded in one sitting. If the '
+                             'number exceeds this, --use-s3-only is set to True and only'
+                             'the files present locally but not on S3 are uploaded.')
+
     return parser.parse_args()
 
 
@@ -92,7 +106,14 @@ def init_server():
     return dm
 
 
-def search_and_upload(dm, mtime, use_s3_only=False, check_s3=False, dryrun=False):
+def search_and_upload(
+        dm,
+        mtime,
+        use_s3_only=False,
+        check_s3=False,
+        dryrun=False,
+        max_uploads=8000,
+):
     """
     search_and_upload
     -----------------
@@ -109,6 +130,31 @@ def search_and_upload(dm, mtime, use_s3_only=False, check_s3=False, dryrun=False
     # check_s3 is True, in which case list all S3 keys to update the monitoring files.
     dm.check_s3_contents(use_local=(not check_s3))
 
+    dryrun_files, _ = dm.upload_to_s3(
+        since=mtime,
+        do_pending=True,
+        run_preuploads=False,
+        do_s3_diff=True,
+        use_s3_only=False,
+        dryrun=True
+    )
+
+    if len(dryrun_files) > max_uploads:
+        logger.warning(f'Found {len(dryrun_files)} files to process and upload, '
+                       f'more than the specified --max-uploads of {max_uploads}. '
+                       f'Defaulting to S3 key difference only.')
+        use_s3_only = True
+
+    if dryrun:
+        dryrun_filename = f'{os.getpid()}-files-to-upload.csv'
+        dryrun_files.to_csv(dryrun_filename, index=False)
+        logger.info(f'Dry run specified, contents of file_df written to {dryrun_filename}')
+
+        results.update(dict(pending_count=len(dryrun_files),
+                            uploaded_count=0))
+
+        return results
+
     pending, uploaded = dm.upload_to_s3(
         since=mtime,
         do_pending=True,
@@ -116,7 +162,7 @@ def search_and_upload(dm, mtime, use_s3_only=False, check_s3=False, dryrun=False
         do_s3_diff=True,
         use_s3_only=use_s3_only,
         progress=100,
-        dryrun=dryrun
+        dryrun=False
     )
 
     results.update(dict(pending_count=len(pending),
@@ -168,6 +214,7 @@ def main(args):
         use_s3_only=args.use_s3_only,
         check_s3=args.check_s3,
         dryrun=args.dryrun,
+        max_uploads=args.max_uploads
     )
 
     logger.info(f'Results: {results}')
