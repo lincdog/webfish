@@ -101,18 +101,26 @@ clear_components = {
         dbc.Checklist(
             id='sb-preprocessing-checklist',
             options=[
-                {'label': 'Tophat transform (removes large, bright objects)',
+                {'label': 'Tophat transform before BG subtract',
+                 'value': 'tophat raw data kernel size'},
+                {'label': 'Dilate background image before subtraction',
+                 'value': 'dilate background kernel'},
+                {'label': 'Run background subtraction (with final_background image)',
+                 'value': 'background subtraction'},
+                {'label': 'Tophat transform after BG subtract (removes large, bright objects)',
                  'value': 'tophat preprocessing'},
                 {'label': 'Rolling ball background subtraction',
                  'value': 'rolling ball preprocessing'},
                 {'label': 'Apply slight blur (remove hot pixels)',
                  'value': 'blur preprocessing'},
             ],
-            value=['tophat preprocessing',
+            value=['background subtraction',
+                   'tophat preprocessing',
                    'rolling ball preprocessing',
                    'blur preprocessing'],
             switch=True
         ),
+
     'sb-tophat-kernel-size':
         dbc.FormGroup([
             dbc.Label('Tophat kernel size', html_for='sb-tophat-kernel-size'),
@@ -196,18 +204,7 @@ clear_components = {
                 disabled=False
             ),
         ]),
-    'sb-bg-subtraction':
-        dbc.FormGroup([
-           dbc.Checklist(
-                id='sb-bg-subtraction',
-                options=[
-                    {'label': 'Run background subtraction',
-                     'value': 'background subtraction'},
-                ],
-                value=['background subtraction'],
-                switch=True
-            ),
-        ]),
+
     'sb-strictness-select':
         dbc.FormGroup([
             dbc.Label('Strictness parameter', html_for='sb-strictness-select'),
@@ -546,7 +543,6 @@ component_groups = {
                       'sb-blur-kernel-size'],
 
     'dot detection': ['sb-dot detection-select',
-                      'sb-bg-subtraction',
                       'sb-strictness-select'],
 
     'dot detection-python': ['sb-remove-bright-dots',

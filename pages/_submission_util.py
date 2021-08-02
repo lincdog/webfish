@@ -37,6 +37,26 @@ def _checklist_process(checked, current):
     return current
 
 
+def _pp_checklist_process(checked, current):
+    update = {}
+
+    tophat_raw = 'tophat raw data kernel size'
+    if tophat_raw in checked:
+        update[tophat_raw] = '10'
+        checked.remove(tophat_raw)
+
+    dilate_bg = 'dilate background kernel'
+    if dilate_bg in checked:
+        update[dilate_bg] = '10'
+        checked.remove(dilate_bg)
+
+    current.update(update)
+
+    current = _checklist_process(checked, current)
+
+    return current
+
+
 def _decoding_channel_process(arg, current):
 
     cur_decoding = current.get('decoding', None)
@@ -180,13 +200,12 @@ class SubmissionHelper(PageHelper):
 
         'sb-alignment-select': 'alignment',
 
-        'sb-preprocessing-checklist': _checklist_process,
+        'sb-preprocessing-checklist': _pp_checklist_process,
         'sb-tophat-kernel-size': 'tophat kernel size',
         'sb-rollingball-kernel-size': 'rolling ball kernel size',
         'sb-blur-kernel-size': 'blur kernel size',
 
         'sb-dot detection-select': 'dot detection',
-        'sb-bg-subtraction': _checklist_process,
         'sb-strictness-select': 'strictness',
 
         'sb-remove-bright-dots': _dotdetection_bright_dots,
