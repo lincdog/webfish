@@ -396,7 +396,7 @@ clear_components = {
             dbc.RadioItems(
                 id='sb-cyto-channel',
                 options=[{'label': str(i), 'value': str(i)}
-                         for i in range(4)
+                         for i in range(6)
                          ],
                 value='3',
                 inline=True
@@ -409,7 +409,7 @@ clear_components = {
             dbc.RadioItems(
                 id='sb-nuclei-channel',
                 options=[{'label': str(i), 'value': str(i)}
-                         for i in range(4)
+                         for i in range(6)
                          ],
                 value='3',
                 inline=True
@@ -515,9 +515,8 @@ clear_components = {
                       html_for='sb-individual-channel-select'),
             dbc.Checklist(
                 options=[
-                    {'label': '1', 'value': '1'},
-                    {'label': '2', 'value': '2'},
-                    {'label': '3', 'value': '3'}
+                    {'label': str(i), 'value': str(i+1)}
+                    for i in range(5)
                 ],
                 id='sb-individual-channel-select',
                 inline=True

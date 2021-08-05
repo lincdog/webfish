@@ -564,13 +564,15 @@ def copy_or_nop(df):
     return result
 
 
-def sort_as_num_or_str(coll, numtype=int):
-    np_coll = np.array(coll)
+def sort_as_num_or_str(coll, numtype=int, return_string=True):
 
     try:
-        result = np.sort(np_coll.astype(numtype)).astype(str)
+        sorted_coll = sorted([numtype(i) for i in coll])
     except ValueError:
-        result = np.sort(np_coll.astype(str))
+        sorted_coll = sorted(coll)
 
-    return result
+    if return_string:
+        return [str(i) for i in sorted_coll]
+    else:
+        return sorted_coll
 

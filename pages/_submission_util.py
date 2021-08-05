@@ -2,7 +2,7 @@ import io
 import json
 import re
 
-from lib.util import sanitize
+from lib.util import sanitize, sort_as_num_or_str
 from pages._page_util import PageHelper
 
 
@@ -73,7 +73,7 @@ def _decoding_channel_process(arg, current):
             # Individual is selected and we are handling the list of selected
             # channels.
             current['decoding'] = {
-                'individual': [str(a) for a in arg]
+                'individual': sort_as_num_or_str(arg)
             }
         elif not arg:
             raise ValueError('Must specify at least one channel to decode '
