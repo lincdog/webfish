@@ -494,9 +494,24 @@ clear_components = {
         ]),
 
     # Decoding
+    'sb-decoding-algorithm':
+        dbc.FormGroup([
+            dbc.Label('Select Decoding Algorithm', html_for='sb-decoding-algorithm'),
+            dbc.RadioItems(
+                id='sb-decoding-algorithm',
+                options=[
+                    {'label': 'Standard MATLAB', 'value': 'matlab'},
+                    {'label': 'Syndrome decoding', 'value': 'syndrome'}
+                ],
+                value='matlab',
+            ),
+            dbc.FormText('Select which decoding algorithm to use. The barcode key '
+                         'will be the same for both, but see the Home page instructions '
+                         'for how to specify the parity check table for Syndrome.')
+        ]),
     'sb-decoding-select':
         dbc.FormGroup([
-            dbc.Label('Select Decoding Algorithm', html_for='sb-decoding-select'),
+            dbc.Label('Select Decoding Scheme', html_for='sb-decoding-select'),
             dbc.RadioItems(
                 id='sb-decoding-select',
                 options=[
@@ -507,7 +522,8 @@ clear_components = {
                 value='individual',
                 inline=True
             ),
-            dbc.FormText('If "Individual" is selected, also select which channels, below.')
+            dbc.FormText('If "Individual" is selected, also select which channels, below. '
+                         'This only has an effect if "standard Matlab" decoding is selected.')
         ]),
     'sb-individual-channel-select':
         dbc.FormGroup([
@@ -524,8 +540,49 @@ clear_components = {
             dbc.FormText('This only has an effect if "Individual" is selected above.')
         ]),
 
+    # decoding-syndrome
+    'sb-syndrome-lateral-variance':
+        dbc.FormGroup([
+            dbc.Label('Lateral variance parameter',
+                      html_for='sb-syndrome-lateral-variance'),
+            dbc.Input(
+                id='sb-syndrome-lateral-variance',
+                type='number',
+                min=0,
+                value=40,
+                step=0.01,
+            )
+        ]),
+    'sb-syndrome-z-variance':
+        dbc.FormGroup([
+            dbc.Label('Z variance parameter',
+                      html_for='sb-syndrome-z-variance'),
+            dbc.Input(
+                id='sb-syndrome-z-variance',
+                type='number',
+                min=0,
+                value=40,
+                step=0.01,
+            )
+        ]),
+    'sb-syndrome-logweight-variance':
+        dbc.FormGroup([
+            dbc.Label('Log weight variance parameter',
+                      html_for='sb-syndrome-logweight-variance'),
+            dbc.Input(
+                id='sb-syndrome-logweight-variance',
+                type='number',
+                min=0,
+                value=40,
+                step=0.01,
+            )
+        ])
+
+
 }
 
+# The component id's that are NOT used in forming the JSON output upon submission.
+# The submit callback checks the value of every component EXCEPT these.
 excluded_status_comps = ['sb-stage-select', 'sb-segmentation-label']
 
 component_groups = {
@@ -566,8 +623,13 @@ component_groups = {
                               'sb-cell-prob-threshold',
                               'sb-flow-threshold'],
 
-    'decoding': ['sb-decoding-select',
-                 'sb-individual-channel-select']
+    'decoding': ['sb-decoding-algorithm',
+                 'sb-decoding-select',
+                 'sb-individual-channel-select'],
+
+    'decoding-syndrome': ['sb-syndrome-lateral-variance',
+                          'sb-syndrome-z-variance',
+                          'sb-syndrome-logweight-variance']
 
 }
 
@@ -846,6 +908,10 @@ col3_clear = [
         [html.Summary('Decoding options')] +
         cm.component_group('decoding', tolist=True),
         open=True, id='sb-decoding-wrapper'
+    ),
+    html.Details(
+        [html.Summary('Decoding options (Syndrome decoding only)')] +
+        cm.component_group('decoding-syndrome', tolist=True)
     ),
     dbc.Card([
         dbc.CardHeader('Submission'),

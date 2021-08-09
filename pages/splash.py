@@ -157,41 +157,64 @@ layout = [
                                        'font-size': '10pt',
                                        'margin': '20px'})
                         ])
-                    ])
-                ]),
+                    ]),
 
                 dbc.ListGroupItem([
-                    dbc.ListGroupItemHeading('Background, Segmentation, Positions (all optional)'),
-
-                    dbc.ListGroupItemText([
-                        html.Ul([
-                            html.Li(dcc.Markdown(
-                                'A folder named **`final_background`** '
-                                'containing background images of each position '
-                                '(**`MMStack_Pos#.ome.tif`**) for background subtraction'
-                            )),
-                            html.Li(dcc.Markdown(
-                                'A folder named **`segmentation`** which contains '
-                                'images to be used for segmentation - e.g. membrane stains. '
-                                'These images should be named identically to the hyb round images: '
-                                '`MMStack_Pos#.ome.tif` for each position.'
-                            )),
-                            html.Li(dcc.Markdown(
-                                'A folder named **`Labeled_Images`** containing '
-                                '*existing* **nuclear** segmentation masks produced off-line. '
-                                'The axis order of these when opened in Python should be **`(Z, X, Y)`**.'
-                            )),
-                            html.Li(dcc.Markdown(
-                                'A folder named **`Labeled_Images_Cytoplasm`** containing '
-                                '*existing* **cytoplasmic** segmentation masks produced off-line.'
-                            )),
-                            html.Li(dcc.Markdown(
-                                'A positions file from the microscope, '
-                                'ending in **`.pos`**, which is used to display the '
-                                'experiment overview in the correct arrangement.'
-                            ))
+                        dbc.ListGroupItemHeading('Syndrome decoding instructions'),
+                        dbc.ListGroupItemText([
+                            dcc.Markdown(
+                                'In the **`barcode_key`** folder, add a file named '
+                                ' **`parity_check.csv`** that specifies the parity check '
+                                'matrix for your codebook as comma-separated values (-1, 0 or 1)'
+                            ),
+                            html.Div(html.Details([
+                                html.Summary(html.B('parity_check.csv example')),
+                                html.Pre(
+                                    '1,1,1,0',
+                                    style={
+                                        'background-color': '#aaa',
+                                        'padding': '10px',
+                                        'margin': '5px'
+                                }),
+                            ]), style={'width': 'max-content',
+                                       'font-size': '12pt',
+                                       'margin': '20px'})
                         ])
-                    ])
+                    ]),
+
+                    dbc.ListGroupItem([
+                        dbc.ListGroupItemHeading('Background, Segmentation, Positions (all optional)'),
+
+                        dbc.ListGroupItemText([
+                            html.Ul([
+                                html.Li(dcc.Markdown(
+                                    'A folder named **`final_background`** '
+                                    'containing background images of each position '
+                                    '(**`MMStack_Pos#.ome.tif`**) for background subtraction'
+                                )),
+                                html.Li(dcc.Markdown(
+                                    'A folder named **`segmentation`** which contains '
+                                    'images to be used for segmentation - e.g. membrane stains. '
+                                    'These images should be named identically to the hyb round images: '
+                                    '`MMStack_Pos#.ome.tif` for each position.'
+                                )),
+                                html.Li(dcc.Markdown(
+                                    'A folder named **`Labeled_Images`** containing '
+                                    '*existing* **nuclear** segmentation masks produced off-line. '
+                                    'The axis order of these when opened in Python should be **`(Z, X, Y)`**.'
+                                )),
+                                html.Li(dcc.Markdown(
+                                    'A folder named **`Labeled_Images_Cytoplasm`** containing '
+                                    '*existing* **cytoplasmic** segmentation masks produced off-line.'
+                                )),
+                                html.Li(dcc.Markdown(
+                                    'A positions file from the microscope, '
+                                    'ending in **`.pos`**, which is used to display the '
+                                    'experiment overview in the correct arrangement.'
+                                ))
+                            ])
+                        ])
+                    ]),
                 ]),
             ]),
         ], style={'margin-top': '10px'})

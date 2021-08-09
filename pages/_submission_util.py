@@ -7,75 +7,79 @@ from pages._page_util import PageHelper
 
 
 # Helper functions for form item processing used by SubmissionHelper
-def _one_z_process(item, current):
+def _one_z_process(form_id, form_val, current):
 
-    if item:
+    if form_val:
         try:
-            item = item[0]
+            form_val = form_val[0]
         except TypeError:
             pass
 
-        current['z slices'] = str(item)
+        current['z slices'] = str(form_val)
 
     return current
 
 
-def _position_process(positions, current):
-    if not positions:
+def _position_process(form_id, form_val, current):
+    if not form_val:
         current['positions'] = ''
     else:
-        current['positions'] = ','.join([str(p) for p in positions])
+        current['positions'] = ','.join([str(p) for p in form_val])
 
     return current
 
 
-def _checklist_process(checked, current):
-    update = {k: "true" for k in checked}
+def _checklist_process(form_id, form_val, current):
+    update = {k: "true" for k in form_val}
 
     current.update(update)
 
     return current
 
 
-def _pp_checklist_process(checked, current):
+def _pp_checklist_process(form_id, form_val, current):
     update = {}
 
     tophat_raw = 'tophat raw data kernel size'
-    if tophat_raw in checked:
+    if tophat_raw in form_val:
         update[tophat_raw] = '10'
-        checked.remove(tophat_raw)
+        form_val.remove(tophat_raw)
 
     dilate_bg = 'dilate background kernel'
-    if dilate_bg in checked:
+    if dilate_bg in form_val:
         update[dilate_bg] = '10'
-        checked.remove(dilate_bg)
+        form_val.remove(dilate_bg)
 
     current.update(update)
 
-    current = _checklist_process(checked, current)
+    current = _checklist_process(form_id, form_val, current)
 
     return current
 
 
-def _decoding_channel_process(arg, current):
+def _decoding_channel_process(form_id, form_val, current):
+
+    decoding_method = current.get('decoding method')
+    # Do not add anything to the dict if syndrome decoding is selected
+    if decoding_method == 'syndrome':
+        return current
 
     cur_decoding = current.get('decoding', None)
-    print(f'cd: {cur_decoding}, {arg}')
 
     if cur_decoding is None:
         # If there is not yet a decoding key, add it and return the dict
-        current['decoding'] = str(arg)
+        current['decoding'] = str(form_val)
 
         return current
 
     elif cur_decoding == 'individual':
-        if isinstance(arg, list):
+        if isinstance(form_val, list):
             # Individual is selected and we are handling the list of selected
             # channels.
             current['decoding'] = {
-                'individual': sort_as_num_or_str(arg)
+                'individual': sort_as_num_or_str(form_val)
             }
-        elif not arg:
+        elif not form_val:
             raise ValueError('Must specify at least one channel to decode '
                              'if "individual" is selected')
         return current
@@ -83,11 +87,35 @@ def _decoding_channel_process(arg, current):
         return current
 
 
-def _dotdetection_bright_dots(arg, current):
+def _decoding_algorithm_process(form_id, form_val, current):
+
+    if form_val == 'syndrome':
+        current['decoding method'] = 'syndrome'
+
+    return current
+
+
+def _decoding_syndrome_process(form_id, form_val, current):
+    cur_decoding = current.get('decoding method')
+
+    form_id_to_json_syndrome = {
+        'sb-syndrome-lateral-variance': 'lateral variance factor',
+        'sb-syndrome-z-variance': 'z variance factor',
+        'sb-syndrome-logweight-variance': 'log weight variance factor'
+    }
+
+    if cur_decoding == 'syndrome':
+        json_key = form_id_to_json_syndrome[form_id]
+        current[json_key] = str(form_val)
+
+    return current
+
+
+def _dotdetection_bright_dots(form_id, form_val, current):
     cur_dd = current.get('dot detection', None)
 
     if cur_dd == 'biggest jump 3d':
-        if 'keep' in arg:
+        if 'keep' in form_val:
             current['remove very bright dots'] = 'False'
         else:
             current['remove very bright dots'] = 'True'
@@ -95,47 +123,21 @@ def _dotdetection_bright_dots(arg, current):
     return current
 
 
-def _dotdetection_threshold_process(arg, current):
+def _dotdetection_pyparams_process(form_id, form_val, current):
     cur_dd = current.get('dot detection', None)
 
-    if cur_dd != 'matlab 3d':
-        current['threshold'] = str(arg)
-
-    return current
-
-
-def _dotdetection_minsigma_process(arg, current):
-    cur_dd = current.get('dot detection', None)
+    form_id_to_json_pyparams = {
+        'sb-threshold-select': 'threshold',
+        'sb-minsigma-dotdetection': 'min sigma dot detection',
+        'sb-maxsigma-dotdetection': 'max sigma dot detection',
+        'sb-numsigma-dotdetection': 'num sigma dot detection',
+        'sb-overlap-dotdetection': 'overlap'
+    }
 
     if cur_dd == 'biggest jump 3d':
-        current['min sigma dot detection'] = str(arg)
+        json_key = form_id_to_json_pyparams[form_id]
 
-    return current
-
-
-def _dotdetection_maxsigma_process(arg, current):
-    cur_dd = current.get('dot detection', None)
-
-    if cur_dd == 'biggest jump 3d':
-        current['max sigma dot detection'] = str(arg)
-
-    return current
-
-
-def _dotdetection_numsigma_process(arg, current):
-    cur_dd = current.get('dot detection', None)
-
-    if cur_dd == 'biggest jump 3d':
-        current['num sigma dot detection'] = str(arg)
-
-    return current
-
-
-def _dotdetection_overlap_process(arg, current):
-    cur_dd = current.get('dot detection', None)
-
-    if cur_dd == 'biggest jump 3d':
-        current['overlap'] = str(arg)
+        current[json_key] = str(form_val)
 
     return current
 
@@ -162,7 +164,7 @@ class SubmissionHelper(PageHelper):
             'clusters': {
                 'ntasks': '1',
                 'mem-per-cpu': '10G',
-                'email': 'nrezaee@caltech.edu'
+                'email': 'lombelets@caltech.edu'
             }
         }
 
@@ -209,11 +211,11 @@ class SubmissionHelper(PageHelper):
         'sb-strictness-select': 'strictness',
 
         'sb-remove-bright-dots': _dotdetection_bright_dots,
-        'sb-threshold-select': _dotdetection_threshold_process,
-        'sb-minsigma-dotdetection': _dotdetection_minsigma_process,
-        'sb-maxsigma-dotdetection': _dotdetection_maxsigma_process,
-        'sb-numsigma-dotdetection': _dotdetection_numsigma_process,
-        'sb-overlap-dotdetection': _dotdetection_overlap_process,
+        'sb-threshold-select': _dotdetection_pyparams_process,
+        'sb-minsigma-dotdetection': _dotdetection_pyparams_process,
+        'sb-maxsigma-dotdetection': _dotdetection_pyparams_process,
+        'sb-numsigma-dotdetection': _dotdetection_pyparams_process,
+        'sb-overlap-dotdetection': _dotdetection_pyparams_process,
 
         'sb-segmentation-select': 'segmentation',
         'sb-segmentation-checklist': _checklist_process,
@@ -228,8 +230,14 @@ class SubmissionHelper(PageHelper):
         'sb-cell-prob-threshold': 'cell_prob_threshold',
         'sb-flow-threshold': 'flow_threshold',
 
+        'sb-decoding-algorithm': _decoding_algorithm_process,
         'sb-decoding-select': _decoding_channel_process,
-        'sb-individual-channel-select': _decoding_channel_process
+        'sb-individual-channel-select': _decoding_channel_process,
+
+        # FIXME: verify correct JSON key values with Jonathan
+        'sb-syndrome-lateral-variance': _decoding_syndrome_process,
+        'sb-syndrome-z-variance': _decoding_syndrome_process,
+        'sb-syndrome-logweight-variance': _decoding_syndrome_process
     }
 
     def form_to_json_output(self, form_status, selected_stages):
@@ -260,25 +268,31 @@ class SubmissionHelper(PageHelper):
             "__ERRORS__": []
         }
 
-        # This is special as it is not in the final dict but becoems the
+        # This is special as it is not in the final dict but becomes the
         # filename of the JSON file.
         analysis_name = ''
 
         selected_stages.append('basic-metadata')
 
+        # Add the advanced segmentation parameters after the segmentation parameters
         if 'segmentation' in selected_stages:
             selected_stages.insert(
                 selected_stages.index('segmentation')+1,
                 'segmentation-advanced'
             )
 
+        # Add the python dot detection parameters after dot detection
         if 'dot detection' in selected_stages:
             selected_stages.insert(
                 selected_stages.index('dot detection')+1,
                 'dot detection-python'
             )
 
+        # Begin the list of which form IDs we are going to care about.
+        # We always care about the user and dataset selection.
         selected_form_ids = ['user-select', 'dataset-select']
+
+        # Add the form IDs from all the selected stages
         for s in selected_stages:
             selected_form_ids.extend(self.cm.component_groups[s])
 
@@ -301,7 +315,7 @@ class SubmissionHelper(PageHelper):
                     # If a function, directly set the dictionary to the
                     # result of calling the function on the current output dict
                     try:
-                        out = prekey(v, out)
+                        out = prekey(k, v, out)
                     except ValueError as e:
                         out['__ERRORS__'].append(e)
                 else:
