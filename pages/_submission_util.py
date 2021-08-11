@@ -60,9 +60,9 @@ def _pp_checklist_process(form_id, form_val, current):
 def _decoding_channel_process(form_id, form_val, current):
 
     decoding_method = current.get('decoding method')
-    # Do not add anything to the dict if syndrome decoding is selected
-    if decoding_method == 'syndrome':
-        return current
+
+    if decoding_method == 'syndrome' and form_val == 'non barcoded':
+        raise ValueError('Syndrome decoding only works with barcoded data.')
 
     cur_decoding = current.get('decoding', None)
 
@@ -256,6 +256,11 @@ class SubmissionHelper(PageHelper):
         * a callable that takes the value of the form element and returns a dict
             that will be used to update() the JSON dict in progress.
 
+        The order of the keys in form_status are determined by the dict of
+        form components in submission.py, cm.clear_components. This is
+        very important because the callables defined above are subject to the
+        order of keys, since the JSON dict is built up sequentially.
+
         """
 
         # The clusters key is always the same (at least for now)
@@ -288,6 +293,13 @@ class SubmissionHelper(PageHelper):
                 'dot detection-python'
             )
 
+        # Add the syndrome decoding parameters after decoding
+        if 'decoding' in selected_stages:
+            selected_stages.insert(
+                selected_stages.index('decoding')+1,
+                'decoding-syndrome'
+            )
+
         # Begin the list of which form IDs we are going to care about.
         # We always care about the user and dataset selection.
         selected_form_ids = ['user-select', 'dataset-select']
@@ -306,7 +318,7 @@ class SubmissionHelper(PageHelper):
 
             if k == 'sb-analysis-name' and v:
                 analysis_name = sanitize(v, delimiter_allowed=False)
-            elif k in self.id_to_json_key.keys():
+            elif k in self.id_to_json_key:
                 # If the form-id is in the id_to_json_key dict, fetch
                 # the corresponding value (a string or a function)
                 prekey = self.id_to_json_key[k]

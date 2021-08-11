@@ -522,8 +522,7 @@ clear_components = {
                 value='individual',
                 inline=True
             ),
-            dbc.FormText('If "Individual" is selected, also select which channels, below. '
-                         'This only has an effect if "standard Matlab" decoding is selected.')
+            dbc.FormText('If "Individual" is selected, also select which channels, below.')
         ]),
     'sb-individual-channel-select':
         dbc.FormGroup([
@@ -549,7 +548,7 @@ clear_components = {
                 id='sb-syndrome-lateral-variance',
                 type='number',
                 min=0,
-                value=40,
+                value=200,
                 step=0.01,
             )
         ]),
@@ -573,7 +572,7 @@ clear_components = {
                 id='sb-syndrome-logweight-variance',
                 type='number',
                 min=0,
-                value=40,
+                value=0,
                 step=0.01,
             )
         ])
@@ -693,12 +692,17 @@ def select_pipeline_stages(stages):
     return tuple(open_res + children_res)
 
 
+# This is the callback that gathers all the form statuses and begins the process
+# of converting them to the JSON file. Its main function is to validate the input,
+# show any errors if present, and raise the modal confirm dialog if no errors.
 @app.callback(
     Output('sb-modal-container', 'children'),
     Input('sb-submit-button', 'n_clicks'),
     State('user-select', 'value'),
     State('dataset-select', 'value'),
     State('sb-stage-select', 'value'),
+    # Get the state of every form component except for those in excluded_status_comps
+    # Note these are gathered in an *arg called values.
     [State(comp, 'value') for comp in cm.clear_components.keys()
      if comp not in excluded_status_comps]
 )
@@ -708,15 +712,27 @@ def submit_new_analysis(n_clicks, user, dataset, stage_select, *values):
 
     upload = True
 
+    # The form components that matter for the JSON file
     relevant_comps = [c for c in cm.clear_components.keys()
                       if c not in excluded_status_comps]
 
+    # We always start with the user and dataset, which are not part of
+    # relevant_comps because they are from index.py.
     status = {'user-select': user, 'dataset-select': dataset}
+
+    # Add the status of every relevant form component to the status dict
+    # Note the order is determined by the components' order in cm.clear_components.
+    # This matters because helper.form_to_json_output loops through them in this order
+    # and its validation functions may depend on the state of the
     status.update({c: v for c, v in zip(relevant_comps, values)})
 
+    # This performs the validation and conversion of the form IDs to the appropriate
+    # JSON keys for the pipeline.
     analysis_name, submission = helper.form_to_json_output(status, stage_select)
+    # Any errors are added under this key.
     sub_errors = submission.pop('__ERRORS__')
 
+    # Remove all form values from pipeline stages that are deselected.
     for stage in set(pipeline_stages):
         if stage not in stage_select:
             submission.pop(stage, None)
@@ -726,6 +742,7 @@ def submit_new_analysis(n_clicks, user, dataset, stage_select, *values):
 
     alerts = []
 
+    # If there are any validation errors, add them as dbc.Alerts, set the upload flag False
     if len(sub_errors) > 0:
         upload = False
         alerts.extend([
@@ -733,11 +750,13 @@ def submit_new_analysis(n_clicks, user, dataset, stage_select, *values):
             for e in sub_errors
         ])
 
+    # Make sure we have user, dataset and analysis name.
     if not all((analysis_name, user, dataset)):
         upload = False
         alerts.append(dbc.Alert('Please choose a user and dataset, and specify'
                                 ' a new analysis name.', color='danger'))
 
+    # Make sure the analysis name is unique as far as we know.
     if analysis_name in analyses:
         upload = False
         alerts.append(
@@ -759,6 +778,9 @@ def submit_new_analysis(n_clicks, user, dataset, stage_select, *values):
             html.H4(html.Code(analysis_name, id='sb-final-analysis-name')),
             html.Details([
                 html.Summary('Generated JSON'),
+                # This Pre component serves as the intermediate JSON contents before
+                # final submission. Its contents are used by upload_generated_json
+                # to upload the JSON to S3.
                 html.Pre(json.dumps(submission, indent=2), id='sb-generated-json')
                 ], id='sb-submission-json', open=True),
             dbc.Button('Confirm and Submit',
@@ -779,6 +801,8 @@ def submit_new_analysis(n_clicks, user, dataset, stage_select, *values):
         scrollable=True
     )
 
+    # If we are all good, return the confirm modal. If there were errors,
+    # return them instead.
     if upload:
         return modal
     else:

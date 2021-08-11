@@ -170,14 +170,15 @@ layout = [
                             html.Div(html.Details([
                                 html.Summary(html.B('parity_check.csv example')),
                                 html.Pre(
-                                    '1,1,1,0',
+                                    '1,1,1,-1',
                                     style={
                                         'background-color': '#aaa',
                                         'padding': '10px',
-                                        'margin': '5px'
+                                        'margin': '5px',
+                                        'font-size': '12pt'
                                 }),
                             ]), style={'width': 'max-content',
-                                       'font-size': '12pt',
+                                       'font-size': '10pt',
                                        'margin': '20px'})
                         ])
                     ]),
