@@ -11,7 +11,7 @@ import atexit
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from argparse import ArgumentParser
-SLURM_JOB_ID = os.environ.get('SLURM_JOB_ID', None)
+SLURM_JOB_ID = os.getenv('SLURM_JOB_ID', None)
 
 """
 download_json_analyses.py
@@ -31,20 +31,24 @@ sensible defaults, as seen below.
 """
 
 # By default run from the sandbox directory
-WF_HOME = os.environ.get('WF_HOME', '/home/lombelet/cron/webfish_sandbox/webfish')
+WF_HOME = os.getenv('WF_HOME', '/home/lombelet/cron/webfish_sandbox/webfish')
 os.chdir(WF_HOME)
 
-# The folder to download requests to and save monitoring files to
-HISTORY_DIR = os.environ.get('WF_HISTORY_DIR', 'json_analyses')
+# The folder to download requests to and save monitoring files to locally
+# (NOT the destination for the JSON files to be picked up by the pipeline)
+HISTORY_DIR = os.getenv('WF_HISTORY_DIR', 'json_analyses')
 # The name of the request history file
-HISTORY_FILE = os.environ.get('WF_ANALYSIS_HISTORY',
+HISTORY_FILE = os.getenv('WF_ANALYSIS_HISTORY',
                               'wf_json_analyses_history.csv')
 
 # The prefix (folder) on the S3 bucket that contains analysis requests
-S3_PREFIX = os.environ.get('WF_S3_ANALYSIS_PREFIX', 'json_analyses/')
+S3_PREFIX = os.getenv('WF_S3_ANALYSIS_PREFIX', 'json_analyses/')
 
 # The live folder that is monitored for new analysis requests
-MASTER_ANALYSES = os.environ.get('WF_JSON_ANALYSES', '/groups/CaiLab/json_analyses')
+# (The destination for the JSON file to be picked up by the pipeline)
+MASTER_ANALYSES = os.getenv('WF_JSON_ANALYSES', '/groups/CaiLab/json_analyses_lincoln')
+# Updated 8/16/21: Now part of the config file under 'pipeline_json_dir', same attribute name
+# in the DataServer object.
 
 LOCKFILE = 'download_json_analyses.lck'
 
@@ -288,6 +292,10 @@ def main(max_copy=10, allow_duplicates=False):
     # Get the DataServer and S3Connect instances
     dm = init_server()
 
+    # Try to use the live directory specified in the config file,
+    # fall back to the environment variable (that also specifies a default)
+    copy_dest = getattr(dm, 'pipeline_json_dir', MASTER_ANALYSES)
+
     # Read in the submission history file
     history_file = Path(HISTORY_DIR, HISTORY_FILE)
     history_df = read_history_file(history_file)
@@ -347,11 +355,15 @@ def main(max_copy=10, allow_duplicates=False):
         try:
             # Try to copy the local json file to the live directory that
             # submits pipeline jobs.
-            shutil.copy(Path(file), Path(MASTER_ANALYSES, file.name))
+            shutil.copy(
+                Path(file),
+                Path(copy_dest, file.name)
+            )
+
             successful_copies.append(file)
         except (PermissionError, OSError) as e:
             logger.error(f'Unable to move file {file} to '
-                         f'{Path(MASTER_ANALYSES, file.name)}:', e)
+                         f'{Path(copy_dest, file.name)}:', e)
 
         # Probably not necessary
         time.sleep(0.1)

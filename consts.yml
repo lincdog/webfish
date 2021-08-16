@@ -33,7 +33,11 @@ file_locations:
 #   server and on client (running instance of webapp)
 sync_folder: monitoring/
 
-analysis_log: pipeline_rotating_log.txt
+# Location of the global rotating log file for the pipeline jobs
+analysis_log: pipeline_rotating_log_lincoln.txt
+
+# Folder where JSON files are picked up by the pipeline on the HPC
+pipeline_json_dir: /groups/CaiLab/json_analyses_lincoln
 
 # Location to save files that have been processed with preuploader functions
 preupload_root: /groups/CaiLab/personal/lincoln/webfish_preupload/
