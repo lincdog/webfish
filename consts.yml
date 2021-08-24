@@ -34,7 +34,7 @@ file_locations:
 sync_folder: monitoring/
 
 # Location of the global rotating log file for the pipeline jobs
-analysis_log: pipeline_rotating_log_lincoln.txt
+analysis_log: rotating_log_lincoln.txt
 
 # Folder where JSON files are picked up by the pipeline on the HPC
 pipeline_json_dir: /groups/CaiLab/json_analyses_lincoln

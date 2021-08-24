@@ -9,6 +9,8 @@ from pathlib import Path, PurePath
 import jmespath
 from PIL import Image, ImageSequence, UnidentifiedImageError
 
+_MM_TIFF_TAG_NUMBER = 51123
+
 
 def pil_imopen(fname, metadata=False):
     im = Image.open(fname)
@@ -99,11 +101,8 @@ def pil_getmetadata(im, relevant_keys=None):
 
     for frame in ImageSequence.Iterator(im):
 
-        # The JSON string is stored in a key named "unknown",
-        # probably because it doesn't correspond to a standard
-        # TIF tag number.
-        if 'unknown' in frame.tag.named().keys():
-            jsstr = frame.tag.named()['unknown'][0]
+        if _MM_TIFF_TAG_NUMBER in frame.tag_v2:
+            jsstr = frame.tag_v2[_MM_TIFF_TAG_NUMBER]
             jsdict = json.loads(jsstr)
 
             if relevant_keys:
