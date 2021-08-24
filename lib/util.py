@@ -32,11 +32,15 @@ def pil_imread(
     import warnings
     warnings.simplefilter('ignore', UserWarning)
 
+    pil_succeeded = False
+
     try:
         im = pil_imopen(fname)
         md = pil_getmetadata(im)
         imarr = pil_frames_to_ndarray(im)
-    except (ValueError, UnidentifiedImageError) as e:
+        pil_succeeded = True
+    except (ValueError, UnidentifiedImageError, AssertionError) as e:
+
         if callable(backup):
             imarr = backup(fname, **kwargs)
         else:
@@ -46,7 +50,11 @@ def pil_imread(
         # assumes 1 Z
         imarr = imarr[:, None, :]
 
-    if swapaxes and imarr.ndim == 4:
+    # Updated 8/23/21: We only want to swap axes if the PIL metadata was present.
+    # Once we open this way and save, tif.imread() should always read it in the same way,
+    # which is what we want. Swapping at this point means each time we open a saved image
+    # the axes will be swapped over and over.
+    if pil_succeeded and swapaxes and imarr.ndim == 4:
         imarr = imarr.swapaxes(0, 1)
 
     if metadata and md:

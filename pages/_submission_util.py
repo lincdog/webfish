@@ -268,7 +268,7 @@ class SubmissionHelper(PageHelper):
             "clusters": {
                 "ntasks": "1",
                 "mem-per-cpu": "10G",
-                "email": "nrezaee@caltech.edu"
+                "email": "lombelets@caltech.edu"
             },
             "__ERRORS__": []
         }
