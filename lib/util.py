@@ -29,6 +29,18 @@ def pil_imread(
     backup=tif.imread,
     **kwargs
 ):
+    """
+    Uses metadata from TIFF tag code 51123 to order 2D image slices properly for
+    multichannel, multislice images.
+
+    fname: string or Path to TIFF file
+    metadata: whether to return the extracted metadata (if present) as a list of dicts
+    swapaxes: if True and metadata found successfully, swap the first two axes
+        from (C, Z, Y, X) order to (Z, C, Y, X) order.
+    ensure_4d: if only three dimensions are found, add a 4th length-1 dimension
+        for Z (i.e. (C, 1, Y, X)).
+    backup: callable to call on the image filename if metadata is not found.
+    """
     md = None
 
     import warnings
@@ -90,7 +102,7 @@ def pil_getmetadata(im, relevant_keys=None):
             'Frame',                        # Time slice (usually not used)
             'FrameIndex',                   # Time slice index (usually not used)
             'PixelSizeUm',                  # XY pixel size in microns
-            'Position',                     # Position 
+            'Position',                     # Position
             'PositionIndex',                # Position index (MMStack_PosX)
             'PositionName',                 # Position name
             'Slice',                        # Z slice
@@ -101,20 +113,23 @@ def pil_getmetadata(im, relevant_keys=None):
 
     for frame in ImageSequence.Iterator(im):
 
-        if _MM_TIFF_TAG_NUMBER in frame.tag_v2:
+        try:
             jsstr = frame.tag_v2[_MM_TIFF_TAG_NUMBER]
-            jsdict = json.loads(jsstr)
+        except KeyError:
+            return []
 
-            if relevant_keys:
-                # Only keep the relevant keys
-                rel_dict = {
-                    k: jsdict.get(k)
-                    for k in relevant_keys
-                }
-            else:
-                rel_dict = jsdict
+        jsdict = json.loads(jsstr)
 
-            frame_metadata.append(rel_dict)
+        if relevant_keys:
+            # Only keep the relevant keys
+            rel_dict = {
+                k: jsdict.get(k)
+                for k in relevant_keys
+            }
+        else:
+            rel_dict = jsdict
+
+        frame_metadata.append(rel_dict)
 
     return frame_metadata
 
@@ -129,7 +144,7 @@ def pil_frames_to_ndarray(im, dtype=np.uint16):
     pil_frames_to_ndarray
     -----------------
     Given a PIL image sequence, return a Numpy array that is correctly
-    ordered and shaped as (n_channels, n_slices, ...) so that we can 
+    ordered and shaped as (n_channels, n_slices, ...) so that we can
     process it in a consistent way.
 
     To do this, we look at the ChannelIndex and SliceIndex of each frame

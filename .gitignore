@@ -10,6 +10,6 @@ webfish_data
 ec2/*.ipynb
 .idea
 *monitoring
-*.log
+*.log*
 *credentials
 build

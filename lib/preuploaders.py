@@ -12,11 +12,11 @@ This file contains classes and functions referred to as "preuploads":
 they take raw input files that are located on the master storage (HPC),
 and perform processing on them before they are uploaded to S3. This function
 is analogous to `generators.py` but happens on the master storage computer,
-*before* the files are uploaded to S3. 
+*before* the files are uploaded to S3.
 When the cron job on the HPC
-finds new files that haven't been uploaded to S3 yet, it first calls 
+finds new files that haven't been uploaded to S3 yet, it first calls
 `server.DataServer.run_preuploads` on them and then only uploads the successfully
-processed results of that. 
+processed results of that.
 
 The preuploader's job is to do some processing and return the path to the
 processed file. It is expected to check if the file exists already - this is not enforced
@@ -95,7 +95,7 @@ def compress_8bit(
             outfile,
             compression=compression
         )
-    except (PermissionError, IOError, OSError) as e:
+    except (PermissionError, IOError, OSError, TypeError, ValueError) as e:
         err = e
     finally:
         del im
