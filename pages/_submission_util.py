@@ -173,7 +173,7 @@ class SubmissionHelper(PageHelper):
         # \, {, }, ^, [, ], %, `, <, >, ~, #, |
         # TODO: Sanitize filenames on server side before uploading too; mostly
         #   potential problem for user-defined dataset/analysis names
-        analysis_sanitized = re.sub('[\\\\{^}%` \\[\\]>~<#|]', '', analysis_name)
+        analysis_sanitized = re.sub('[\\\\{^}%` ,\\[\\]>~<#|]', '', analysis_name)
         keyname = f'json_analyses/{analysis_sanitized}.json'
 
         try:

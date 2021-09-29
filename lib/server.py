@@ -178,7 +178,7 @@ class DataServer(FilePatterns):
         def read_or_empty(fname, **kwargs):
             try:
                 d = pd.read_csv(fname, **kwargs)
-            except pd.errors.EmptyDataError:
+            except (FileNotFoundError, pd.errors.EmptyDataError):
                 d = pd.DataFrame()
             return d
 
