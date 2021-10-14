@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import io
 import json
+import yaml
 import re
 from pathlib import Path
 
@@ -20,28 +21,21 @@ from pages._submission_util import SubmissionHelper
 
 all_datasets = get_all_datasets()
 
+channels = [730, 640, 561, 488, 405]
+
 pipeline_stages = [
-    'alignment',
     'preprocessing',
-    'dot detection',
     'segmentation',
-    'decoding',
     'segmentation'
 ]
 stage_ids = [
-    'alignment',
     'preprocessing',
-    'dot detection',
     'segmentation',
-    'decoding',
     'segmentation-advanced'
 ]
 stage_headers = [
-    'Alignment Options',
     'Preprocessing Options',
-    'Dot Detection Options',
     'Segmentation Options',
-    'Decoding Options',
     'Advanced Segmentation Options',
 ]
 
@@ -66,66 +60,27 @@ clear_components = {
             dbc.FormText('Select one or more positions, or leave blank to process all.')
         ]),
 
-    'sb-one-z-select':
+    'sb-channel-select':
         dbc.FormGroup([
-            dbc.Checklist(
-                id='sb-one-z-select',
-                options=[{'label': 'Single Z slice', 'value': '1'}],
-                value=[],
-                switch=True
-            ),
-            dbc.FormText('Check this box if your images contain only '
-                         'a single Z slice.')
-        ]),
-
-    # stage selection
-    'sb-stage-select':
-        dbc.FormGroup([
-            dbc.Label('Select pipeline stages to run', html_for='sb-stage-select'),
-            dbc.Checklist(
-                id='sb-stage-select',
+            dbc.Label('Select Channel(s) for dot detection and decoding',
+                      html_for='sb-channel-select'),
+            dcc.Dropdown(
                 options=[
-                    {'label': 'Alignment', 'value': 'alignment'},
-                    {'label': 'Preprocessing', 'value': 'preprocessing'},
-                    {'label': 'Dot Detection', 'value': 'dot detection'},
-                    {'label': 'Segmentation', 'value': 'segmentation'},
-                    {'label': 'Decoding', 'value': 'decoding'}
+                    {'label': str(i), 'value': i}
+                    for i in channels
                 ],
-                value=['alignment', 'preprocessing', 'dot detection', 'segmentation', 'decoding'],
-                switch=True
+                id='sb-channel-select',
+                multi=True,
+                placeholder='Select one or more channels'
             ),
-            dbc.FormText('Select which stage(s) of the pipeline you want to run. ')
         ]),
 
-    'sb-preprocessing-checklist':
-        dbc.Checklist(
-            id='sb-preprocessing-checklist',
-            options=[
-                {'label': 'Tophat transform before BG subtract',
-                 'value': 'tophat raw data kernel size'},
-                {'label': 'Dilate background image before subtraction',
-                 'value': 'dilate background kernel'},
-                {'label': 'Run background subtraction (with final_background image)',
-                 'value': 'background subtraction'},
-                {'label': 'Tophat transform after BG subtract (removes large, bright objects)',
-                 'value': 'tophat preprocessing'},
-                {'label': 'Rolling ball background subtraction',
-                 'value': 'rolling ball preprocessing'},
-                {'label': 'Apply slight blur (remove hot pixels)',
-                 'value': 'blur preprocessing'},
-            ],
-            value=['background subtraction',
-                   'tophat preprocessing',
-                   'rolling ball preprocessing',
-                   'blur preprocessing'],
-            switch=True
-        ),
-
-    'sb-tophat-kernel-size':
+    # Preprocessing
+    'sb-median-kernel-size':
         dbc.FormGroup([
-            dbc.Label('Tophat kernel size', html_for='sb-tophat-kernel-size'),
+            dbc.Label('Median filter kernel size', html_for='sb-median-kernel-size'),
             dbc.Input(
-                id='sb-tophat-kernel-size',
+                id='sb-median-kernel-size',
                 type='number',
                 min=0,
                 max=200,
@@ -146,7 +101,7 @@ clear_components = {
                 min=1,
                 max=2000,
                 step=1,
-                value=1000,
+                value=3.3,
                 disabled=False
             ),
             dbc.FormText('Sets the rolling ball kernel radius. A smaller value '
@@ -171,153 +126,115 @@ clear_components = {
                          'expected real dot size.')
         ]),
 
-    # alignment
-    'sb-alignment-select':
+    # ADCG dot detection
+    'sb-max-iters':
         dbc.FormGroup([
-            dbc.Label('Alignment Algorithm', html_for='sb-alignment-select'),
-            dbc.Select(
-                id='sb-alignment-select',
-                value='matlab dapi',
-                options=[{'label': 'DAPI Alignment', 'value': 'matlab dapi'}],
-                disabled=False
-            ),
-            dbc.FormText(
-                dcc.Markdown(
-                    'The underlying MATLAB function is '
-                    '[imregtform](https://www.mathworks.com/help/images/ref/imregtform.html)'),
-                style={'font-size': '10pt'}
-            )
-        ]),
-
-    # dot detection
-    'sb-dot detection-select':
-        dbc.FormGroup([
-            dbc.Label('Dot Detection Algorithm', html_for='sb-dot detection-select'),
-            dbc.Select(
-                id='sb-dot detection-select',
-                options=[
-                    {'label': 'Biggest Jump Python', 'value': 'biggest jump 3d'},
-                    {'label': 'ADCG 2D', 'value': 'adcg 2d'},
-                    {'label': 'Biggest Jump Matlab', 'value': 'matlab 3d'}
-                ],
-                value='biggest jump 3d',
-                disabled=False
-            ),
-        ]),
-
-    'sb-strictness-select':
-        dbc.FormGroup([
-            dbc.Label('Strictness parameter', html_for='sb-strictness-select'),
-            dcc.Slider(
-                id='sb-strictness-select',
-                min=-10,
-                max=25,
+            dbc.Label('Max iterations', html_for='sb-max-iters'),
+            dbc.Input(
+                id='sb-max-iters',
+                type='number',
+                min=0,
+                max=2000,
                 step=1,
-                value=2,
-                marks={i: str(i) for i in range(-10, 26, 3)}
-            ),
-            dbc.FormText('Higher strictness sets a '
-                         'higher minimum intensity threshold for dot detection.')
-        ]),
-
-    'sb-remove-bright-dots':
-        dbc.FormGroup([
-            dbc.Checklist(
-                id='sb-remove-bright-dots',
-                options=[
-                   {'label': 'Keep abnormally bright dots',
-                    'value': 'keep'}
-                ],
-                value=['keep'],
-                switch=True
-                ),
-            dbc.FormText('Select to preserve dots which are much brighter than '
-                         'the other dots in the image. Deselect to throw these '
-                         'out.')
-        ]),
-
-    'sb-threshold-select':
-        dbc.FormGroup([
-            dbc.Label('Laplacian Threshold', html_for='sb-threshold-select'),
-            dbc.Input(
-                id='sb-threshold-select',
-                type='number',
-                min=0,
-                max=0.05,
-                step=0.0001,
-                value=0.0001,
+                value=100,
                 disabled=False
             ),
-            dbc.FormText('Set a threshold of the LoG filter. Default is usually fine.')
+            dbc.FormText('Sets the maximum number of ADCG optimization iterations.'
+                         )
         ]),
-    'sb-minsigma-dotdetection':
+    'sb-max-cd-iters':
         dbc.FormGroup([
-            dbc.Label('Minimum sigma for Python dot detection',
-                      html_for='sb-minsigma-dotdetection'),
+            dbc.Label('Max CD iterations', html_for='sb-max-cd-iters'),
             dbc.Input(
-                id='sb-minsigma-dotdetection',
+                id='sb-max-cd-iters',
                 type='number',
                 min=0,
+                max=100,
+                step=1,
+                value=10,
+                disabled=False
+            ),
+            dbc.FormText('Sets the maximum number of ADCG '
+                         'conditional descent iterations.'
+                         )
+        ]),
+
+    # Begin channel-specific parameters
+    'sb-sigma-upper-bound':
+        dbc.FormGroup([
+            dbc.Label('Sigma upper bound (pixels)', html_for='sb-sigma-upper-bound'),
+            dbc.Input(
+                id='sb-sigma-upper-bound',
+                type='number',
+                min=0.5,
+                max=15.0,
+                step=0.1,
+                value=2.3,
+                disabled=False
+            ),
+            dbc.FormText('Sets the maximum sigma value for ADCG to use.')
+        ]),
+    'sb-sigma-lower-bound':
+        dbc.FormGroup([
+            dbc.Label('Sigma lower bound (pixels)', html_for='sb-sigma-lower-bound'),
+            dbc.Input(
+                id='sb-sigma-lower-bound',
+                type='number',
+                min=0,
+                max=10.0,
+                step=0.1,
+                value=0.8,
+                disabled=False
+            ),
+            dbc.FormText('Sets the minimum sigma value for ADCG to use.')
+        ]),
+    'sb-min-weight':
+        dbc.FormGroup([
+            dbc.Label('Minimum weight (threshold)', html_for='sb-min-weight'),
+            dbc.Input(
+                id='sb-min-weight',
+                type='number',
+                min=0,
+                max=20000,
+                step=10,
+                value=120,
+                disabled=False
+            ),
+            dbc.FormText('Sets the absolute minimum dot intensity for ADCG to '
+                         'consider.')
+        ]),
+    'sb-final-loss-improvement':
+        dbc.FormGroup([
+            dbc.Label('ADCG Final loss improvement',
+                      html_for='sb-final-loss-improvement'),
+            dbc.Input(
+                id='sb-final-loss-improvement',
+                type='number',
+                min=1.,
+                max=2000.,
+                step=1,
+                value=70.0,
+                disabled=False
+            ),
+            dbc.FormText('Sets the loss improvement at which ADCG will terminate.')
+        ]),
+    # End channel-specific parameters
+
+    'sb-min-allowed-separation':
+        dbc.FormGroup([
+            dbc.Label('Minimum allowed separation',
+                      html_for='sb-min-allowed-separation'),
+            dbc.Input(
+                id='sb-min-allowed-separation',
+                type='number',
+                min=0.1,
                 max=20,
                 step=0.1,
-                value=1
+                value=2.0,
+                disabled=False
             ),
-            dbc.FormText(dcc.Markdown(
-                'Sets the `min_sigma` parameter for [`skimage.feature.blob_log`]'
-                '(https://scikit-image.org/docs/dev/api/skimage.feature.html#skimage.feature.blob_log), '
-                'in pixels. Defines the rough minimum radius of detected dots'))
-        ]),
-    'sb-maxsigma-dotdetection':
-        dbc.FormGroup([
-            dbc.Label('Maximum sigma for Python dot detection',
-                      html_for='sb-maxsigma-dotdetection'),
-            dbc.Input(
-                id='sb-maxsigma-dotdetection',
-                type='number',
-                min=0,
-                max=20,
-                step=0.1,
-                value=2
-            ),
-            dbc.FormText(dcc.Markdown(
-                'Sets the `max_sigma` parameter for [`skimage.feature.blob_log`]'
-                '(https://scikit-image.org/docs/dev/api/skimage.feature.html#skimage.feature.blob_log), '
-                'in pixels. Defines the rough maximum radius of detected dots'))
-        ]),
-    'sb-numsigma-dotdetection':
-        dbc.FormGroup([
-            dbc.Label('Number of sigma steps for Python dot detection',
-                      html_for='sb-numsigma-dotdetection'),
-            dbc.Input(
-                id='sb-numsigma-dotdetection',
-                type='number',
-                min=0,
-                max=20,
-                step=1,
-                value=2
-            ),
-            dbc.FormText(dcc.Markdown(
-                'Sets the `num_sigma` parameter for [`skimage.feature.blob_log`]'
-                '(https://scikit-image.org/docs/dev/api/skimage.feature.html#skimage.feature.blob_log), '
-                'the number of sigma steps between `min_sigma` and `max_sigma` that the '
-                'function uses for detecting dots.'))
-        ]),
-    'sb-overlap-dotdetection':
-        dbc.FormGroup([
-            dbc.Label('Overlap parameter for Python dot detection',
-                      html_for='sb-overlap-dotdetection'),
-            dbc.Input(
-                id='sb-overlap-dotdetection',
-                type='number',
-                min=0,
-                max=1,
-                step=0.01,
-                value=0.5
-            ),
-            dbc.FormText(dcc.Markdown(
-                'Sets the `overlap` parameter for [`skimage.feature.blob_log`]'
-                '(https://scikit-image.org/docs/dev/api/skimage.feature.html#skimage.feature.blob_log), '
-                ' from 0-1. Defines maximum allowed overlap between two candidate dots.'))
+            dbc.FormText('Sets the minimum distance two dots can be apart without '
+                         'being removed.')
         ]),
 
     # segmentation
@@ -493,52 +410,6 @@ clear_components = {
             )
         ]),
 
-    # Decoding
-    'sb-decoding-algorithm':
-        dbc.FormGroup([
-            dbc.Label('Select Decoding Algorithm', html_for='sb-decoding-algorithm'),
-            dbc.RadioItems(
-                id='sb-decoding-algorithm',
-                options=[
-                    {'label': 'Standard MATLAB', 'value': 'matlab'},
-                    {'label': 'Syndrome decoding', 'value': 'syndrome'}
-                ],
-                value='matlab',
-            ),
-            dbc.FormText('Select which decoding algorithm to use. The barcode key '
-                         'will be the same for both, but see the Home page instructions '
-                         'for how to specify the parity check table for Syndrome.')
-        ]),
-    'sb-decoding-select':
-        dbc.FormGroup([
-            dbc.Label('Select Decoding Scheme', html_for='sb-decoding-select'),
-            dbc.RadioItems(
-                id='sb-decoding-select',
-                options=[
-                    {'label': 'Across channels', 'value': 'across'},
-                    {'label': 'Individual channel(s)', 'value': 'individual'},
-                    {'label': 'smFISH (non-barcoded)', 'value': 'non barcoded'}
-                ],
-                value='individual',
-                inline=True
-            ),
-            dbc.FormText('If "Individual" is selected, also select which channels, below.')
-        ]),
-    'sb-individual-channel-select':
-        dbc.FormGroup([
-            dbc.Label('Select Channels for Individual Decoding',
-                      html_for='sb-individual-channel-select'),
-            dbc.Checklist(
-                options=[
-                    {'label': str(i), 'value': str(i+1)}
-                    for i in range(5)
-                ],
-                id='sb-individual-channel-select',
-                inline=True
-            ),
-            dbc.FormText('This only has an effect if "Individual" is selected above.')
-        ]),
-
     # decoding-syndrome
     'sb-syndrome-lateral-variance':
         dbc.FormGroup([
@@ -582,30 +453,24 @@ clear_components = {
 
 # The component id's that are NOT used in forming the JSON output upon submission.
 # The submit callback checks the value of every component EXCEPT these.
-excluded_status_comps = ['sb-stage-select', 'sb-segmentation-label']
+excluded_status_comps = ['sb-segmentation-label']
 
 component_groups = {
     'basic-metadata': ['sb-analysis-name',
                        'sb-position-select',
-                       'sb-one-z-select',
-                       'sb-stage-select'],
+                       'sb-channel-select'],
 
-    'alignment': ['sb-alignment-select'],
+    'preprocessing': ['sb-median-kernel-size',
+                      'sb-rollingball-kernel-size'],
 
-    'preprocessing': ['sb-preprocessing-checklist',
-                      'sb-tophat-kernel-size',
-                      'sb-rollingball-kernel-size',
-                      'sb-blur-kernel-size'],
+    'adcg-channel-specific': ['sb-sigma-upper-bound',
+                              'sb-sigma-lower-bound',
+                              'sb-min-weight',
+                              'sb-final-loss-improvement'],
 
-    'dot detection': ['sb-dot detection-select',
-                      'sb-strictness-select'],
-
-    'dot detection-python': ['sb-remove-bright-dots',
-                             'sb-threshold-select',
-                             'sb-minsigma-dotdetection',
-                             'sb-maxsigma-dotdetection',
-                             'sb-numsigma-dotdetection',
-                             'sb-overlap-dotdetection'],
+    'adcg-general': ['sb-max-iters',
+                     'sb-max-cd-iters',
+                     'sb-min-allowed-separation'],
 
     'segmentation': ['sb-segmentation-select',
                      'sb-segmentation-checklist',
@@ -621,10 +486,6 @@ component_groups = {
                               'sb-nuclei-radius',
                               'sb-cell-prob-threshold',
                               'sb-flow-threshold'],
-
-    'decoding': ['sb-decoding-algorithm',
-                 'sb-decoding-select',
-                 'sb-individual-channel-select'],
 
     'decoding-syndrome': ['sb-syndrome-lateral-variance',
                           'sb-syndrome-z-variance',
@@ -658,38 +519,12 @@ def select_user_dataset(user, dataset):
 
 
 @app.callback(
-    [Output(f'sb-{stage}-wrapper', 'open')
-     for stage in stage_ids],
-    [Output(f'sb-{stage}-wrapper', 'children')
-     for stage in stage_ids],
-    Input('sb-stage-select', 'value')
+    Output('sb-channel-options-wrapper', 'children'),
+    Input('sb-channel-select', 'value'),
+    State('sb-channel-options-wrapper', 'children')
 )
-def select_pipeline_stages(stages):
-    if stages is None:
-        raise PreventUpdate
-
-    if 'segmentation' in stages:
-        stages.append('segmentation')
-
-    selected_ids = [
-        stage_id
-        for stage, stage_id
-        in zip(pipeline_stages, stage_ids)
-        if stage in stages
-    ]
-
-    print(selected_ids)
-
-    open_res = [i in selected_ids for i in stage_ids]
-    open_res[-1] = False  # advanced segmentation
-
-    children_res = [
-        [html.Summary(header),
-         *cm.component_group(group_id, tolist=True, options=dict(disabled=open))]
-        for header, group_id, open in zip(stage_headers, stage_ids, open_res)
-    ]
-
-    return tuple(open_res + children_res)
+def select_channels(selected_channels, current_contents):
+    pass
 
 
 # This is the callback that gathers all the form statuses and begins the process
@@ -700,13 +535,12 @@ def select_pipeline_stages(stages):
     Input('sb-submit-button', 'n_clicks'),
     State('user-select', 'value'),
     State('dataset-select', 'value'),
-    State('sb-stage-select', 'value'),
     # Get the state of every form component except for those in excluded_status_comps
     # Note these are gathered in an *arg called values.
     [State(comp, 'value') for comp in cm.clear_components.keys()
      if comp not in excluded_status_comps]
 )
-def submit_new_analysis(n_clicks, user, dataset, stage_select, *values):
+def submit_new_analysis(n_clicks, user, dataset, *values):
     if not n_clicks:
         raise PreventUpdate
 
@@ -728,14 +562,9 @@ def submit_new_analysis(n_clicks, user, dataset, stage_select, *values):
 
     # This performs the validation and conversion of the form IDs to the appropriate
     # JSON keys for the pipeline.
-    analysis_name, submission = helper.form_to_json_output(status, stage_select)
+    analysis_name, submission = helper.form_to_json_output(status)
     # Any errors are added under this key.
     sub_errors = submission.pop('__ERRORS__')
-
-    # Remove all form values from pipeline stages that are deselected.
-    for stage in set(pipeline_stages):
-        if stage not in stage_select:
-            submission.pop(stage, None)
 
     analyses = all_datasets.query(
         'user==@user and dataset==@dataset')['analysis'].unique()
@@ -891,12 +720,6 @@ col1_clear = [
     ),
     html.Hr(),
     html.Details(
-        [html.Summary('Alignment options')] +
-        cm.component_group('alignment', tolist=True),
-        open=True, id='sb-alignment-wrapper'
-    ),
-    html.Hr(),
-    html.Details(
         [html.Summary('Preprocessing options')] +
         cm.component_group('preprocessing', tolist=True),
         open=True, id='sb-preprocessing-wrapper'
@@ -904,15 +727,12 @@ col1_clear = [
 ]
 
 col2_clear = [
-    html.Details(
-        [html.Summary('Dot detection options')] +
-        cm.component_group('dot detection', tolist=True),
-        open=True, id='sb-dot detection-wrapper'
+    html.Div([
+            dcc.Loading(id='sb-channel-options-wrapper')
+        ],
+        id='sb-channel-options-div'
     ),
-    html.Details(
-        [html.Summary('Dot detection options (Python dot detection only)')] +
-        cm.component_group('dot detection-python', tolist=True)
-    )
+    html.Div(id='sb-adcg-options-wrapper')
 ]
 
 col3_clear = [
@@ -928,11 +748,7 @@ col3_clear = [
         open=False, id='sb-segmentation-advanced-wrapper'
     ),
     html.Hr(),
-    html.Details(
-        [html.Summary('Decoding options')] +
-        cm.component_group('decoding', tolist=True),
-        open=True, id='sb-decoding-wrapper'
-    ),
+
     html.Details(
         [html.Summary('Decoding options (Syndrome decoding only)')] +
         cm.component_group('decoding-syndrome', tolist=True)

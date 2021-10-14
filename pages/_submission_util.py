@@ -147,52 +147,6 @@ class SubmissionHelper(PageHelper):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-    def put_analysis_request(
-            self,
-            user,
-            dataset,
-            analysis_name,
-            dot_detection='biggest jump 3d'
-    ):
-        analysis_dict = {
-            'personal': user,
-            'experiment_name': dataset,
-            'dot detection': dot_detection,
-            'dot detection test': 'true',
-            'visualize dot detection': 'true',
-            'strictness': 'multiple',
-            'clusters': {
-                'ntasks': '1',
-                'mem-per-cpu': '10G',
-                'email': 'lombelets@caltech.edu'
-            }
-        }
-
-        dict_bytes = io.BytesIO(json.dumps(analysis_dict).encode())
-        # These are "characters to avoid" in keys according to AWS docs
-        # \, {, }, ^, [, ], %, `, <, >, ~, #, |
-        # TODO: Sanitize filenames on server side before uploading too; mostly
-        #   potential problem for user-defined dataset/analysis names
-        analysis_sanitized = re.sub('[\\\\{^}%` ,\\[\\]>~<#|]', '', analysis_name)
-        keyname = f'json_analyses/{analysis_sanitized}.json'
-
-        try:
-            self.data_client.client.client.upload_fileobj(
-                dict_bytes,
-                Bucket=self.data_client.bucket_name,
-                Key=keyname
-            )
-        except Exception as e:
-            return str(e)
-
-        print(f'analysis_dict: {json.dumps(analysis_dict, indent=2)}')
-
-        return analysis_sanitized
-
-    # staticmethods are wrapped in a descriptor protocol, so we need
-    # to access the underlying function in order to make this dict work
-    # properly. An alternative would be to assign the dict as a class
-    # variable after the class definition,
     id_to_json_key = {
         'user-select': 'personal',
         'dataset-select': 'experiment_name',
@@ -240,7 +194,7 @@ class SubmissionHelper(PageHelper):
         'sb-syndrome-logweight-variance': _decoding_syndrome_process
     }
 
-    def form_to_json_output(self, form_status, selected_stages):
+    def form_to_json_output(self, form_status):
         """
         form_to_json_output
         -------------------
@@ -265,11 +219,9 @@ class SubmissionHelper(PageHelper):
 
         # The clusters key is always the same (at least for now)
         out = {
-            "clusters": {
-                "ntasks": "1",
-                "mem-per-cpu": "10G",
-                "email": "lombelets@caltech.edu"
-            },
+            "user": '',
+            "dataset": '',
+            "analysis_name": '',
             "__ERRORS__": []
         }
 
@@ -277,36 +229,13 @@ class SubmissionHelper(PageHelper):
         # filename of the JSON file.
         analysis_name = ''
 
-        selected_stages.append('basic-metadata')
-
-        # Add the advanced segmentation parameters after the segmentation parameters
-        if 'segmentation' in selected_stages:
-            selected_stages.insert(
-                selected_stages.index('segmentation')+1,
-                'segmentation-advanced'
-            )
-
-        # Add the python dot detection parameters after dot detection
-        if 'dot detection' in selected_stages:
-            selected_stages.insert(
-                selected_stages.index('dot detection')+1,
-                'dot detection-python'
-            )
-
-        # Add the syndrome decoding parameters after decoding
-        if 'decoding' in selected_stages:
-            selected_stages.insert(
-                selected_stages.index('decoding')+1,
-                'decoding-syndrome'
-            )
-
         # Begin the list of which form IDs we are going to care about.
         # We always care about the user and dataset selection.
         selected_form_ids = ['user-select', 'dataset-select']
 
         # Add the form IDs from all the selected stages
-        for s in selected_stages:
-            selected_form_ids.extend(self.cm.component_groups[s])
+        for components in self.cm.component_groups.values():
+            selected_form_ids.extend(components)
 
         # For each form-id: form-value pair
         for k in selected_form_ids:
