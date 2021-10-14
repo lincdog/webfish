@@ -20,6 +20,11 @@ def _one_z_process(form_id, form_val, current):
     return current
 
 
+def _analysis_name_process(form_id, form_val, current):
+    current['analysis_name'] = sanitize(form_val, delimiter_allowed=False)
+
+    return current
+
 def _position_process(form_id, form_val, current):
     if not form_val:
         current['positions'] = ''
@@ -142,34 +147,58 @@ def _dotdetection_pyparams_process(form_id, form_val, current):
     return current
 
 
+# The presence of this string in a component's ID will indicate that it is
+# a channel-specific parameter, and the channel will be expected to follow this
+# string.
+_channel_specific_flag = '_channel_'
+
+def _add_c(s, c):
+    """
+    Joins a string s with a channel c using the "channel specific flag",
+    that marks a parameter which has a value per channel.
+    """
+    return s + _channel_specific_flag + str(c)
+
+
+def _channel_specific_process(form_id, form_val, current):
+    k, chan = form_id.split(_channel_specific_flag)
+
+    if k in current:
+        current[k][int(chan)] = float(form_val)
+    else:
+        current[k] = {int(chan): float(form_val)}
+
+    return current
+
+
 class SubmissionHelper(PageHelper):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
     id_to_json_key = {
-        'user-select': 'personal',
-        'dataset-select': 'experiment_name',
+        'user-select': 'user',
+        'dataset-select': 'dataset',
+        'sb-analysis-name': _analysis_name_process,
 
-        'sb-position-select': _position_process,
-        'sb-one-z-select': _one_z_process,
+        'sb-channel-select': 'readout_channels',
+        'sb-alignment-channel-select': 'alignment_channel',
+        'sb-position-select': 'positions',
+        'sb-z-slice-select': 'z_slice',
 
-        'sb-alignment-select': 'alignment',
 
-        'sb-preprocessing-checklist': _pp_checklist_process,
-        'sb-tophat-kernel-size': 'tophat kernel size',
-        'sb-rollingball-kernel-size': 'rolling ball kernel size',
-        'sb-blur-kernel-size': 'blur kernel size',
+        'sb-rollingball-kernel-size': 'rb_radius',
+        'sb-median-kernel-size': 'r_med_filt',
 
-        'sb-dot detection-select': 'dot detection',
-        'sb-strictness-select': 'strictness',
+        'sb-sigma-upper-bound': _channel_specific_process,
+        'sb-sigma-lower-bound': _channel_specific_process,
+        'sb-min-weight': _channel_specific_process,
+        'sb-final-loss-improvement': _channel_specific_process,
 
-        'sb-remove-bright-dots': _dotdetection_bright_dots,
-        'sb-threshold-select': _dotdetection_pyparams_process,
-        'sb-minsigma-dotdetection': _dotdetection_pyparams_process,
-        'sb-maxsigma-dotdetection': _dotdetection_pyparams_process,
-        'sb-numsigma-dotdetection': _dotdetection_pyparams_process,
-        'sb-overlap-dotdetection': _dotdetection_pyparams_process,
+
+        'sb-max-iters': 'max_iters',
+        'sb-max-cd-iters': 'max_cd_iters',
+        'sb-min-allowed-separation': 'min_allowed_separation',
 
         'sb-segmentation-select': 'segmentation',
         'sb-segmentation-checklist': _checklist_process,
@@ -184,11 +213,6 @@ class SubmissionHelper(PageHelper):
         'sb-cell-prob-threshold': 'cell_prob_threshold',
         'sb-flow-threshold': 'flow_threshold',
 
-        'sb-decoding-algorithm': _decoding_algorithm_process,
-        'sb-decoding-select': _decoding_channel_process,
-        'sb-individual-channel-select': _decoding_channel_process,
-
-        # FIXME: verify correct JSON key values with Jonathan
         'sb-syndrome-lateral-variance': _decoding_syndrome_process,
         'sb-syndrome-z-variance': _decoding_syndrome_process,
         'sb-syndrome-logweight-variance': _decoding_syndrome_process
@@ -231,26 +255,33 @@ class SubmissionHelper(PageHelper):
 
         # Begin the list of which form IDs we are going to care about.
         # We always care about the user and dataset selection.
-        selected_form_ids = ['user-select', 'dataset-select']
+        selected_form_ids = ['user-select', 'dataset-select', 'sb-analysis-name']
 
-        # Add the form IDs from all the selected stages
+        # Add the form IDs from all components
         for components in self.cm.component_groups.values():
             selected_form_ids.extend(components)
 
         # For each form-id: form-value pair
         for k in selected_form_ids:
 
+            k_split = k
+
+            if _channel_specific_flag in k:
+                k_split, _ = k.split(_channel_specific_flag)
+
+            # Always use k here, not k_split, to get the form value as is
             v = form_status.get(k, '__NONE__')
 
             if v == '__NONE__':
                 continue
 
-            if k == 'sb-analysis-name' and v:
-                analysis_name = sanitize(v, delimiter_allowed=False)
-            elif k in self.id_to_json_key:
+            # Use k_split down here because we will look up channel-specific
+            # keys by just their prefix (i.e. the part before the divider and
+            # the channel number)
+            if k_split in self.id_to_json_key:
                 # If the form-id is in the id_to_json_key dict, fetch
                 # the corresponding value (a string or a function)
-                prekey = self.id_to_json_key[k]
+                prekey = self.id_to_json_key[k_split]
 
                 if callable(prekey):
                     # If a function, directly set the dictionary to the

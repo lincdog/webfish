@@ -16,7 +16,7 @@ from dash import no_update
 from app import app
 from lib.util import sanitize, f2k
 from pages.common import ComponentManager, data_client, get_all_datasets
-from pages._submission_util import SubmissionHelper
+from pages._submission_util import SubmissionHelper, _add_c
 
 
 all_datasets = get_all_datasets()
@@ -38,6 +38,85 @@ stage_headers = [
     'Segmentation Options',
     'Advanced Segmentation Options',
 ]
+
+
+def make_channel_specific_form(channel, tolist=False):
+    def add_c(s):
+        return _add_c(s, channel)
+
+    output_dict = {
+        add_c('sb-sigma-upper-bound'):
+            dbc.FormGroup([
+                dbc.Label('Sigma upper bound (pixels)',
+                          html_for=add_c('sb-sigma-upper-bound')),
+                dbc.Input(
+                    id=add_c('sb-sigma-upper-bound'),
+                    type='number',
+                    min=0.5,
+                    max=15.0,
+                    step=0.1,
+                    value=2.3,
+                    disabled=False
+                ),
+                dbc.FormText('Sets the maximum sigma value for ADCG to use.')
+            ]),
+
+        add_c('sb-sigma-lower-bound'):
+            dbc.FormGroup([
+                dbc.Label('Sigma lower bound (pixels)',
+                          html_for=add_c('sb-sigma-lower-bound')),
+                dbc.Input(
+                    id=add_c('sb-sigma-lower-bound'),
+                    type='number',
+                    min=0,
+                    max=10.0,
+                    step=0.1,
+                    value=0.8,
+                    disabled=False
+                ),
+                dbc.FormText('Sets the minimum sigma value for ADCG to use.')
+            ]),
+
+        add_c('sb-min-weight'):
+            dbc.FormGroup([
+                dbc.Label('Minimum weight (threshold)',
+                          html_for=add_c('sb-min-weight')),
+                dbc.Input(
+                    id=add_c('sb-min-weight'),
+                    type='number',
+                    min=0,
+                    max=20000,
+                    step=10,
+                    value=120,
+                    disabled=False
+                ),
+                dbc.FormText('Sets the absolute minimum dot intensity for ADCG to '
+                             'consider.')
+            ]),
+
+        add_c('sb-final-loss-improvement'):
+            dbc.FormGroup([
+                dbc.Label('ADCG Final loss improvement',
+                          html_for=add_c('sb-final-loss-improvement')),
+                dbc.Input(
+                    id=add_c('sb-final-loss-improvement'),
+                    type='number',
+                    min=1.,
+                    max=2000.,
+                    step=1,
+                    value=70.0,
+                    disabled=False
+                ),
+                dbc.FormText('Sets the loss improvement at which ADCG will terminate.')
+            ]),
+        # End channel-specific parameters
+    }
+
+    if tolist:
+        return list(output_dict.values())
+    else:
+        return output_dict
+
 
 clear_components = {
     # basic-metadata
@@ -75,6 +154,38 @@ clear_components = {
             ),
         ]),
 
+    'sb-alignment-channel-select':
+        dbc.FormGroup([
+            dbc.Label('Select Channel to use for alignment',
+                      html_for='sb-alignment-channel-select'),
+            dcc.Dropdown(
+                options=[
+                    {'label': str(i), 'value': i}
+                    for i in channels
+                ],
+                value=405,
+                id='sb-alignment-channel-select',
+                placeholder='Select one channel'
+            ),
+        ]),
+
+    'sb-z-slice-select':
+        dbc.FormGroup([
+            dbc.Label('Z slice to process', html_for='sb-z-slice-select'),
+            dbc.Input(
+                id='sb-z-slice-select',
+                type='number',
+                min=0,
+                max=30,
+                step=1,
+                value=0,
+                disabled=False
+            ),
+            dbc.FormText('Select which Z slice of the images to process. '
+                         'Be careful not to choose one beyond the Z length of '
+                         'your images.')
+        ]),
+
     # Preprocessing
     'sb-median-kernel-size':
         dbc.FormGroup([
@@ -99,31 +210,14 @@ clear_components = {
                 id='sb-rollingball-kernel-size',
                 type='number',
                 min=1,
-                max=2000,
-                step=1,
+                max=30,
+                step=0.1,
                 value=3.3,
                 disabled=False
             ),
             dbc.FormText('Sets the rolling ball kernel radius. A smaller value '
                          'generally results in higher background estimated at each pixel'
                          ' and more variance of the estimated background.')
-        ]),
-    'sb-blur-kernel-size':
-        dbc.FormGroup([
-            dbc.Label('Blur kernel size', html_for='sb-blur-kernel-size'),
-            dbc.Input(
-                id='sb-blur-kernel-size',
-                type='number',
-                min=0,
-                max=20,
-                step=1,
-                value=3,
-                disabled=False
-            ),
-            dbc.FormText('Sets the blur kernel radius in pixels. In general, '
-                         'features smaller than this radius will be removed or '
-                         'attenuated by the blur. So it should be just below the '
-                         'expected real dot size.')
         ]),
 
     # ADCG dot detection
@@ -158,68 +252,6 @@ clear_components = {
                          'conditional descent iterations.'
                          )
         ]),
-
-    # Begin channel-specific parameters
-    'sb-sigma-upper-bound':
-        dbc.FormGroup([
-            dbc.Label('Sigma upper bound (pixels)', html_for='sb-sigma-upper-bound'),
-            dbc.Input(
-                id='sb-sigma-upper-bound',
-                type='number',
-                min=0.5,
-                max=15.0,
-                step=0.1,
-                value=2.3,
-                disabled=False
-            ),
-            dbc.FormText('Sets the maximum sigma value for ADCG to use.')
-        ]),
-    'sb-sigma-lower-bound':
-        dbc.FormGroup([
-            dbc.Label('Sigma lower bound (pixels)', html_for='sb-sigma-lower-bound'),
-            dbc.Input(
-                id='sb-sigma-lower-bound',
-                type='number',
-                min=0,
-                max=10.0,
-                step=0.1,
-                value=0.8,
-                disabled=False
-            ),
-            dbc.FormText('Sets the minimum sigma value for ADCG to use.')
-        ]),
-    'sb-min-weight':
-        dbc.FormGroup([
-            dbc.Label('Minimum weight (threshold)', html_for='sb-min-weight'),
-            dbc.Input(
-                id='sb-min-weight',
-                type='number',
-                min=0,
-                max=20000,
-                step=10,
-                value=120,
-                disabled=False
-            ),
-            dbc.FormText('Sets the absolute minimum dot intensity for ADCG to '
-                         'consider.')
-        ]),
-    'sb-final-loss-improvement':
-        dbc.FormGroup([
-            dbc.Label('ADCG Final loss improvement',
-                      html_for='sb-final-loss-improvement'),
-            dbc.Input(
-                id='sb-final-loss-improvement',
-                type='number',
-                min=1.,
-                max=2000.,
-                step=1,
-                value=70.0,
-                disabled=False
-            ),
-            dbc.FormText('Sets the loss improvement at which ADCG will terminate.')
-        ]),
-    # End channel-specific parameters
-
     'sb-min-allowed-separation':
         dbc.FormGroup([
             dbc.Label('Minimum allowed separation',
@@ -236,6 +268,8 @@ clear_components = {
             dbc.FormText('Sets the minimum distance two dots can be apart without '
                          'being removed.')
         ]),
+
+    # Channel-specific parameters here
 
     # segmentation
     'sb-segmentation-select':
@@ -451,6 +485,7 @@ clear_components = {
 
 }
 
+
 # The component id's that are NOT used in forming the JSON output upon submission.
 # The submit callback checks the value of every component EXCEPT these.
 excluded_status_comps = ['sb-segmentation-label']
@@ -458,7 +493,9 @@ excluded_status_comps = ['sb-segmentation-label']
 component_groups = {
     'basic-metadata': ['sb-analysis-name',
                        'sb-position-select',
-                       'sb-channel-select'],
+                       'sb-channel-select',
+                       'sb-alignment-channel-select',
+                       'sb-z-slice-select'],
 
     'preprocessing': ['sb-median-kernel-size',
                       'sb-rollingball-kernel-size'],
@@ -524,7 +561,33 @@ def select_user_dataset(user, dataset):
     State('sb-channel-options-wrapper', 'children')
 )
 def select_channels(selected_channels, current_contents):
-    pass
+
+    print(f'{selected_channels=}')
+
+    if not selected_channels:
+        raise PreventUpdate
+
+    selected_channels = sorted(selected_channels)
+    selected_channels.reverse()
+
+    cards = []
+
+    for chan in selected_channels:
+        # Add the form components for each channel-specific parameter
+        form_components = make_channel_specific_form(chan, tolist=True)
+
+        channel_entry = dbc.Card(
+            dbc.CardBody(
+                [
+                    html.H5(f'Options for {chan}'),
+                    *form_components
+                ]
+            ),
+            style={"width": "40%"})
+
+        cards.append(channel_entry)
+
+    return dbc.CardGroup(cards)
 
 
 # This is the callback that gathers all the form statuses and begins the process
@@ -732,7 +795,11 @@ col2_clear = [
         ],
         id='sb-channel-options-div'
     ),
-    html.Div(id='sb-adcg-options-wrapper')
+    html.Hr(),
+    html.Div(
+        cm.component_group('adcg-general', tolist=True),
+        id='sb-adcg-options-wrapper'
+    ),
 ]
 
 col3_clear = [
