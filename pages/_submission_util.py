@@ -132,7 +132,7 @@ def _add_c(s, c):
     Joins a string s with a channel c using the "channel specific flag",
     that marks a parameter which has a value per channel.
     """
-    return s + _channel_specific_flag + str(c)
+    return {'type': 'CHANNEL_SPECIFIC', 'param': s, 'channel': c}
 
 
 def _channel_specific_process(form_id, form_val, current):
@@ -196,7 +196,7 @@ class SubmissionHelper(PageHelper):
         'sb-syndrome-logweight-variance': _decoding_syndrome_process
     }
 
-    def form_to_json_output(self, form_status):
+    def form_to_json_output(self, form_status, channel_specific_values=()):
         """
         form_to_json_output
         -------------------
@@ -241,26 +241,15 @@ class SubmissionHelper(PageHelper):
         # For each form-id: form-value pair
         for k in selected_form_ids:
 
-            k_split = k
-
-            if _channel_specific_flag in k:
-                k_split, _ = k.split(_channel_specific_flag)
-
-            print(k_split)
-
-            # Always use k here, not k_split, to get the form value as is
             v = form_status.get(k, '__NONE__')
 
             if v == '__NONE__':
                 continue
 
-            # Use k_split down here because we will look up channel-specific
-            # keys by just their prefix (i.e. the part before the divider and
-            # the channel number)
-            if k_split in self.id_to_json_key:
+            if k in self.id_to_json_key:
                 # If the form-id is in the id_to_json_key dict, fetch
                 # the corresponding value (a string or a function)
-                prekey = self.id_to_json_key[k_split]
+                prekey = self.id_to_json_key[k]
 
                 if callable(prekey):
                     # If a function, directly set the dictionary to the
@@ -273,5 +262,15 @@ class SubmissionHelper(PageHelper):
                     # else (a string), make a one-element dict that just
                     # assigns the form value to the JSON key
                     out.update({prekey: v})
+
+        for chan_sp_val in channel_specific_values:
+            param = chan_sp_val['param']
+            channel = chan_sp_val['channel']
+            value = chan_sp_val['value']
+
+            if chan_sp_val['param'] in out:
+                out[param][channel] = value
+            else:
+                out[param] = {channel: value}
 
         return out['analysis_name'], out

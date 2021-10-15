@@ -3,6 +3,7 @@ import pandas as pd
 import io
 import json
 import yaml
+import jmespath
 import re
 from pathlib import Path
 
@@ -11,7 +12,7 @@ import dash_html_components as html
 import dash_bootstrap_components as dbc
 from dash.dependencies import Input, Output, State, MATCH, ALL
 from dash.exceptions import PreventUpdate
-from dash import no_update
+from dash import no_update, callback_context
 
 from app import app
 from lib.util import sanitize, f2k
@@ -94,7 +95,7 @@ def make_channel_specific_form(channel, tolist=False):
                              'consider.')
             ]),
 
-        add_c('sb-final-loss-improvement'):
+        'sb-final-loss-improvement':
             dbc.FormGroup([
                 dbc.Label('ADCG Final loss improvement',
                           html_for=add_c('sb-final-loss-improvement')),
@@ -602,12 +603,13 @@ def select_channels(selected_channels, current_contents):
     Input('sb-submit-button', 'n_clicks'),
     State('user-select', 'value'),
     State('dataset-select', 'value'),
+    State({'type': 'CHANNEL_SPECIFIC', 'param': ALL, 'channel': ALL}, 'value'),
     # Get the state of every form component except for those in excluded_status_comps
     # Note these are gathered in an *arg called values.
     [State(comp, 'value') for comp in cm.clear_components.keys()
      if comp not in excluded_status_comps]
 )
-def submit_new_analysis(n_clicks, user, dataset, *values):
+def submit_new_analysis(n_clicks, user, dataset, channel_specifics, *values):
     if not n_clicks:
         raise PreventUpdate
 
@@ -627,17 +629,17 @@ def submit_new_analysis(n_clicks, user, dataset, *values):
     # and its validation functions may depend on the state of previous entries
     status.update({c: v for c, v in zip(relevant_comps, values)})
 
-    selected_channels = status['sb-channel-select']
-    #FIXME: Not able to get the right inputs because they would need to be supplied
-    #  as arguments to the decorator, before the function is entered
-    #for chan in selected_channels:
-    #    channel_keys = [_add_c(k, chan) for k in channel_specific_comps]
-    #    status.update({c: })
+    channel_specific_values = jmespath.search(
+        '[][].{param: id.param, channel: id.channel, value: value}[?param]',
+        callback_context.states_list
+    )
+    print(f'{channel_specific_values=}')
+    print(f'{channel_specifics=}')
 
 
     # This performs the validation and conversion of the form IDs to the appropriate
     # JSON keys for the pipeline.
-    analysis_name, submission = helper.form_to_json_output(status)
+    analysis_name, submission = helper.form_to_json_output(status, channel_specific_values)
     # Any errors are added under this key.
     sub_errors = submission.pop('__ERRORS__')
 
