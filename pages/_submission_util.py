@@ -21,15 +21,19 @@ def _one_z_process(form_id, form_val, current):
 
 
 def _analysis_name_process(form_id, form_val, current):
-    current['analysis_name'] = sanitize(form_val, delimiter_allowed=False)
+
+    try:
+        current['analysis_name'] = sanitize(form_val, delimiter_allowed=False)
+    except Exception:
+        raise ValueError('Invalid/missing analysis name')
 
     return current
 
 def _position_process(form_id, form_val, current):
     if not form_val:
-        current['positions'] = ''
-    else:
-        current['positions'] = ','.join([str(p) for p in form_val])
+        raise ValueError('Must specify at least 1 position.')
+
+    current['positions'] = list(form_val)
 
     return current
 
@@ -62,40 +66,11 @@ def _pp_checklist_process(form_id, form_val, current):
     return current
 
 
-def _decoding_channel_process(form_id, form_val, current):
+def _channel_process(form_id, form_val, current):
+    if not form_val:
+        raise ValueError('Must specify at least one channel to decode')
 
-    decoding_method = current.get('decoding method')
-
-    if decoding_method == 'syndrome' and form_val == 'non barcoded':
-        raise ValueError('Syndrome decoding only works with barcoded data.')
-
-    cur_decoding = current.get('decoding', None)
-
-    if cur_decoding is None:
-        # If there is not yet a decoding key, add it and return the dict
-        current['decoding'] = str(form_val)
-
-        return current
-
-    elif cur_decoding == 'individual':
-        if isinstance(form_val, list):
-            # Individual is selected and we are handling the list of selected
-            # channels.
-            current['decoding'] = {
-                'individual': sort_as_num_or_str(form_val)
-            }
-        elif not form_val:
-            raise ValueError('Must specify at least one channel to decode '
-                             'if "individual" is selected')
-        return current
-    else:
-        return current
-
-
-def _decoding_algorithm_process(form_id, form_val, current):
-
-    if form_val == 'syndrome':
-        current['decoding method'] = 'syndrome'
+    current['readout_channels'] = form_val
 
     return current
 
@@ -161,7 +136,10 @@ def _add_c(s, c):
 
 
 def _channel_specific_process(form_id, form_val, current):
-    k, chan = form_id.split(_channel_specific_flag)
+    k, chan = form_id['param'], form_id['channel']
+
+    if chan not in current['readout_channels']:
+        return current
 
     if k in current:
         current[k][int(chan)] = float(form_val)
@@ -181,9 +159,9 @@ class SubmissionHelper(PageHelper):
         'dataset-select': 'dataset',
         'sb-analysis-name': _analysis_name_process,
 
-        'sb-channel-select': 'readout_channels',
+        'sb-channel-select': _channel_process,
         'sb-alignment-channel-select': 'alignment_channel',
-        'sb-position-select': 'positions',
+        'sb-position-select': _position_process,
         'sb-z-slice-select': 'z_slice',
 
 
@@ -258,8 +236,7 @@ class SubmissionHelper(PageHelper):
         selected_form_ids = ['user-select', 'dataset-select', 'sb-analysis-name']
 
         # Add the form IDs from all components
-        for components in self.cm.component_groups.values():
-            selected_form_ids.extend(components)
+        selected_form_ids.extend(list(form_status))
 
         # For each form-id: form-value pair
         for k in selected_form_ids:
@@ -268,6 +245,8 @@ class SubmissionHelper(PageHelper):
 
             if _channel_specific_flag in k:
                 k_split, _ = k.split(_channel_specific_flag)
+
+            print(k_split)
 
             # Always use k here, not k_split, to get the form value as is
             v = form_status.get(k, '__NONE__')
@@ -293,6 +272,6 @@ class SubmissionHelper(PageHelper):
                 else:
                     # else (a string), make a one-element dict that just
                     # assigns the form value to the JSON key
-                    out.update({prekey: str(v)})
+                    out.update({prekey: v})
 
-        return analysis_name, out
+        return out['analysis_name'], out

@@ -45,7 +45,7 @@ def make_channel_specific_form(channel, tolist=False):
         return _add_c(s, channel)
 
     output_dict = {
-        add_c('sb-sigma-upper-bound'):
+        'sb-sigma-upper-bound':
             dbc.FormGroup([
                 dbc.Label('Sigma upper bound (pixels)',
                           html_for=add_c('sb-sigma-upper-bound')),
@@ -61,7 +61,7 @@ def make_channel_specific_form(channel, tolist=False):
                 dbc.FormText('Sets the maximum sigma value for ADCG to use.')
             ]),
 
-        add_c('sb-sigma-lower-bound'):
+        'sb-sigma-lower-bound':
             dbc.FormGroup([
                 dbc.Label('Sigma lower bound (pixels)',
                           html_for=add_c('sb-sigma-lower-bound')),
@@ -77,7 +77,7 @@ def make_channel_specific_form(channel, tolist=False):
                 dbc.FormText('Sets the minimum sigma value for ADCG to use.')
             ]),
 
-        add_c('sb-min-weight'):
+        'sb-min-weight':
             dbc.FormGroup([
                 dbc.Label('Minimum weight (threshold)',
                           html_for=add_c('sb-min-weight')),
@@ -134,9 +134,9 @@ clear_components = {
             dcc.Dropdown(
                 id='sb-position-select',
                 multi=True,
-                placeholder='Select one or more positions (blank for all)'
+                placeholder='Select one or more positions'
             ),
-            dbc.FormText('Select one or more positions, or leave blank to process all.')
+            dbc.FormText('Select one or more positions')
         ]),
 
     'sb-channel-select':
@@ -165,7 +165,8 @@ clear_components = {
                 ],
                 value=405,
                 id='sb-alignment-channel-select',
-                placeholder='Select one channel'
+                placeholder='Select one channel',
+                clearable=False
             ),
         ]),
 
@@ -490,6 +491,11 @@ clear_components = {
 # The submit callback checks the value of every component EXCEPT these.
 excluded_status_comps = ['sb-segmentation-label']
 
+channel_specific_comps = ['sb-sigma-upper-bound',
+                          'sb-sigma-lower-bound',
+                          'sb-min-weight',
+                          'sb-final-loss-improvement']
+
 component_groups = {
     'basic-metadata': ['sb-analysis-name',
                        'sb-position-select',
@@ -500,10 +506,7 @@ component_groups = {
     'preprocessing': ['sb-median-kernel-size',
                       'sb-rollingball-kernel-size'],
 
-    'adcg-channel-specific': ['sb-sigma-upper-bound',
-                              'sb-sigma-lower-bound',
-                              'sb-min-weight',
-                              'sb-final-loss-improvement'],
+    'adcg-channel-specific': channel_specific_comps,
 
     'adcg-general': ['sb-max-iters',
                      'sb-max-cd-iters',
@@ -537,6 +540,7 @@ helper = SubmissionHelper(data_client, cm)  # No default graph or logger needed
 
 @app.callback(
     Output('sb-position-select', 'options'),
+    Output('sb-position-select', 'value'),
     Input('user-select', 'value'),
     Input('dataset-select', 'value')
 )
@@ -549,7 +553,7 @@ def select_user_dataset(user, dataset):
     positions = np.sort(data_client.datafiles.query(
         query)['position'].unique().astype(int))
 
-    return [{'label': p, 'value': p} for p in list(positions)]
+    return [{'label': p, 'value': p} for p in list(positions)], list(positions)
 
     #analyses = data_client.datafiles.query(
     #    'user==@user and dataset==@dataset')['analysis'].unique()
@@ -620,8 +624,16 @@ def submit_new_analysis(n_clicks, user, dataset, *values):
     # Add the status of every relevant form component to the status dict
     # Note the order is determined by the components' order in cm.clear_components.
     # This matters because helper.form_to_json_output loops through them in this order
-    # and its validation functions may depend on the state of the
+    # and its validation functions may depend on the state of previous entries
     status.update({c: v for c, v in zip(relevant_comps, values)})
+
+    selected_channels = status['sb-channel-select']
+    #FIXME: Not able to get the right inputs because they would need to be supplied
+    #  as arguments to the decorator, before the function is entered
+    #for chan in selected_channels:
+    #    channel_keys = [_add_c(k, chan) for k in channel_specific_comps]
+    #    status.update({c: })
+
 
     # This performs the validation and conversion of the form IDs to the appropriate
     # JSON keys for the pipeline.
@@ -669,11 +681,11 @@ def submit_new_analysis(n_clicks, user, dataset, *values):
             'or "Go back" to go back and make changes.',
             html.H4(html.Code(analysis_name, id='sb-final-analysis-name')),
             html.Details([
-                html.Summary('Generated JSON'),
+                html.Summary('Generated YAML'),
                 # This Pre component serves as the intermediate JSON contents before
                 # final submission. Its contents are used by upload_generated_json
                 # to upload the JSON to S3.
-                html.Pre(json.dumps(submission, indent=2), id='sb-generated-json')
+                html.Pre(yaml.dump(submission), id='sb-generated-json')
                 ], id='sb-submission-json', open=True),
             dbc.Button('Confirm and Submit',
                        id='sb-confirm-submit-button',
@@ -743,12 +755,12 @@ def upload_generated_json(
         return alerts, False
 
     try:
-        submission_bytes = io.BytesIO(json.dumps(new_dict).encode())
+        submission_bytes = io.BytesIO(yaml.dump(new_dict).encode())
 
         data_client.client.client.upload_fileobj(
             submission_bytes,
             Bucket=data_client.bucket_name,
-            Key=f2k(Path('json_analyses', analysis_name + '.json'))
+            Key=f2k(Path('yaml_configs', f'{analysis_name}_config.yaml'))
         )
         alerts.append(
             dbc.Alert(
@@ -758,7 +770,7 @@ def upload_generated_json(
                 color='success'))
 
     except Exception as e:
-        alerts.append(dbc.Alert('Error uploading JSON to S3: ', e, color='danger'))
+        alerts.append(dbc.Alert('Error uploading yaml to S3: ', e, color='danger'))
 
     return alerts, False
 
