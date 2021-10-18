@@ -6,8 +6,8 @@ CRON_HOME="/home/lombelet/cron"
 WF_HOME="/home/lombelet/cron/webfish"
 
 SLURM_RUN="srun --quiet -t 02:30:00 -n 1 -N 1"
-HI_RES="--mem 16G -c 8"
-LO_RES="--mem 8G -c 2"
+HI_RES="--mem 10G -c 4"
+LO_RES="--mem 2G -c 1"
 
 MAX_UPLOADS=8000
 
