@@ -441,7 +441,7 @@ def sanitize(
     # the exp
     # Note: I added unix shell special characters like $, &, ;, *, ! because
     # the analysis names will be used as folder names
-    exp = '[\\\\{^}%$&*@!/?;` ' + re.escape(delimiter) + '\\[\\]>~<#|]'
+    exp = '[\\\\{^}%$&*@!/?;`, ' + re.escape(delimiter) + '\\[\\]>~<#|]'
     parts_sanitized = [re.sub(exp, '', part) for part in parts]
 
     if any([len(part) == 0 for part in parts_sanitized]):
