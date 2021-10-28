@@ -164,7 +164,7 @@ class SubmissionHelper(PageHelper):
             'clusters': {
                 'ntasks': '1',
                 'mem-per-cpu': '10G',
-                'email': 'lombelets@caltech.edu'
+                'email': 'hsekhon@caltech.edu'
             }
         }
 
