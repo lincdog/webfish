@@ -7,7 +7,7 @@ Webfish pulls relevant files from cloud storage and can also be run on Amazon EC
 
 Written by Lincoln Ombelets in collaboration with Nick Rezaee in the Cai Lab, 2021-present.
 
-## Running
+## Running natively (outside Docker)
 
 Right now, Webfish reads in several configuration values from a file called `consts.yml`. These specify the cloud storage details (AWS S3 API style), local storage path, and names of specific files to look for in each dataset. These file names are likely to change as we develop webfish.
 
@@ -19,3 +19,17 @@ Webfish looks for the following environment variables on startup:
 So an example invocation would be:
 
 ```env WEBFISH_CREDS=/path/to/credentials WEBFISH_HOST=0.0.0.0 python index.py```
+
+## Running in Docker
+
+Copy your credentials file into the current directory as `hpc-wasabi-usercredentials`. Then, run
+
+`docker build -t caigroup/webfish .`
+
+to build the image. The argument after `-t` can be any name you want and serves as the name of the image.
+
+To run the image in "dev mode", so that changes you make to your source propagate into the container, use this command:
+
+`docker run -d -p 8050:8050 --name wf_dev --mount type=bind,source="<path/to/source/directory>",target=/webfish caigroup/webfish`
+
+where `<path/to/source/directory>` is replaced with the actual repo path.
